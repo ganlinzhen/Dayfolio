@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+coverage/
+*.log
+apps/desktop/release/
+.mcp.json
+tmp-*.mjs

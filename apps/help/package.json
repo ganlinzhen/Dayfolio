@@ -1,0 +1,9 @@
+{
+  "name": "@tododesk/help",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TodoDesk 帮助中心 —— 各模块使用说明（独立维护，构建时同步进桌面端渲染层）",
+  "scripts": {
+    "sync": "node scripts/sync.mjs"
+  }
+}

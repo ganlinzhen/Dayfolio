@@ -1,0 +1,48 @@
+# TodoDesk 项目约束（Agent 必读）
+
+- **语言**：所有回复、代码注释、文档、提交说明一律使用简体中文。
+- **文档目录**：Codex/agent 生成的文档统一放在仓库上一级 `../claude_doc/` 下。
+
+## 帮助文档同步约束（强约束）
+
+App 的「帮助」面板内容来自独立子项目 **`apps/help/`**（`docs/` 下一个 markdown 对应一个模块，见其 README）。
+
+**任何功能修改或新增功能，完成后必须同步更新帮助文档，缺一不可：**
+
+1. 更新 `apps/help/docs/` 下对应模块的 md；新模块则新建 `NN-<模块>.md`（带 `title`/`description` frontmatter，文件名前缀决定目录顺序）；
+2. 在仓库根目录运行 `npm run help:sync`，重新生成 `apps/desktop/src/renderer/src/generated/helpContent.ts`；
+3. 生成文件**禁止手改**，必须随源码一起提交；
+4. 改动了入口/交互的，同时核对相关文档的描述是否仍然准确。
+
+> 判断标准：用户在帮助面板里读到的每个说法，都必须与当前版本的真实行为一致。功能改了文档没改，视为本次改动未完成。
+
+## 新增数据模块「四件套」约束（强约束）
+
+**新增任何数据模块，必须同时补齐以下四件才算完成，缺一件视为未完成：**
+
+1. **core 服务**：SQLite 表 + 服务函数（`packages/core/src/services/`），App 与 MCP 共用；
+2. **App 面板 + IPC**：渲染层面板与主进程 IPC 处理器；
+3. **MCP 工具**：在 `apps/mcp/src/server.ts` 注册对应工具，读写能力对称，描述用中文写清「什么场景调用我」；
+4. **help 文档 + e2e 测试**：`apps/help/docs/` 对应文档 + `apps/mcp/test/mcp.e2e.test.ts` 覆盖主链路。
+
+> 历史教训：工具箱曾长期只有前两件，AI 客户端完全无法触达，2026-10 补齐。文件类资源（如工具 HTML）存放位置必须从数据库路径推导（`dirname(db)/…`），不得依赖 Electron `userData`，否则 MCP 进程找不到。
+
+## 每轮项目修改的正式 App 交付（强约束）
+
+- 以一次可交付的项目修改为单位执行，不必每保存一个文件就打包。修改应用源码、界面、依赖、构建配置或帮助内容后，先完成相关测试、`npm run typecheck`、必要的 `npm run help:sync` 和隔离界面验收；全部通过后在仓库根运行 `npm run package:desktop`。仅修改课程讲义、计划、待办等运行时用户数据且未改应用代码时，不要求更新安装包。
+- `npm run package:desktop` 只生成 `apps/desktop/release/TodoDesk.app`，不等于正式安装。交付前应与其他 TodoDesk 开发任务协调，避免同时写源码、打包或安装中间版本；确认用户实际启动位置（通常为 `/Applications/TodoDesk.app`），把已验收的包安装到该位置。
+- 替换前验证候选包存在且签名有效，按本轮变更需要备份数据库、课程及工具资产和旧 App。提示用户先保存未保存内容，确认可安全退出正在运行的 App；涉及迁移时也要先停止其他数据库写入者。采用保留可用旧版的替换流程；构建、测试、签名或安装失败时不得移除旧版，不得绕过系统权限或签名警告。
+- 安装后核对实际启动路径、版本、关键构建产物和启动结果。只有正式路径上的新 App 验收通过，才可报告“桌面版已更新”。未经用户另行授权，不提交或推送代码。
+
+## 版本与发版记录（强约束）
+
+- **每次修改应用（源码、界面、依赖、构建配置、帮助内容）并交付时，必须递增版本号**：新增功能或行为变更递增次版本号（MINOR），仅缺陷修复递增修订号（PATCH）。
+- 版本号唯一来源是仓库根 `package.json` 的 `version` 字段，`apps/desktop/package.json` 同步修改；打包脚本自动写入安装包 Info.plist，渲染层界面由 vite 构建注入，禁止在任何位置硬编码版本号。
+- 同一次交付必须更新仓库根 `CHANGELOG.md`：按版本用「新增 / 修复 / 变更」分类记录（中文），应用内「发版记录」弹层与帮助文档均围绕它，未记录视为交付未完成。
+- 仅修改运行时用户数据（课程、计划、待办等）且未改应用代码时，不需要递增版本号。
+
+## 其他工程约定
+
+- 渲染层构建 `npm run build:web` 已自动前置 `help:sync`；`npm run dev` 会监听 `apps/help/docs/` 变更自动重同步。
+- 测试：`npm test`（core 单测 + MCP 端到端）；类型检查：`npm run typecheck`。改动后两者须通过。
+- 数据库：App 与 MCP 必须指向同一 SQLite 文件（默认 `~/Library/Application Support/tododesk/tododesk.db`，环境变量 `TODODESK_DB` 覆盖）。

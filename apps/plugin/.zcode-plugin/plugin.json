@@ -1,0 +1,5 @@
+{
+  "name": "tododesk-teach",
+  "version": "0.1.0",
+  "description": "TodoDesk 教学插件：让 ZCode agent 按 TodoDesk 学习闭环规范执行教学，含内置 TodoDesk MCP 服务器。"
+}

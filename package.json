@@ -1,0 +1,31 @@
+{
+  "name": "tododesk-monorepo",
+  "private": true,
+  "version": "0.3.0",
+  "description": "TodoDesk —— Mac 桌面待办事项 + 学习计划 + 打卡应用，含 MCP 接口",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "help:sync": "node apps/help/scripts/sync.mjs",
+    "build:mcp": "esbuild apps/mcp/src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=apps/mcp/dist/mcp-server.cjs --external:node:* --loader:.md=text --log-level=warning",
+    "test": "npm run build:mcp && vitest run",
+    "test:core": "vitest run packages/core/test",
+    "test:mcp": "npm run build:mcp && vitest run apps/mcp/test",
+    "typecheck": "tsc -p packages/core --noEmit && tsc -p apps/desktop --noEmit && tsc -p apps/mcp --noEmit",
+    "build:desktop": "npm run rebuild:native && npm run build:web && node apps/desktop/scripts/build.mjs",
+    "package:desktop": "npm run build:desktop && node apps/desktop/scripts/package.mjs",
+    "build:web": "npm run help:sync && cd apps/desktop && npx vite build",
+    "rebuild:native": "cd apps/desktop && npx @electron/rebuild -f -w better-sqlite3",
+    "start": "cd apps/desktop && npm run start",
+    "dev": "cd apps/desktop && npm run dev",
+    "plugin:build": "npm run build:mcp && cp apps/mcp/dist/mcp-server.cjs apps/plugin/mcp/mcp-server.cjs",
+    "plugin:verify": "node apps/plugin/scripts/install-verify.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

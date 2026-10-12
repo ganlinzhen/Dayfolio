@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "tododesk-teach",
+  "version": "0.1.0",
+  "description": "TodoDesk 教学插件：让 Codex/ZCode agent 按 TodoDesk 学习闭环规范执行教学（计划→讲义→测评→复习→沉淀），含内置 TodoDesk MCP 服务器。",
+  "author": "TodoDesk",
+  "license": "MIT",
+  "keywords": ["tododesk", "study", "teaching", "mcp"]
+}

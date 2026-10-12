@@ -1,0 +1,13 @@
+{
+  "name": "tododesk-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TodoDesk MCP Server（stdio），供 zcode 等 AI 客户端读写待办/学习计划/打卡",
+  "scripts": {
+    "build": "node ../../node_modules/esbuild/bin/esbuild src/server.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/mcp-server.cjs --external:node:* --loader:.md=text"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.25.76"
+  }
+}
