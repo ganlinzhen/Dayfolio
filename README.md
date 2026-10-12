@@ -1,6 +1,17 @@
 # TodoDesk
 
-Mac 桌面待办事项 + 学习计划 + 打卡应用，内置 MCP Server，可让 zcode 等 AI 客户端直接读写你的待办、生成学习计划、打卡。
+面向个人的 macOS 桌面助手：待办、学习计划、课程、打卡、新闻任务、知识库浏览与 HTML 工具箱。内置 MCP Server，让支持 MCP 的 AI 客户端与桌面应用读写同一份本地数据。
+
+仓库：[ganlinzhen/vibe-ai](https://github.com/ganlinzhen/vibe-ai)。仓库名为 `vibe-ai`，应用名为 **TodoDesk**。
+
+![TodoDesk 今日面板，使用隔离演示数据](apps/desktop/build/screenshots/today.png)
+
+## 环境要求
+
+- macOS；当前桌面打包脚本仅支持 macOS，产物架构与构建机器一致，尚未验收 Windows / Linux 桌面版。
+- Node **22.13+ 或 24.x**（推荐 24.x，`.nvmrc` 指向 24）；MCP 与测试依赖内置 `node:sqlite`，Node 20 不受支持。
+- npm、Git、Xcode Command Line Tools（`xcode-select --install`，用于原生模块重建）。
+- 首次安装需要联网下载依赖及 Electron。
 
 ## 功能
 
@@ -22,18 +33,33 @@ tododesk/
 ├── apps/desktop/         # Electron 桌面端（React + Vite 渲染层，esbuild 主进程）
 ├── apps/mcp/             # MCP Server（stdio），构建产物 dist/mcp-server.cjs
 ├── apps/help/            # 帮助中心子项目：docs/ 一个模块一篇使用说明，npm run help:sync 同步进 App
-└── claude_doc/           # 设计文档与技术架构图（在仓库上一级 todo/claude_doc）
+├── apps/plugin/          # 教学技能、双宿主配置与内置 MCP 构建产物
+└── scripts/              # 干净环境验收
 ```
 
 ## 快速开始
 
 ```bash
-npm install
-npm run rebuild:native    # 为 Electron 重建 better-sqlite3（首次必跑）
-npm run build:web         # 构建渲染层
-(cd apps/desktop && node scripts/build.mjs)   # 构建主进程/预加载
-npm start                 # 启动 App（开发热更新用 npm run dev）
+git clone https://github.com/ganlinzhen/vibe-ai.git
+cd vibe-ai
+nvm use                   # 使用 nvm 时执行；其他安装方式需自行确认 Node 版本
+npm ci
+npm run build:desktop     # 重建原生模块 + 同步帮助 + 构建渲染层、主进程与预加载
+npm start                 # 启动 App
 ```
+
+开发热更新：`npm run dev`。首次运行前仍需执行 `npm run build:desktop`。
+
+体验演示数据：`node apps/desktop/scripts/preview-isolated.mjs`。它使用一次性临时数据库、HOME 和用户数据，退出后自动清理，适合试用时保留自己的真实数据。
+
+## 桌面打包
+
+```bash
+npm run package:desktop
+```
+
+产物为 `apps/desktop/release/TodoDesk.app`。脚本采用 ad-hoc 签名，**未做 Developer ID 签名与 Apple 公证**；该产物用于本地构建验收，不代表已提供面向所有 Mac 的正式发行包。打包不会自动安装或替换现有 App。已安装用户更新前应退出应用并备份数据库、课程和工具资产；不要绕过系统签名警告。
+
 
 数据库位置：`~/Library/Application Support/tododesk/tododesk.db`（可用环境变量 `TODODESK_DB` 覆盖，App 与 MCP 必须指向同一文件）。
 
@@ -42,18 +68,18 @@ npm start                 # 启动 App（开发热更新用 npm run dev）
 ```bash
 npm test        # 全部：核心层单测 + MCP 端到端（真实 stdio 协议拉起子进程）
 npm run typecheck
+npm run plugin:build
+npm run plugin:verify
+npm run verify:clean      # macOS：从当前待交付源码创建干净副本，完整验收
 ```
 
-## 在 zcode 中接入 MCP（本机已注册）
+测试使用临时数据库。两个需要私人旧库快照的迁移用例默认跳过，不影响公开环境的基础验收。`verify:clean` 不复制 `node_modules`、个人 MCP 配置、运行时数据或旧桌面构建产物；日志与 SHA-256 清单写入临时验收目录，不执行 Git 提交或推送。
 
-MCP Server 已构建：`apps/mcp/dist/mcp-server.cjs`。
+## 接入 MCP
 
-本机已完成注册（两种方式并存）：
+先在仓库根目录执行 `npm run build:mcp`，生成 `apps/mcp/dist/mcp-server.cjs`。单独使用 MCP 时不需要桌面端构建，也不需要 Electron 原生模块重建。
 
-- **用户级**：`~/.zcode/cli/config.json` → `mcpServers.tododesk`（所有项目可用）
-- **项目级**：`~/Desktop/todo/.mcp.json`（进入该目录生效）
-
-手工注册方式（其他机器）——在 `~/.zcode/cli/config.json` 中加入：
+在支持 MCP stdio 的客户端添加以下服务器配置。zcode 的用户配置位置是 `~/.zcode/cli/config.json`，其他客户端按其说明配置：
 
 ```json
 {
@@ -68,6 +94,10 @@ MCP Server 已构建：`apps/mcp/dist/mcp-server.cjs`。
 ```
 
 > 注意：若修改过数据库位置，App 与 MCP 需通过 `TODODESK_DB` 指向同一文件。
+
+将 `args` 替换为构建产物的实际绝对路径。如果客户端找不到受支持版本的 Node，将 `command` 改为 Node 可执行文件的绝对路径。源码安装不会自动注册 MCP。
+
+教学插件位于 `apps/plugin/`。分发前执行 `npm run plugin:build`、`npm run plugin:verify`；保留包内 `mcp.json`、`.mcp.json` 与 `.zcode-plugin/plugin.json`。宿主需支持对应插件格式，具体安装入口以宿主说明为准。
 
 之后即可对 AI 说，例如：
 
@@ -84,7 +114,7 @@ MCP Server 已构建：`apps/mcp/dist/mcp-server.cjs`。
 | 工具 | 说明 |
 | --- | --- |
 | `list_todos` / `add_todo` / `update_todo` / `complete_todo` / `delete_todo` | 待办增删改查、完成 |
-| `create_study_plan` / `list_study_plan` / `get_study_plan` / `update_study_plan` / `delete_study_plan` | 学习计划管理与进度 |
+| `create_study_plan` / `list_study_plans` / `get_study_plan` / `update_study_plan` / `delete_study_plan` | 学习计划管理与进度 |
 | `update_plan_item` | 计划条目打卡（done/pending/skipped） |
 | `checkin` | 每日打卡 / 对待办或计划条目打卡 |
 | `get_today` | 今日概览（逾期、今日安排、打卡状态、连续天数） |
@@ -104,10 +134,16 @@ MCP Server 已构建：`apps/mcp/dist/mcp-server.cjs`。
 
 ## 每日新闻（agent-only，无本地抓取）
 
-本地不再提供任何抓取命令或定时任务（`npm run news:fetch` 已移除，zcode 新闻抓取自动化已删除）。新闻生产的唯一入口是新闻任务，发起两条路：**App 新闻面板「新建任务」**（用户亲手填主题/规则，走同一 core 硬校验，创建后即见「待执行」），或**对 AI 助手说**「帮我收集某方面最近 24 小时的新闻」。执行一律由助手经 MCP：`claim_news_task` → 用自己的搜索工具核实 → `submit_news_items` 提交（硬校验：来源链接/发布时间/事件去重/每任务累计 10 条预算）。离线时任务保持待执行（App 不自动唤醒助手），下次会话认领接力。
+本地不提供任何抓取命令或定时任务。新闻生产的唯一入口是新闻任务，发起两条路：**App 新闻面板「新建任务」**（用户亲手填主题/规则，走同一 core 硬校验，创建后即见「待执行」），或**对 AI 助手说**「帮我收集某方面最近 24 小时的新闻」。执行一律由助手经 MCP：`claim_news_task` → 用自己的搜索工具核实 → `submit_news_items` 提交（硬校验：来源链接/发布时间/事件去重/每任务累计 10 条预算）。离线时任务保持待执行（App 不自动唤醒助手），下次会话认领接力。
 
 ## 技术栈
 
-Electron 37 + React 19 + TypeScript + Vite（渲染层）/ esbuild（主进程）+ SQLite（App 侧 better-sqlite3，MCP 侧 Node 内置 node:sqlite，WAL 模式多进程共享）+ @modelcontextprotocol/sdk。
+Electron + React 19 + TypeScript + Vite（渲染层）/ esbuild（主进程）+ SQLite（App 侧 better-sqlite3，MCP 侧 Node 内置 node:sqlite，WAL 模式多进程共享）+ @modelcontextprotocol/sdk。具体依赖版本见各 `package.json` 与根目录锁文件。
 
-架构设计文档与技术架构图见 `../claude_doc/`。
+产品定位与界面约定见 `PRODUCT.md`、`DESIGN.md`；各模块说明见 `apps/help/docs/`。个人开发笔记位于仓库外，不是构建依赖。
+
+## 许可与数据
+
+源码按 [MIT](LICENSE) 许可发布。教学技能保留了上游来源与许可，见 `apps/plugin/skills/tododesk-teach/LICENSE`；第三方依赖遵循各自许可证。
+
+待办、课程、工具资产与知识库索引保存在本机。MCP 客户端可读取或修改业务数据，接入前应了解所用客户端的数据处理方式。新闻由 AI 客户端联网搜索后提交；源码不包含个人数据库、课程素材或 API 凭证。

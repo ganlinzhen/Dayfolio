@@ -12,7 +12,11 @@ description: 一条命令在完全隔离的临时环境里体验全部模块—�
 cd <仓库根目录> && node apps/desktop/scripts/preview-isolated.mjs
 ```
 
-（如未构建过：先 `npm run build:web && (cd apps/desktop && node scripts/build.mjs)`，脚本会检查并提示。）
+前置：macOS、Node 22.13+ 或 24.x（推荐 24.x），在仓库根目录运行 `npm ci`、`npm run build:desktop`。完整桌面构建会为 Electron 重建 SQLite 原生模块，脚本会检查缺失产物并提示。
+
+## 开发者干净环境验收
+
+在仓库根目录运行 `npm run verify:clean`：按 Git 跟踪文件与未忽略的新文件复制当前源码到临时目录，使用独立 HOME、数据库和用户数据，从 `npm ci` 开始执行测试、类型检查、帮助同步、插件验收、桌面构建、演示界面冒烟与打包签名验证。不会提交或推送，也不会替换已安装的应用。临时日志与报告路径会在终端输出，便于排查。
 
 ## 演示内容（打开即看）
 

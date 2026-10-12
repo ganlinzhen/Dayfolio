@@ -2,14 +2,14 @@
 // 预览沙盒演示数据 UI 冒烟（隔离运行，绝不触碰真实数据）：
 //   用共享播种模块 demo-seed 预置四模块闭环 → 拉起已构建 Electron（CDP 动态空闲端口）→
 //   纯文本断言：新闻（任务/24h）、知识库（3 篇演示笔记）、自媒体（六视图/待审/复盘指标）、
-//   课程（内置演示样课入口/正文/未确认）、隔离落库校验。无截图、无外部图像分析。
+//   课程（内置演示样课入口/正文/未确认）、隔离落库校验；可指定 TODODESK_SMOKE_SCREENSHOT 保存演示截图。
 // 前置：npm run build:web && (cd apps/desktop && node scripts/build.mjs)
 // 用法：node apps/desktop/scripts/ui-smoke-demo.mjs
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { build } from 'esbuild';
 import { homedir } from 'node:os';
 
@@ -227,6 +227,27 @@ try {
   assert(await evalJs(`document.body.textContent.includes('第 1 天') || document.body.textContent.includes('Day 1') || document.querySelectorAll('.course-card').length >= 1`), 'Day1 样课卡在列');
   assert(await evalJs(`!document.body.textContent.includes('已确认样课')`), '样课未确认（确认入口留给用户，演示不代确认）');
 
+  // ---------- 公开接入说明与构建版本 ----------
+  const { version } = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'));
+  assert(await evalJs(`document.querySelector('.nav-item-version')?.textContent?.trim() === ${JSON.stringify(`v${version}`)}`), '界面版本来自当前 package.json');
+  await clickUntil(nav('帮助'), () => evalJs(`!!document.querySelector('.help-toc')`), 15000, '帮助面板');
+  await clickUntil(
+    `[...document.querySelectorAll('.help-toc-item')].find(b => b.textContent.includes('MCP 与 AI 接入'))?.click()`,
+    () => evalJs(`document.querySelector('.help-doc-title')?.textContent === 'MCP 与 AI 接入'`),
+    10000, 'MCP 接入帮助',
+  );
+  assert(await evalJs(`document.querySelector('.help-article')?.textContent?.includes('Node 22.13+') && !document.querySelector('.help-article')?.textContent?.includes('本机已完成注册')`), '公开帮助说明运行要求，不冒称已注册');
+
+  if (process.env.TODODESK_SMOKE_SCREENSHOT) {
+    await clickUntil(nav('今日'), () => evalJs(`document.querySelector('.panel h1')?.textContent === '今日'`), 15000, '今日演示页');
+    await sleep(500);
+    const screenshot = await send('Page.captureScreenshot', { format: 'png' });
+    if (!screenshot.result?.data) throw new Error('演示截图失败');
+    const destination = resolve(process.env.TODODESK_SMOKE_SCREENSHOT);
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, Buffer.from(screenshot.result.data, 'base64'));
+    console.log(`[smoke] 演示截图：${destination}`);
+  }
   console.log('[smoke] 全部断言通过');
   await stopAndCleanup(true);
   process.exit(failed ? 1 : 0);

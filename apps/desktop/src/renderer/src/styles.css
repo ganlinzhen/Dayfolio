@@ -357,14 +357,6 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   line-height: 17px;
   color: var(--text-2);
 }
-.todo-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--line);
-}
-.group .todo-row:first-of-type { border-top: none; }
 
 /* 完成圆钮 */
 .check {
@@ -394,8 +386,9 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 }
 
 .todo-title { cursor: default; }
-.todo-row:hover .todo-title, .todo-card:hover .todo-title { cursor: text; }
-.todo-row.done .todo-title, .todo-card.done .todo-title { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.todo-card:hover .todo-title { cursor: text; }
+.todo-card.done .todo-title { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.todo-card.skipped .todo-title { color: var(--text-3); }
 
 /* ---------- 待办卡片：标题与元信息分行，避免一行挤压 ---------- */
 .todo-card {
@@ -625,14 +618,6 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   background: var(--bg);
 }
 
-.checkin-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--line);
-}
-.group .checkin-row:first-of-type { border-top: none; }
 .ref-badge {
   font-size: 10.5px;
   letter-spacing: 0.5px;
@@ -646,6 +631,15 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .ref-badge.day { border-color: var(--text); color: var(--text); }
 .checkin-desc { font-size: 13.5px; }
 .subtle-icon { color: var(--ok); }
+
+/* 打卡记录卡片（复用 todo-card 骨架）：徽标 + 描述为主行，日期/备注为元信息行 */
+.checkin-card .ref-badge { margin-top: 2px; }
+.checkin-card .checkin-desc { flex: 1; min-width: 0; line-height: 1.5; word-break: break-word; }
+.checkin-card .subtle-icon { flex-shrink: 0; margin-top: 2px; }
+.checkin-card .todo-card-meta { padding-left: 45px; }
+
+/* 今日学习卡片：元信息行对齐标题（圆钮 17 + 间距 10 + 类型图标 16 + 间距 10） */
+.todo-card.study-card .todo-card-meta { padding-left: 53px; }
 
 /* ---------- 今日仪表盘 ---------- */
 .stat-row {

@@ -3,7 +3,7 @@
 // 用法：node validate-package.mjs <插件包目录> [--skip-mcp-spawn]
 // 检查：schema、组件齐全（双宿主 manifest/skill/MCP/LICENSE）、双宿主 name/version 一致、
 //       可迁移路径（无绝对路径/无 ~/Desktop 硬编码；MCP 启动命令须用 ${CLAUDE_PLUGIN_ROOT} 官方约定，
-//       相对路径在异地 cwd 必然启动失败）、版本兼容（node >= 20）、冲突（文件名安全）、
+//       相对路径在异地 cwd 必然启动失败）、版本兼容（Node 22.13+ 或 24.x，须提供 node:sqlite）、冲突（文件名安全）、
 //       上游来源许可（MIT, Matt Pocock, 49dd158；拒绝 curated 变体）、
 //       MCP 隔离读写（按宿主约定解析 ${CLAUDE_PLUGIN_ROOT}，从异地 cwd 实际 spawn：临时库写→读）。
 import { spawnSync } from 'node:child_process';
@@ -132,9 +132,19 @@ if (failures.filter((f) => f.includes('硬编码')).length === 0) pass('无 ~/De
 
 // ---- 3. 版本兼容 ----
 console.log('\n3. 版本兼容');
-const [major] = process.versions.node.split('.').map(Number);
-if (major < 20) fail(`node ${process.versions.node} < 20（MCP 服务器要求 node >= 20）`);
-else pass(`node ${process.versions.node} ≥ 20`);
+const [major, minor] = process.versions.node.split('.').map(Number);
+if (!((major === 22 && minor >= 13) || major === 24)) {
+  fail(`Node ${process.versions.node} 不受支持（要求 Node 22.13+ 或 24.x）`);
+} else {
+  try {
+    const { DatabaseSync } = await import('node:sqlite');
+    const probe = new DatabaseSync(':memory:');
+    probe.close();
+    pass(`Node ${process.versions.node} 支持 node:sqlite`);
+  } catch (e) {
+    fail(`node:sqlite 不可用：${e.message}`);
+  }
+}
 
 // ---- 4. MCP 隔离读写（按宿主约定解析 ${CLAUDE_PLUGIN_ROOT}，从异地 cwd 实际 spawn） ----
 console.log('\n4. MCP 隔离读写（异地 cwd 启动）');

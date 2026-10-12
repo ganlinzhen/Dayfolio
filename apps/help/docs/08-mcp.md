@@ -13,12 +13,19 @@ TodoDesk 内置一个 MCP Server（`apps/mcp`），AI 客户端（如 zcode）�
 
 ## 接入方式
 
-本机已完成注册，两种方式并存：
+先安装 **Node 22.13+ 或 24.x**（推荐 24.x）。MCP 使用 Node 内置 `node:sqlite`，Node 20 无法运行。源码安装后，在仓库根目录执行：
+
+```bash
+npm ci
+npm run build:mcp
+```
+
+根据 AI 客户端支持的方式注册：
 
 - 用户级：`~/.zcode/cli/config.json` → `mcpServers.tododesk`（所有项目可用）
 - 项目级：仓库根目录的 `.mcp.json`（进入该仓库生效；路径以实际检出位置为准，不硬编码）
 
-其他机器手工注册，在 `~/.zcode/cli/config.json` 中加入：
+例如使用 zcode 时，在 `~/.zcode/cli/config.json` 中加入以下配置。把 `args` 替换为实际检出位置的**绝对路径**，确保客户端启动的 `node` 是上述受支持版本：
 
 ```json
 {
@@ -31,6 +38,12 @@ TodoDesk 内置一个 MCP Server（`apps/mcp`），AI 客户端（如 zcode）�
   }
 }
 ```
+
+源码检出不会自动注册 MCP，也不会自动启动 AI 助手。若客户端找不到 `node`，将 `command` 改为本机 Node 可执行文件的绝对路径。其他客户端按照其配置格式添加同一个 stdio 服务器。
+
+## 教学插件
+
+仓库的 `apps/plugin/` 提供教学技能与内置 MCP 服务，分发前运行 `npm run plugin:build` 和 `npm run plugin:verify`。包内 `mcp.json` 与 `.mcp.json` 分别供两个宿主读取，必须一起保留；仓库根目录的个人 `.mcp.json` 不随源码分发。
 
 ## 数据位置
 

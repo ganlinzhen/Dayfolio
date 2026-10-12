@@ -18846,6 +18846,9 @@ var Protocol = class {
       this.setRequestHandler(GetTaskPayloadRequestSchema, async (request, extra) => {
         const handleTaskResult = async () => {
           const taskId = request.params.taskId;
+          if (!await this._taskStore.getTask(taskId, extra.sessionId)) {
+            throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
+          }
           if (this._taskMessageQueue) {
             let queuedMessage;
             while (queuedMessage = await this._taskMessageQueue.dequeue(taskId, extra.sessionId)) {
@@ -18876,12 +18879,12 @@ var Protocol = class {
             throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
           }
           if (!isTerminal(task.status)) {
-            await this._waitForTaskUpdate(taskId, extra.signal);
+            await this._waitForTaskUpdate(taskId, extra.signal, extra.sessionId);
             return await handleTaskResult();
           }
           if (isTerminal(task.status)) {
             const result = await this._taskStore.getTaskResult(taskId, extra.sessionId);
-            this._clearTaskQueue(taskId);
+            this._clearTaskQueue(taskId, extra.sessionId);
             return {
               ...result,
               _meta: {
@@ -18918,7 +18921,7 @@ var Protocol = class {
             throw new McpError(ErrorCode.InvalidParams, `Cannot cancel task in terminal status: ${task.status}`);
           }
           await this._taskStore.updateTaskStatus(request.params.taskId, "cancelled", "Client cancelled task execution.", extra.sessionId);
-          this._clearTaskQueue(request.params.taskId);
+          this._clearTaskQueue(request.params.taskId, extra.sessionId);
           const cancelledTask = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
           if (!cancelledTask) {
             throw new McpError(ErrorCode.InvalidParams, `Task not found after cancellation: ${request.params.taskId}`);
@@ -19046,6 +19049,19 @@ var Protocol = class {
     const handler = this._requestHandlers.get(request.method) ?? this.fallbackRequestHandler;
     const capturedTransport = this._transport;
     const relatedTaskId = request.params?._meta?.[RELATED_TASK_META_KEY]?.taskId;
+    const sessionId = capturedTransport?.sessionId;
+    const store = this._taskStore;
+    let relatedTaskFound = true;
+    let relatedTaskLookup;
+    if (relatedTaskId && store && this._taskMessageQueue && sessionId !== void 0) {
+      relatedTaskFound = false;
+      relatedTaskLookup = (async () => {
+        if (!await store.getTask(relatedTaskId, sessionId)) {
+          throw new McpError(ErrorCode.InvalidParams, `Task not found: ${relatedTaskId}`);
+        }
+        relatedTaskFound = true;
+      })();
+    }
     if (handler === void 0) {
       const errorResponse = {
         jsonrpc: "2.0",
@@ -19055,7 +19071,10 @@ var Protocol = class {
           message: "Method not found"
         }
       };
-      if (relatedTaskId && this._taskMessageQueue) {
+      if (relatedTaskId && relatedTaskLookup) {
+        const queuedError = { type: "error", message: errorResponse, timestamp: Date.now() };
+        relatedTaskLookup.then(() => this._enqueueTaskMessage(relatedTaskId, queuedError, sessionId), () => capturedTransport?.send(errorResponse)).catch((error2) => this._onerror(new Error(`Failed to send an error response: ${error2}`)));
+      } else if (relatedTaskId && this._taskMessageQueue) {
         this._enqueueTaskMessage(relatedTaskId, {
           type: "error",
           message: errorResponse,
@@ -19106,7 +19125,10 @@ var Protocol = class {
       closeSSEStream: extra?.closeSSEStream,
       closeStandaloneSSEStream: extra?.closeStandaloneSSEStream
     };
-    Promise.resolve().then(() => {
+    (relatedTaskLookup ?? Promise.resolve()).then(() => {
+      if (relatedTaskLookup && abortController.signal.aborted) {
+        throw new McpError(ErrorCode.ConnectionClosed, "Request was cancelled");
+      }
       if (taskCreationParams) {
         this.assertTaskHandlerCapability(request.method);
       }
@@ -19141,7 +19163,7 @@ var Protocol = class {
           ...error2["data"] !== void 0 && { data: error2["data"] }
         }
       };
-      if (relatedTaskId && this._taskMessageQueue) {
+      if (relatedTaskId && this._taskMessageQueue && relatedTaskFound) {
         await this._enqueueTaskMessage(relatedTaskId, {
           type: "error",
           message: errorResponse,
@@ -19621,7 +19643,7 @@ var Protocol = class {
       throw new Error("Cannot enqueue task message: taskStore and taskMessageQueue are not configured");
     }
     const maxQueueSize = this._options?.maxTaskQueueSize;
-    await this._taskMessageQueue.enqueue(taskId, message, sessionId, maxQueueSize);
+    await this._taskMessageQueue.enqueue(taskId, message, sessionId ?? this._transport?.sessionId, maxQueueSize);
   }
   /**
    * Clears the message queue for a task and rejects any pending request resolvers.
@@ -19650,12 +19672,13 @@ var Protocol = class {
    * Uses polling to check for updates at the task's configured poll interval.
    * @param taskId The task ID to wait for
    * @param signal Abort signal to cancel the wait
+   * @param sessionId Session of the request that waits, passed to the task store
    * @returns Promise that resolves when an update occurs or rejects if aborted
    */
-  async _waitForTaskUpdate(taskId, signal) {
+  async _waitForTaskUpdate(taskId, signal, sessionId) {
     let interval = this._options?.defaultTaskPollInterval ?? 1e3;
     try {
-      const task = await this._taskStore?.getTask(taskId);
+      const task = await this._taskStore?.getTask(taskId, sessionId);
       if (task?.pollInterval) {
         interval = task.pollInterval;
       }
@@ -20534,6 +20557,42 @@ var ExperimentalMcpServerTasks = class {
 };
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js
+function toolInputElementCount(value, max) {
+  let count = 0;
+  const stack = [value];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === null || typeof node !== "object")
+      continue;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        if (++count > max)
+          return count;
+        if (child !== null && typeof child === "object")
+          stack.push(child);
+      }
+    } else {
+      for (const key in node) {
+        if (!Object.prototype.hasOwnProperty.call(node, key))
+          continue;
+        if (++count > max)
+          return count;
+        const child = node[key];
+        if (child !== null && typeof child === "object")
+          stack.push(child);
+      }
+    }
+  }
+  return count;
+}
+function resolveMaxToolInputElements(value) {
+  if (value === void 0 || value === Infinity)
+    return void 0;
+  if (typeof value !== "number" || Number.isNaN(value) || value < 1) {
+    throw new RangeError(`maxToolInputElements must be a number of at least 1, or Infinity, got ${String(value)}`);
+  }
+  return value;
+}
 var McpServer = class {
   constructor(serverInfo, options) {
     this._registeredResources = {};
@@ -20545,6 +20604,7 @@ var McpServer = class {
     this._resourceHandlersInitialized = false;
     this._promptHandlersInitialized = false;
     this.server = new Server(serverInfo, options);
+    this._maxToolInputElements = resolveMaxToolInputElements(options?.maxToolInputElements);
   }
   /**
    * Access experimental features.
@@ -20675,12 +20735,15 @@ var McpServer = class {
    * Validates tool input arguments against the tool's input schema.
    */
   async validateToolInput(tool, args, toolName) {
+    if (this._maxToolInputElements !== void 0 && toolInputElementCount(args, this._maxToolInputElements) > this._maxToolInputElements) {
+      throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for tool ${toolName}: arguments contain more than the maximum of ${this._maxToolInputElements} elements`);
+    }
     if (!tool.inputSchema) {
       return void 0;
     }
     const inputObj = normalizeObjectSchema(tool.inputSchema);
     const schemaToParse = inputObj ?? tool.inputSchema;
-    const parseResult = await safeParseAsync2(schemaToParse, args);
+    const parseResult = await safeParseAsync2(schemaToParse, args ?? {});
     if (!parseResult.success) {
       const error2 = "error" in parseResult ? parseResult.error : "Unknown error";
       const errorMessage = getParseErrorMessage(error2);
@@ -20918,7 +20981,7 @@ var McpServer = class {
       }
       if (prompt.argsSchema) {
         const argsObj = normalizeObjectSchema(prompt.argsSchema);
-        const parseResult = await safeParseAsync2(argsObj, request.params.arguments);
+        const parseResult = await safeParseAsync2(argsObj, request.params.arguments ?? {});
         if (!parseResult.success) {
           const error2 = "error" in parseResult ? parseResult.error : "Unknown error";
           const errorMessage = getParseErrorMessage(error2);
@@ -21433,7 +21496,7 @@ var StdioServerTransport = class {
 };
 
 // apps/help/docs/09-study-loop.md
-var study_loop_default = "---\ntitle: \u5B66\u4E60\u95ED\u73AF\ndescription: \u5BF9 AI \u8BF4\u300C\u5B66\u4E60\u7EBF\u6027\u4EE3\u6570\u300D\uFF0C\u7531 agent \u6309\u672C\u89C4\u8303\u5B8C\u6210\u8BA1\u5212\u3001\u5B66\u4E60\u8BB0\u5F55\u3001\u6D4B\u8BC4\u3001\u8C03\u6574\u4E0E\u77E5\u8BC6\u6C89\u6DC0\n---\n\n## \u8FD9\u662F\u4EC0\u4E48\n\nTodoDesk \u7684\u5B66\u4E60\u95ED\u73AF\u4EE5 **AI agent \u4E3A\u7B2C\u4E00\u64CD\u4F5C\u8005**\uFF1A\u4F60\u5728 zcode \u7B49 AI \u5BA2\u6237\u7AEF\u91CC\u8BF4\u300C\u5B66\u4E60\u7EBF\u6027\u4EE3\u6570\u300D\uFF0Cagent \u6309 TodoDesk \u89C4\u8303\u5B8C\u6210\u4ECE\u8BA1\u5212\u5230\u6C89\u6DC0\u7684\u5168\u6D41\u7A0B\uFF1BApp \u5185\u53EA\u505A**\u5C55\u793A\u4E0E\u786E\u8BA4**\uFF08\u8349\u6848\u786E\u8BA4\u3001\u8C03\u6574\u5E94\u7528\u3001\u5361\u7247\u5BFC\u51FA\uFF09\uFF0C\u6CA1\u6709\u624B\u5DE5\u5EFA\u8BA1\u5212\u7684\u8868\u5355\u3002\n\n\u672C\u6587\u4EF6\u662F\u5B66\u4E60\u95ED\u73AF\u7684**\u552F\u4E00\u89C4\u8303\u6E90**\uFF1AMCP \u7684 `get_study_workflow` \u5DE5\u5177\u4E0E `tododesk://study/workflow` \u8D44\u6E90\u8FD4\u56DE\u7684\u5C31\u662F\u672C\u6587\u5185\u5BB9\uFF08\u6784\u5EFA\u65F6\u540C\u6E90\u6CE8\u5165\uFF09\uFF0C\u6539\u89C4\u8303\u53EA\u6539\u8FD9\u91CC\u3002\n\n## \u5168\u6D41\u7A0B\uFF08agent \u64CD\u4F5C\u89C4\u8303\uFF09\n\n1. **\u6F84\u6E05\u76EE\u6807**\uFF1A\u7F3A\u4FE1\u606F\u5148\u95EE\u7528\u6237\uFF0C\u4E0D\u8981\u7F16\u9020\u3002\u9700\u8981\u6F84\u6E05\u7684\u5178\u578B\u9879\uFF1A\u5B66\u4E60\u52A8\u673A\u4E0E\u76EE\u6807\u6C34\u5E73\u3001\u6BCF\u65E5\u65F6\u95F4\u9884\u7B97\uFF08\u5206\u949F\uFF09\u3001\u6750\u6599\u6765\u6E90\uFF08\u4E66/\u8BFE/\u6587\u6863\uFF09\u3001\u8D77\u70B9\u4E0E\u5148\u4FEE\u57FA\u7840\u3001\u671F\u671B\u5B8C\u6210\u65F6\u95F4\u3002\n2. **\u5148\u4FEE\u8BCA\u65AD**\uFF1A\u6309\u76EE\u6807\u62C6\u77E5\u8BC6\u70B9\u65F6\u5148\u5224\u65AD\u7528\u6237\u662F\u5426\u5177\u5907\u5148\u4FEE\u77E5\u8BC6\uFF1B\u4E0D\u786E\u5B9A\u5C31\u5355\u72EC\u62C6\u6210\u524D\u7F6E\u77E5\u8BC6\u70B9\u653E\u8FDB\u8BA1\u5212\uFF0C\u6216\u5148\u95EE\u4E00\u53E5\u3002\n3. **\u751F\u6210\u8349\u6848**\uFF1A\u8C03\u7528 `draft_study_plan`\uFF0C\u4F20\u5165\u6807\u9898\u3001\u76EE\u6807\u3001\u6750\u6599\u6765\u6E90\u3001\u6BCF\u65E5\u9884\u7B97\uFF0810~600 \u5206\u949F\uFF09\u3001\u5F00\u59CB\u65E5\u671F\u4E0E\u77E5\u8BC6\u70B9\u6E05\u5355\uFF08\u6BCF\u9879\u542B\u7A33\u5B9A `key`\u3001\u540D\u79F0\u3001\u4F9D\u8D56 `depends_on`\u3001\u9884\u8BA1\u65F6\u957F\u3001\u53EF\u9A8C\u8BC1\u6210\u679C `outcome`\uFF09\u3002TodoDesk \u6309**\u900F\u660E\u89C4\u5219**\uFF08\u89C1\u4E0B\uFF09\u6392\u6210\u9010\u65E5\u5B89\u6392\u5E76\u4FDD\u5B58\u4E3A**\u8349\u6848**\u2014\u2014\u6B64\u65F6\u4E0D\u521B\u5EFA\u4EFB\u4F55\u8BA1\u5212\u3001\u5F85\u529E\u6216\u6253\u5361\u3002\u7F3A\u5931\u7684\u65F6\u957F/\u6210\u679C\u4F1A\u8BB0\u5F55\u5728\u8349\u6848\u7684 `assumptions` \u91CC\uFF0C\u5411\u7528\u6237\u5C55\u793A\uFF0C\u4E0D\u8981\u9ED8\u9ED8\u8865\u9020\u3002\n4. **\u9884\u89C8\u4E0E\u786E\u8BA4**\uFF1A\u628A\u8349\u6848\u9010\u65E5\u5B89\u6392\u4E0E\u5047\u8BBE\u5FF5\u7ED9\u7528\u6237\uFF1B\u7528\u6237\u540C\u610F\u540E\u8C03\u7528 `confirm_study_plan_draft`\uFF08\u751F\u6210\u6B63\u5F0F\u8BA1\u5212\u4E0E\u9010\u65E5\u5F85\u529E\uFF0C\u5E42\u7B49\u53EF\u91CD\u8BD5\uFF09\uFF1B\u7528\u6237\u4E0D\u8981\u5C31 `cancel_study_plan_draft`\uFF08\u65E0\u4EFB\u4F55\u526F\u4F5C\u7528\uFF09\u3002\n5. **\u6BCF\u65E5\u6267\u884C**\uFF1A\u6BCF\u5929\u4ECE `get_today` \u770B\u5F53\u65E5\u5B89\u6392\u3002\u5B66\u4E60\u5B8C\u6210\u540E\u8C03\u7528 `record_study_session` \u8BB0\u5F55\u4E00\u6B21\u72EC\u7ACB\u4F1A\u8BDD\uFF1A\u5B9E\u9645\u7528\u65F6\u3001**\u81EA\u5DF1\u7684\u89E3\u91CA/\u7B54\u6848**\uFF08\u7528\u81EA\u5DF1\u7684\u8BDD\u8BB2\u51FA\u6765\uFF09\u3001\u7591\u95EE\u3001\u6750\u6599\u6765\u6E90\u3002\u540C\u4E00\u76EE\u6807\u5B66\u4E86\u51E0\u904D\u5C31\u8BB0\u51E0\u6761\uFF08`attempt` \u9012\u589E\uFF09\uFF0C\u91CD\u8BD5\u8BF7\u5E26\u540C\u4E00\u7A33\u5B9A `id` \u4FDD\u8BC1\u5E42\u7B49\u3002\n6. **\u6D4B\u8BC4\u7559\u8BC1**\uFF1A\u8C03\u7528 `record_study_assessment` \u8BB0\u5F55\u9898\u76EE\u3001\u8BC4\u4EF7\u6807\u51C6\u3001\u539F\u7B54\u6848\u3001\u8BC4\u5206\u4E0E**\u4F9D\u636E**\u3002`source` \u5FC5\u987B\u663E\u5F0F\uFF1A`self`\uFF08\u81EA\u8BC4\uFF0C\u53EF\u88AB\u540E\u7EED\u7EA0\u6B63\uFF09\u3001`objective`\uFF08\u5BA2\u89C2\u6D4B\u8BD5\uFF0C**\u5FC5\u987B\u9644\u771F\u5B9E\u5224\u9898\u4F9D\u636E evidence \u4E0E\u5224\u9898\u7ED3\u679C**\uFF0CTodoDesk \u4E0D\u4EE3\u5224\u4E5F\u4E0D\u4F2A\u9020\uFF09\u3001`ai_suggestion`\uFF08AI \u7684\u5EFA\u8BAE\u6027\u53CD\u9988\uFF0C\u4EC5\u8BB0\u5F55\uFF0C**\u4E0D\u8BA1\u5165\u638C\u63E1\u8BC1\u636E**\uFF09\u3002\n7. **\u590D\u76D8\u8C03\u6574**\uFF1A\u5468\u671F\u6027\u8C03\u7528 `suggest_plan_adjustments` \u83B7\u53D6\u5EFA\u8BAE\uFF08\u7EAF\u9884\u89C8\u3001\u4E0D\u5199\u5E93\uFF09\uFF0C\u4F9D\u636E\u6765\u81EA\u6F0F\u505A\u6761\u76EE\u4E0E\u8584\u5F31\u8BC1\u636E\uFF1B\u7528\u6237\u786E\u8BA4\u540E `apply_plan_adjustments`\uFF08\u5165\u53C2\u643A\u5E26\u9884\u89C8\u65F6\u7684\u5EFA\u8BAE\u65E5\u671F\u505A**\u5FEB\u7167\u7ED1\u5B9A**\u2014\u2014\u8BA1\u5212\u5DF2\u53D8\u5316\u5BFC\u81F4\u5EFA\u8BAE\u65E5\u671F\u4E0D\u540C\u5219\u62D2\u7EDD\u8BE5\u6761\u5E76\u8981\u6C42\u91CD\u65B0\u9884\u89C8\uFF1B\u53EA\u52A8**\u672A\u5B8C\u6210**\u6761\u76EE\uFF0C\u540C\u6B65\u5173\u8054\u5F85\u529E\u622A\u6B62\u65E5\uFF0C\u5FC5\u8981\u65F6\u5EF6\u957F\u8BA1\u5212\uFF09\u3002\u7528\u6237\u4E0D\u786E\u8BA4\u5C31\u4E0D\u8C03\u7528\u2014\u2014\u53D6\u6D88\u6C38\u8FDC\u65E0\u526F\u4F5C\u7528\u3002\n8. **\u77E5\u8BC6\u6C89\u6DC0**\uFF1A\u5B66\u4E60\u7A33\u5B9A\u540E\u8C03\u7528 `preview_study_cards` \u9884\u89C8\u5F85\u5BA1\u5361\u7247\uFF1B\u7528\u6237\u786E\u8BA4\u5BFC\u51FA\u76EE\u5F55\u540E `export_study_cards` \u5199\u51FA Obsidian Markdown\uFF08`status: draft`\u3001`verified: false`\uFF0C\u542B\u6765\u6E90\u3001\u4F1A\u8BDD ID\u3001\u6D4B\u8BC4\u8BC1\u636E\uFF09\u3002\u540C\u4E00\u5361\u7247\u91CD\u590D\u5BFC\u51FA\u5E42\u7B49\uFF0C**\u88AB\u4EBA\u5DE5\u7F16\u8F91\u8FC7\u7684\u6587\u4EF6\u6C38\u4E0D\u8986\u76D6**\u3002\u5BFC\u51FA\u76EE\u5F55\u5FC5\u987B\u662F\u7528\u6237\u6307\u5B9A\u7684\u72EC\u7ACB\u76EE\u5F55\u2014\u2014core \u5C42\u4F1A**\u786C\u62D2\u7EDD**\u5199\u5165\u4EFB\u4F55\u77E5\u8BC6\u5E93 vault\uFF08\u542B\u5DF2\u6CE8\u518C vault\u3001\u5185\u7F6E\u9ED8\u8BA4\u4FDD\u62A4\u6839 `~/Desktop/knowledge-base` \u5373\u4F7F\u5C1A\u672A\u6CE8\u518C\u3001`TODODESK_PROTECTED_DIRS` \u6307\u5B9A\u76EE\u5F55\uFF1B\u7B26\u53F7\u94FE\u63A5\u522B\u540D\u540C\u6837\u62E6\u622A\uFF09\uFF0C\u800C\u4E0D\u662F\u4EC5\u9760\u63D0\u793A\u3002\n\n## \u900F\u660E\u89C4\u5219\uFF08\u53EF\u9A8C\u8BC1\u7684\u4E0D\u53D8\u5F0F\uFF09\n\n- **\u6392\u7A0B**\uFF1A\u77E5\u8BC6\u70B9\u5148\u6309\u4F9D\u8D56\u62D3\u6251\u6392\u5E8F\uFF08\u4FDD\u6301\u8F93\u5165\u987A\u5E8F\uFF0C\u6709\u73AF\u62A5\u9519\uFF09\uFF0C\u518D\u4ECE\u5F00\u59CB\u65E5\u6309\u6BCF\u65E5\u9884\u7B97\u88C5\u7BB1\uFF1B\u5355\u4E2A\u77E5\u8BC6\u70B9\u8D85\u8FC7\u5168\u5929\u9884\u7B97\u65F6\u5355\u72EC\u5360\u4E00\u5929\u5E76\u8BB0\u5165\u5047\u8BBE\u3002\n- **\u8C03\u6574\u5EFA\u8BAE\u4F9D\u8D56\u611F\u77E5**\uFF1A\u6F0F\u505A\u6761\u76EE\u6539\u671F\u540E\uFF0C\u82E5\u5176**\u672A\u5B8C\u6210\u540E\u7EE7**\u6761\u76EE\u4F1A\u65E9\u4E8E\u524D\u7F6E\uFF08\u542B\u6539\u671F\u540E\u7684\u751F\u6548\u65E5\u671F\uFF09\uFF0C\u9884\u89C8\u4F1A**\u8054\u52A8\u987A\u5EF6\u540E\u7EE7**\u5230\u524D\u7F6E\u4E4B\u540E\u7684\u9884\u7B97\u7A7A\u4F4D\uFF0C\u7EDD\u4E0D\u8BA9\u540E\u7EE7\u6392\u5728\u672A\u5B8C\u6210\u524D\u7F6E\u4E4B\u524D\uFF1B\u5DF2\u5B8C\u6210/\u5DF2\u8DF3\u8FC7\u7684\u524D\u7F6E\u89C6\u4E3A\u5DF2\u6EE1\u8DB3\uFF0C\u4E0D\u518D\u7EA6\u675F\u540E\u7EE7\uFF1B\u7EA7\u8054\u9010\u65E5\u4F20\u64AD\u5E76\u9010\u6761\u9884\u5360\u6BCF\u65E5\u9884\u7B97\u3002\n- **\u4F9D\u8D56\u7EC4\u5B8C\u6574\u6027\uFF08\u90E8\u5206\u5E94\u7528\u4FDD\u62A4\uFF09**\uFF1A\u5E94\u7528\u65F6\u53EA\u52FE\u9009\u524D\u7F6E\u6539\u671F\u800C\u843D\u4E0B\u5176\u540E\u7EE7\u7684\u8054\u52A8\u5EFA\u8BAE\uFF0C\u4F1A\u88AB**\u6574\u7EC4\u62D2\u7EDD**\uFF08\u8BE5\u6761\u8DF3\u8FC7\u5E76\u8BF4\u660E\u9700\u4E00\u8D77\u52FE\u9009\u7684\u5EFA\u8BAE\uFF09\u2014\u2014\u843D\u5E93\u8BA1\u5212\u4EFB\u4F55\u65F6\u523B\u90FD\u4E0D\u4F1A\u51FA\u73B0\u300C\u540E\u7EE7\u65E9\u4E8E\u672A\u5B8C\u6210\u524D\u7F6E\u300D\uFF1B\u4F20\u9012\u94FE\uFF08A\u2192B\u2192C \u53EA\u52FE\u90E8\u5206\uFF09\u6309\u4E0D\u52A8\u70B9\u9010\u7EA7\u56DE\u9000\u3002\n- **\u638C\u63E1\u5EA6\u5224\u5B9A**\uFF08`get_mastery`\uFF0C\u53EA\u770B\u6D4B\u8BC4\u8BC1\u636E\uFF0C\u4E0E\u4EFB\u52A1\u5B8C\u6210\u7387\u5206\u5F00\u5C55\u793A\uFF1B**\u8BC1\u636E\u6309\u8BA1\u5212\u9694\u79BB**\u2014\u2014\u53EA\u7EDF\u8BA1\u5F52\u5C5E\u8BE5\u8BA1\u5212\u7684\u6D4B\u8BC4\uFF0C\u4F20 `plan_id` \u6216\u5173\u8054\u4F1A\u8BDD\u5373\u53EF\u5F52\u5C5E\uFF09\uFF1A\n\n| \u5224\u5B9A | \u6761\u4EF6 |\n| --- | --- |\n| unknown | \u8BA1\u5212\u5185\u5C1A\u65E0 self/objective \u6D4B\u8BC4\uFF08\u6253\u5361\u3001\u4F1A\u8BDD\u90FD\u4E0D\u7B97\u638C\u63E1\uFF09 |\n| strong | \u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u5BA2\u89C2\u5224\u9898\u901A\u8FC7\uFF1B\u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u81EA\u8BC4 \u2265 80 |\n| reviewing | \u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF0C\u6700\u65B0\u81EA\u8BC4 60~79 |\n| weak | \u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u5BA2\u89C2\u5224\u9898\u672A\u901A\u8FC7\uFF1B\u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u81EA\u8BC4 < 60 |\n\n- **\u5BA2\u89C2\u4F18\u5148**\uFF1A\u53EA\u8981\u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF0C\u5224\u5B9A\u53EA\u770B\u6700\u65B0\u5BA2\u89C2\u7ED3\u679C\uFF0C\u8F83\u65B0\u7684\u81EA\u8BC4\u4E0D\u8986\u76D6\u5BA2\u89C2\uFF1B`ai_suggestion` \u4E0D\u53C2\u4E0E\u5224\u5B9A\u3002\n- **\u53EF\u7EA0\u6B63**\uFF1A\u540C\u4E00\u6D4B\u8BC4 id \u91CD\u65B0\u63D0\u4EA4\u4F1A\u4FDD\u7559 `corrections` \u5386\u53F2\uFF08\u65E7\u8BC4\u5206\u4E0D\u4E22\u5931\uFF09\u3002\n- **\u5E42\u7B49**\uFF1A\u4F1A\u8BDD\u6309\u7A33\u5B9A id \u6216\uFF08\u76EE\u6807, attempt\uFF09\u590D\u7528\uFF1B\u8349\u6848\u786E\u8BA4\u4E00\u6B21\uFF08\u91CD\u590D\u786E\u8BA4\u8FD4\u56DE\u539F\u8BA1\u5212\uFF09\uFF1B\u5361\u7247\u6309\u5185\u5BB9\u54C8\u5E0C\u53BB\u91CD\u3002\n- **\u8C03\u6574\u8FB9\u754C**\uFF1A`apply` \u77AC\u95F4\u5DF2\u4E0D\u662F pending \u7684\u6761\u76EE\u81EA\u52A8\u8DF3\u8FC7\uFF1B\u5DF2\u5B8C\u6210\u6761\u76EE\u4E0E\u5386\u53F2\u4F1A\u8BDD\u6C38\u4E0D\u88AB\u6539\u5199\u3002\n- **\u7F3A\u7701\u503C**\uFF1A\u77E5\u8BC6\u70B9\u65F6\u957F\u7F3A\u7701 60 \u5206\u949F\uFF1B\u65E7\u8BA1\u5212\u65E0\u9884\u7B97\u65F6\u8C03\u6574\u6309 120 \u5206\u949F/\u5929\u4F30\u5BB9\u91CF\uFF1B\u81EA\u52A8\u8865\u590D\u4E60\u6761\u76EE 20 \u5206\u949F\u3002\n\n## \u5DE5\u5177\u5BF9\u7167\n\n| \u9636\u6BB5 | MCP \u5DE5\u5177 | \u8BFB\u5199 |\n| --- | --- | --- |\n| \u89C4\u8303 | `get_study_workflow` / \u8D44\u6E90 `tododesk://study/workflow` | \u8BFB |\n| \u8349\u6848 | `draft_study_plan`\u3001`list_study_drafts`\u3001`get_study_draft` | \u5199\uFF08\u4EC5\u8349\u6848\u8868\uFF09/\u8BFB |\n| \u786E\u8BA4 | `confirm_study_plan_draft`\u3001`cancel_study_plan_draft` | \u5199\uFF08\u5E42\u7B49/\u65E0\u526F\u4F5C\u7528\uFF09 |\n| \u4F1A\u8BDD | `record_study_session`\u3001`list_study_sessions` | \u5199\uFF08\u5E42\u7B49\uFF09/\u8BFB |\n| \u6D4B\u8BC4 | `record_study_assessment`\u3001`list_study_assessments`\u3001`get_mastery` | \u5199\uFF08\u7559\u8BC1\uFF09/\u8BFB |\n| \u8C03\u6574 | `suggest_plan_adjustments`\u3001`apply_plan_adjustments` | \u9884\u89C8/\u5199 |\n| \u5361\u7247 | `preview_study_cards`\u3001`export_study_cards`\u3001`list_card_exports` | \u9884\u89C8/\u5199\u6587\u4EF6 |\n\n\u8BA1\u5212\u6761\u76EE\u672C\u4F53\uFF08`study_plan`/`plan_item`\uFF09\u3001\u6253\u5361\u4E0E\u5F85\u529E\u6CBF\u7528\u65E2\u6709\u5DE5\u5177\uFF08`create_study_plan`\u3001`update_plan_item`\u3001`get_today` \u7B49\uFF09\u3002\u8349\u6848\u786E\u8BA4\u751F\u6210\u7684\u8BA1\u5212\u4E0E\u666E\u901A\u8BA1\u5212\u5B8C\u5168\u540C\u6784\uFF0CApp\u300C\u5B66\u4E60\u8BA1\u5212\u300D\u9762\u677F\u4E0E `get_today` \u76F4\u63A5\u53EF\u89C1\u3002\n\n## \u5361\u7247\u683C\u5F0F\n\n\u5BFC\u51FA\u7684\u6BCF\u5F20\u5361\u7247\u5BF9\u5E94**\u4E00\u6B21\u771F\u5B9E\u4F1A\u8BDD**\uFF0C\u6587\u4EF6\u540D `TD-<\u77E5\u8BC6\u70B9>-<\u5B8C\u6574\u4F1A\u8BDDid>.md`\uFF08\u4F1A\u8BDD id \u5373\u4E3B\u952E\uFF0C\u6587\u4EF6\u540D\u5929\u7136\u4E0D\u78B0\u649E\uFF09\u3002frontmatter \u58F0\u660E `source`\uFF08TodoDesk \u5B66\u4E60\u4F1A\u8BDD\uFF09\u3001`session_id`\u3001`knowledge_key`\u3001`status: draft`\u3001`verified: false`\u3001`assessed`\uFF08\u6D4B\u8BC4\u8BC1\u636E\u6458\u8981\u6216 none\uFF09\uFF1B\u6B63\u6587\u662F\u5B66\u4E60\u8005\u5F53\u65F6\u7684\u81EA\u8FF0\uFF08\u6211\u7684\u89E3\u91CA/\u7591\u95EE/\u6D4B\u8BC4\u8BC1\u636E/\u6750\u6599\uFF09\uFF0C\u5E76\u5E26\u300C\u5F85\u5BA1\u5361\u7247\u300D\u8B66\u793A\uFF1A**\u5185\u5BB9\u672A\u7ECF\u6838\u5B9E\uFF0C\u4E0D\u4EE3\u8868\u4E3B\u4EBA\u89C2\u70B9\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u5DF2\u638C\u63E1**\u3002\u8BF7\u4EBA\u5DE5\u5BA1\u9605\u540E\u518D\u6574\u7406\u8FDB\u77E5\u8BC6\u5E93\u3002\n";
+var study_loop_default = "---\ntitle: \u5B66\u4E60\u95ED\u73AF\ndescription: \u5BF9 AI \u8BF4\u300C\u5B66\u4E60\u7EBF\u6027\u4EE3\u6570\u300D\uFF0C\u7531 agent \u6309\u672C\u89C4\u8303\u5B8C\u6210\u8BA1\u5212\u3001\u5B66\u4E60\u8BB0\u5F55\u3001\u6D4B\u8BC4\u3001\u8C03\u6574\u4E0E\u77E5\u8BC6\u6C89\u6DC0\n---\n\n## \u8FD9\u662F\u4EC0\u4E48\n\nTodoDesk \u7684\u5B66\u4E60\u95ED\u73AF\u4EE5 **AI agent \u4E3A\u7B2C\u4E00\u64CD\u4F5C\u8005**\uFF1A\u4F60\u5728 zcode \u7B49 AI \u5BA2\u6237\u7AEF\u91CC\u8BF4\u300C\u5B66\u4E60\u7EBF\u6027\u4EE3\u6570\u300D\uFF0Cagent \u6309 TodoDesk \u89C4\u8303\u5B8C\u6210\u4ECE\u8BA1\u5212\u5230\u6C89\u6DC0\u7684\u5168\u6D41\u7A0B\uFF1BApp \u5185\u53EA\u505A**\u5C55\u793A\u4E0E\u786E\u8BA4**\uFF08\u8349\u6848\u786E\u8BA4\u3001\u8C03\u6574\u5E94\u7528\u3001\u5361\u7247\u5BFC\u51FA\uFF09\uFF0C\u6CA1\u6709\u624B\u5DE5\u5EFA\u8BA1\u5212\u7684\u8868\u5355\u3002\n\nApp\u300C\u5B66\u4E60\u8BA1\u5212\u300D\u9996\u9875\u9ED8\u8BA4\u663E\u793A**\u8BA1\u5212**\uFF0C\u6807\u9898\u53F3\u4FA7\u53EF\u5207\u6362\u5230**\u8BFE\u7A0B**\u3002\u8BA1\u5212\u5361\u663E\u793A\u5173\u8054\u8BFE\u7A0B\uFF1B\u6682\u672A\u5173\u8054\u65F6\u663E\u793A\u300C\u5F85\u5173\u8054\u8BFE\u7A0B\u300D\u3002\u8BA1\u5212\u53EF\u5148\u6392\u671F\uFF0C\u4F46\u6700\u7EC8\u5E94\u5173\u8054\u8BFE\u7A0B\uFF1A\u8BF7 agent \u5BFC\u5165\u8BFE\u7A0B\u6837\u8BFE\u5E76\u5F15\u7528\u73B0\u6709\u8BA1\u5212\uFF0C\u6216\u4E3A\u672A\u7ED1\u5B9A\u8BFE\u7A0B\u91CD\u5BFC\u540C\u5185\u5BB9\u6837\u8BFE\u5305\u8865\u4E0A\u8BA1\u5212\u5173\u8054\u3002\n\n\u6253\u5F00\u8BA1\u5212\u540E\uFF0C\u70B9\u51FB\u6BCF\u65E5\u6761\u76EE\u7684\u6587\u5B57\u6216\u300C\u8BE6\u60C5 \u2192\u300D\u53EF\u8FDB\u5165**\u8BA1\u5212\u6761\u76EE\u8BE6\u60C5**\uFF0C\u67E5\u770B\u5B8C\u6574\u5B89\u6392\u3001\u65E5\u671F\u3001\u7C7B\u578B\u3001\u9884\u8BA1\u65F6\u957F\u3001\u5F53\u524D\u72B6\u6001\uFF0C\u4EE5\u53CA\u4E0E\u8BE5\u6761\u76EE\u5173\u8054\u7684\u5B66\u4E60\u4F1A\u8BDD\u548C\u6D4B\u8BC4\uFF1B\u6709\u77E5\u8BC6\u70B9\u638C\u63E1\u6570\u636E\u65F6\u4E5F\u4F1A\u663E\u793A\u3002\u6761\u76EE\u5DE6\u4FA7\u7684\u52FE\u9009\u6309\u94AE\u53EF\u76F4\u63A5\u5B8C\u6210\u6216\u64A4\u9500\u5B8C\u6210\uFF0C\u5F85\u529E\u6761\u76EE\u4ECD\u53EF\u76F4\u63A5\u300C\u8DF3\u8FC7\u300D\u3002\u8BE6\u60C5\u9875\u4E5F\u80FD\u5B8C\u6210\u3001\u64A4\u9500\u3001\u8DF3\u8FC7\u6216\u6062\u590D\u5F85\u529E\uFF1B\u8FD4\u56DE\u8BA1\u5212\u8BE6\u60C5\u65F6\u4FDD\u7559\u539F\u6765\u7684\u6D4F\u89C8\u4F4D\u7F6E\u3002\u6253\u5361\u72B6\u6001\u4E0E\u77E5\u8BC6\u70B9\u638C\u63E1\u5EA6\u5206\u522B\u8BA1\u7B97\uFF0C\u5B8C\u6210\u6761\u76EE\u4E0D\u7B49\u4E8E\u901A\u8FC7\u6D4B\u8BC4\u3002\n\n\u672C\u6587\u4EF6\u662F\u5B66\u4E60\u95ED\u73AF\u7684**\u552F\u4E00\u89C4\u8303\u6E90**\uFF1AMCP \u7684 `get_study_workflow` \u5DE5\u5177\u4E0E `tododesk://study/workflow` \u8D44\u6E90\u8FD4\u56DE\u7684\u5C31\u662F\u672C\u6587\u5185\u5BB9\uFF08\u6784\u5EFA\u65F6\u540C\u6E90\u6CE8\u5165\uFF09\uFF0C\u6539\u89C4\u8303\u53EA\u6539\u8FD9\u91CC\u3002\n\n## \u5168\u6D41\u7A0B\uFF08agent \u64CD\u4F5C\u89C4\u8303\uFF09\n\n1. **\u6F84\u6E05\u76EE\u6807**\uFF1A\u7F3A\u4FE1\u606F\u5148\u95EE\u7528\u6237\uFF0C\u4E0D\u8981\u7F16\u9020\u3002\u9700\u8981\u6F84\u6E05\u7684\u5178\u578B\u9879\uFF1A\u5B66\u4E60\u52A8\u673A\u4E0E\u76EE\u6807\u6C34\u5E73\u3001\u6BCF\u65E5\u65F6\u95F4\u9884\u7B97\uFF08\u5206\u949F\uFF09\u3001\u6750\u6599\u6765\u6E90\uFF08\u4E66/\u8BFE/\u6587\u6863\uFF09\u3001\u8D77\u70B9\u4E0E\u5148\u4FEE\u57FA\u7840\u3001\u671F\u671B\u5B8C\u6210\u65F6\u95F4\u3002\n2. **\u5148\u4FEE\u8BCA\u65AD**\uFF1A\u6309\u76EE\u6807\u62C6\u77E5\u8BC6\u70B9\u65F6\u5148\u5224\u65AD\u7528\u6237\u662F\u5426\u5177\u5907\u5148\u4FEE\u77E5\u8BC6\uFF1B\u4E0D\u786E\u5B9A\u5C31\u5355\u72EC\u62C6\u6210\u524D\u7F6E\u77E5\u8BC6\u70B9\u653E\u8FDB\u8BA1\u5212\uFF0C\u6216\u5148\u95EE\u4E00\u53E5\u3002\n3. **\u751F\u6210\u8349\u6848\uFF08\u6709\u65E5\u671F\uFF09**\uFF1A\u7528\u6237\u5DF2\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u65F6\uFF0C\u8C03\u7528 `draft_study_plan`\uFF0C\u4F20\u5165\u6807\u9898\u3001\u76EE\u6807\u3001\u6750\u6599\u6765\u6E90\u3001\u6BCF\u65E5\u9884\u7B97\uFF0810~600 \u5206\u949F\uFF09\u3001\u5F00\u59CB\u65E5\u671F\u4E0E\u77E5\u8BC6\u70B9\u6E05\u5355\uFF08\u6BCF\u9879\u542B\u7A33\u5B9A `key`\u3001\u540D\u79F0\u3001\u4F9D\u8D56 `depends_on`\u3001\u9884\u8BA1\u65F6\u957F\u3001\u53EF\u9A8C\u8BC1\u6210\u679C `outcome`\uFF09\u3002TodoDesk \u6309**\u900F\u660E\u89C4\u5219**\uFF08\u89C1\u4E0B\uFF09\u6392\u6210\u9010\u65E5\u5B89\u6392\u5E76\u4FDD\u5B58\u4E3A**\u8349\u6848**\u2014\u2014\u6B64\u65F6\u4E0D\u521B\u5EFA\u4EFB\u4F55\u8BA1\u5212\u3001\u5F85\u529E\u6216\u6253\u5361\u3002\u7F3A\u5931\u7684\u65F6\u957F/\u6210\u679C\u4F1A\u8BB0\u5F55\u5728\u8349\u6848\u7684 `assumptions` \u91CC\uFF0C\u5411\u7528\u6237\u5C55\u793A\uFF0C\u4E0D\u8981\u9ED8\u9ED8\u8865\u9020\u3002\n4. **\u65E0\u65E5\u671F\u5148\u5B58\uFF08\u65E5\u671F\u5F85\u6392\u671F\uFF09**\uFF1A\u7528\u6237**\u5C1A\u672A**\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\uFF08\u5982\u300C\u8FD9\u6279\u4E13\u9898\u6587\u7A3F\u5148\u5B58\u7740\uFF0C\u4EC0\u4E48\u65F6\u5019\u5B66\u518D\u5B9A\u300D\uFF09\u65F6\uFF0C\u8C03\u7528 `draft_study_topic` \u4FDD\u5B58**\u65E0\u65E5\u671F\u4E13\u9898\u8349\u6848**\uFF1A\u53EA\u5B58\u4E3B\u9898\u5927\u7EB2/\u77E5\u8BC6\u70B9/\u6750\u6599\u4E0E\u53EF\u9009\u7684\u6837\u8BFE\u8BFE\u7A0B\u5173\u8054\uFF08`course_id`\uFF0C\u6837\u8BFE\u672A\u786E\u8BA4\u4E5F\u53EF\u5173\u8054\uFF09\u2014\u2014**\u4E0D\u6392\u65E5\u7A0B\u3001\u4E0D\u4EA7\u5F85\u529E\u3001\u4E0D\u5360\u6BCF\u65E5\u9884\u7B97**\u3002\u77E5\u8BC6\u70B9\u5728\u521B\u5EFA\u65F6\u5373\u6821\u9A8C\uFF08key \u683C\u5F0F/\u4F9D\u8D56/\u73AF\uFF09\uFF0C\u5185\u5BB9\u53EF\u968F\u540E\u7528 `update_study_topic_draft` \u66F4\u65B0\uFF08\u4EC5\u672A\u6392\u671F\u65F6\uFF09\u3002**\u4E0D\u8981**\u4E3A\u4E86\u8D70 dated \u6D41\u7A0B\u66FF\u7528\u6237\u62CD\u65E5\u671F\u6216\u9884\u7B97\u3002\n5. **\u6392\u671F\uFF08\u9884\u89C8 \u2192 \u786E\u8BA4\u63D0\u4EA4\uFF09**\uFF1A\u7528\u6237\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u540E\uFF0C\u5148\u8C03 `preview_study_draft_schedule` **\u53EA\u8BFB\u9884\u89C8**\u2014\u2014\u9010\u65E5\u5B89\u6392\u3001\u4F9D\u8D56\u62D3\u6251\u987A\u5E8F\u3001\u4E0E\u5176\u4ED6**\u8FDB\u884C\u4E2D\u8BA1\u5212**\u7684\u6BCF\u65E5\u9884\u7B97\u51B2\u7A81\uFF08\u65E2\u6709\u5360\u7528 + \u65B0\u6392\u8D85\u9884\u7B97\u7684\u65E5\u5B50\uFF0C\u6C47\u603B\u5728\u8FD4\u56DE\u7684 `over_budget_dates`\uFF09\u4E0E\u77E5\u8BC6\u70B9\u91CD\u590D\u9884\u8B66\u3001\u900F\u660E\u89C4\u5219\u5047\u8BBE\uFF1B**\u6709\u9884\u8B66\u5FC5\u987B\u9010\u6761\u5FF5\u7ED9\u7528\u6237**\u3002\u7528\u6237\u660E\u786E\u540C\u610F\u540E\u624D\u8C03 `schedule_study_draft`\uFF0C\u5E76\u628A `over_budget_dates` **\u539F\u6837**\u4F5C\u4E3A `confirmed_over_dates` \u4F20\u56DE\u2014\u2014\u670D\u52A1\u7AEF\u5728**\u4E8B\u52A1\u5185\u6309\u5F53\u4E0B\u5E93\u72B6\u6001\u91CD\u7B97\u5E76\u786C\u6821\u9A8C**\uFF1A\u6709\u51B2\u7A81\u672A\u786E\u8BA4\u3001\u9884\u89C8\u540E\u65E2\u6709\u8BA1\u5212\u53D8\u52A8\u5BFC\u81F4\u51B2\u7A81\u96C6\u53D8\u5316\u3001\u51B2\u7A81\u5DF2\u6D88\u5931\u5374\u4ECD\u5E26\u65E7\u786E\u8BA4\u96C6\uFF0C\u4E00\u5F8B\u62D2\u7EDD\uFF08UI \u63D0\u793A\u4E0D\u80FD\u66FF\u4EE3\u670D\u52A1\u5C42\u6821\u9A8C\uFF09\u3002\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4**\u5E42\u7B49**\uFF1B\u672A\u786E\u8BA4\u524D\u6362\u53C2\u6570 = \u91CD\u65B0\u6392\u671F\uFF08\u91CD\u65B0\u8FC7\u786C\u6821\u9A8C\uFF09\u3002\n6. **\u9884\u89C8\u4E0E\u786E\u8BA4**\uFF1A\u628A\u8349\u6848\u9010\u65E5\u5B89\u6392\u4E0E\u5047\u8BBE\u5FF5\u7ED9\u7528\u6237\uFF1B\u7528\u6237\u540C\u610F\u540E\u8C03\u7528 `confirm_study_plan_draft`\uFF08\u751F\u6210\u6B63\u5F0F\u8BA1\u5212\u4E0E\u9010\u65E5\u5F85\u529E\uFF0C\u5E42\u7B49\u53EF\u91CD\u8BD5\uFF09\u3002**\u786E\u8BA4\u8FB9\u754C\u540C\u6837\u786C\u6821\u9A8C\u51B2\u7A81**\uFF08\u7ECF `schedule_study_draft` \u6392\u671F\u7684\u8349\u6848\uFF09\uFF1A\u6392\u671F\u4E4B\u540E\u3001\u786E\u8BA4\u4E4B\u524D\u65E2\u6709\u8BA1\u5212\u53EF\u80FD\u53D8\u52A8\u2014\u2014\u786E\u8BA4\u65F6\u670D\u52A1\u7AEF\u91CD\u7B97\u8D85\u9884\u7B97\u65E5\u671F\uFF0C\u5B58\u5728\u51B2\u7A81\u5FC5\u987B\u518D\u6B21\u643A\u5E26\u4E0E\u91CD\u7B97**\u7CBE\u786E\u4E00\u81F4**\u7684 `confirmed_over_dates`\uFF0C\u5426\u5219\u62D2\u7EDD\uFF08\u5EFA\u8BA1\u5212\u671F\u95F4\u7684\u5E76\u53D1\u53D8\u52A8\u7531\u590D\u68C0\u515C\u5E95\uFF0C\u4E0D\u4E00\u81F4\u6574\u4F53\u56DE\u9000\uFF0C\u4E0D\u7559\u51B2\u7A81\u672A\u786E\u8BA4\u7684\u8BA1\u5212\uFF09\u3002\u7528\u6237\u4E0D\u8981\u5C31 `cancel_study_plan_draft`\uFF08\u65E0\u4EFB\u4F55\u526F\u4F5C\u7528\uFF09\u3002\u672A\u6392\u671F\u7684\u8349\u6848\u4E0D\u80FD\u786E\u8BA4\uFF08\u4F1A\u62D2\u7EDD\u5E76\u63D0\u793A\u5148\u6392\u671F\uFF09\uFF1B\u65E7\u8DEF\u5F84\u8349\u6848\uFF08`draft_study_plan` \u521B\u5EFA\u5373\u6392\u671F\uFF09\u786E\u8BA4\u4E0D\u8BBE\u51B2\u7A81\u95E8\uFF08\u5386\u53F2\u884C\u4E3A\u4FDD\u6301\uFF09\u3002\n7. **\u6BCF\u65E5\u6267\u884C**\uFF1A\u6BCF\u5929\u4ECE `get_today` \u770B\u5F53\u65E5\u5B89\u6392\u3002\u5B66\u4E60\u5B8C\u6210\u540E\u8C03\u7528 `record_study_session` \u8BB0\u5F55\u4E00\u6B21\u72EC\u7ACB\u4F1A\u8BDD\uFF1A\u5B9E\u9645\u7528\u65F6\u3001**\u81EA\u5DF1\u7684\u89E3\u91CA/\u7B54\u6848**\uFF08\u7528\u81EA\u5DF1\u7684\u8BDD\u8BB2\u51FA\u6765\uFF09\u3001\u7591\u95EE\u3001\u6750\u6599\u6765\u6E90\u3002\u540C\u4E00\u76EE\u6807\u5B66\u4E86\u51E0\u904D\u5C31\u8BB0\u51E0\u6761\uFF08`attempt` \u9012\u589E\uFF09\uFF0C\u91CD\u8BD5\u8BF7\u5E26\u540C\u4E00\u7A33\u5B9A `id` \u4FDD\u8BC1\u5E42\u7B49\u3002\n8. **\u6D4B\u8BC4\u7559\u8BC1**\uFF1A\u8C03\u7528 `record_study_assessment` \u8BB0\u5F55\u9898\u76EE\u3001\u8BC4\u4EF7\u6807\u51C6\u3001\u539F\u7B54\u6848\u3001\u8BC4\u5206\u4E0E**\u4F9D\u636E**\u3002`source` \u5FC5\u987B\u663E\u5F0F\uFF1A`self`\uFF08\u81EA\u8BC4\uFF0C\u53EF\u88AB\u540E\u7EED\u7EA0\u6B63\uFF09\u3001`objective`\uFF08\u5BA2\u89C2\u6D4B\u8BD5\uFF0C**\u5FC5\u987B\u9644\u771F\u5B9E\u5224\u9898\u4F9D\u636E evidence \u4E0E\u5224\u9898\u7ED3\u679C**\uFF0CTodoDesk \u4E0D\u4EE3\u5224\u4E5F\u4E0D\u4F2A\u9020\uFF09\u3001`ai_suggestion`\uFF08AI \u7684\u5EFA\u8BAE\u6027\u53CD\u9988\uFF0C\u4EC5\u8BB0\u5F55\uFF0C**\u4E0D\u8BA1\u5165\u638C\u63E1\u8BC1\u636E**\uFF09\u3002\n9. **\u590D\u76D8\u8C03\u6574**\uFF1A\u5468\u671F\u6027\u8C03\u7528 `suggest_plan_adjustments` \u83B7\u53D6\u5EFA\u8BAE\uFF08\u7EAF\u9884\u89C8\u3001\u4E0D\u5199\u5E93\uFF09\uFF0C\u4F9D\u636E\u6765\u81EA\u6F0F\u505A\u6761\u76EE\u4E0E\u8584\u5F31\u8BC1\u636E\uFF1B\u7528\u6237\u786E\u8BA4\u540E `apply_plan_adjustments`\uFF08\u5165\u53C2\u643A\u5E26\u9884\u89C8\u65F6\u7684\u5EFA\u8BAE\u65E5\u671F\u505A**\u5FEB\u7167\u7ED1\u5B9A**\u2014\u2014\u8BA1\u5212\u5DF2\u53D8\u5316\u5BFC\u81F4\u5EFA\u8BAE\u65E5\u671F\u4E0D\u540C\u5219\u62D2\u7EDD\u8BE5\u6761\u5E76\u8981\u6C42\u91CD\u65B0\u9884\u89C8\uFF1B\u53EA\u52A8**\u672A\u5B8C\u6210**\u6761\u76EE\uFF0C\u540C\u6B65\u5173\u8054\u5F85\u529E\u622A\u6B62\u65E5\uFF0C\u5FC5\u8981\u65F6\u5EF6\u957F\u8BA1\u5212\uFF09\u3002\u7528\u6237\u4E0D\u786E\u8BA4\u5C31\u4E0D\u8C03\u7528\u2014\u2014\u53D6\u6D88\u6C38\u8FDC\u65E0\u526F\u4F5C\u7528\u3002\n10. **\u77E5\u8BC6\u6C89\u6DC0**\uFF1A\u5B66\u4E60\u7A33\u5B9A\u540E\u8C03\u7528 `preview_study_cards` \u9884\u89C8\u5F85\u5BA1\u5361\u7247\uFF1B\u7528\u6237\u786E\u8BA4\u5BFC\u51FA\u76EE\u5F55\u540E `export_study_cards` \u5199\u51FA Obsidian Markdown\uFF08`status: draft`\u3001`verified: false`\uFF0C\u542B\u6765\u6E90\u3001\u4F1A\u8BDD ID\u3001\u6D4B\u8BC4\u8BC1\u636E\uFF09\u3002\u540C\u4E00\u5361\u7247\u91CD\u590D\u5BFC\u51FA\u5E42\u7B49\uFF0C**\u88AB\u4EBA\u5DE5\u7F16\u8F91\u8FC7\u7684\u6587\u4EF6\u6C38\u4E0D\u8986\u76D6**\u3002\u5BFC\u51FA\u76EE\u5F55\u5FC5\u987B\u662F\u7528\u6237\u6307\u5B9A\u7684\u72EC\u7ACB\u76EE\u5F55\u2014\u2014core \u5C42\u4F1A**\u786C\u62D2\u7EDD**\u5199\u5165\u4EFB\u4F55\u77E5\u8BC6\u5E93 vault\uFF08\u542B\u5DF2\u6CE8\u518C vault\u3001\u5185\u7F6E\u9ED8\u8BA4\u4FDD\u62A4\u6839 `~/Desktop/knowledge-base` \u5373\u4F7F\u5C1A\u672A\u6CE8\u518C\u3001`TODODESK_PROTECTED_DIRS` \u6307\u5B9A\u76EE\u5F55\uFF1B\u7B26\u53F7\u94FE\u63A5\u522B\u540D\u540C\u6837\u62E6\u622A\uFF09\uFF0C\u800C\u4E0D\u662F\u4EC5\u9760\u63D0\u793A\u3002\n\n## \u900F\u660E\u89C4\u5219\uFF08\u53EF\u9A8C\u8BC1\u7684\u4E0D\u53D8\u5F0F\uFF09\n\n- **\u6392\u7A0B**\uFF1A\u77E5\u8BC6\u70B9\u5148\u6309\u4F9D\u8D56\u62D3\u6251\u6392\u5E8F\uFF08\u4FDD\u6301\u8F93\u5165\u987A\u5E8F\uFF0C\u6709\u73AF\u62A5\u9519\uFF09\uFF0C\u518D\u4ECE\u5F00\u59CB\u65E5\u6309\u6BCF\u65E5\u9884\u7B97\u88C5\u7BB1\uFF1B\u5355\u4E2A\u77E5\u8BC6\u70B9\u8D85\u8FC7\u5168\u5929\u9884\u7B97\u65F6\u5355\u72EC\u5360\u4E00\u5929\u5E76\u8BB0\u5165\u5047\u8BBE\u3002\n- **\u65E0\u65E5\u671F\u8349\u6848\u96F6\u526F\u4F5C\u7528**\uFF1A`draft_study_topic` \u53EA\u5199\u8349\u6848\u8868\uFF08start/end/daily_minutes \u4E3A\u7A7A\u3001items \u4E3A\u7A7A\uFF09\u2014\u2014\u4E0D\u6392\u65E5\u7A0B\u3001\u4E0D\u4EA7\u5F85\u529E\u3001\u4E0D\u5360\u9884\u7B97\u3001\u4E0D\u8FDB\u4ECA\u65E5\u9762\u677F\uFF1B\u521B\u5EFA\u65F6\u5373\u6821\u9A8C\u77E5\u8BC6\u70B9\uFF08key \u683C\u5F0F/\u53BB\u91CD/\u4F9D\u8D56\u5B58\u5728\u6027/\u73AF\u68C0\u6D4B\uFF09\u3002\n- **\u6392\u671F\u4E24\u6BB5\u5F0F\uFF08\u51B2\u7A81\u786C\u6821\u9A8C\uFF0C\u670D\u52A1\u5C42\u5F3A\u5236\uFF09**\uFF1A`preview_study_draft_schedule` \u7EAF\u53EA\u8BFB\u2014\u2014\u9010\u65E5\u5B89\u6392 + \u4F9D\u8D56\u62D3\u6251\u987A\u5E8F + \u4E0E\u8FDB\u884C\u4E2D\u8BA1\u5212\u7684**\u6BCF\u65E5\u9884\u7B97\u51B2\u7A81**\uFF08\u5176\u4ED6 active \u8BA1\u5212\u5F53\u65E5\u65E2\u6709\u5360\u7528 + \u672C\u8349\u6848\u65B0\u6392\u8D85\u51FA\u58F0\u660E\u7684\u6BCF\u65E5\u9884\u7B97\uFF0C\u6C47\u603B\u4E3A `over_budget_dates`\uFF09\u4E0E**\u77E5\u8BC6\u70B9\u91CD\u590D**\uFF08\u540C key \u5DF2\u5728\u5176\u4ED6 active \u8BA1\u5212\u672A\u5B8C\u6210\u6761\u76EE\u91CC\uFF09\u9884\u8B66\uFF1B`schedule_study_draft` \u5728 **BEGIN IMMEDIATE \u4E8B\u52A1\u5185\u91CD\u7B97**\u8D85\u9884\u7B97\u65E5\u671F\u5E76\u4E0E `confirmed_over_dates` **\u7CBE\u786E\u5339\u914D**\uFF08\u96C6\u5408\u5B8C\u5168\u4E00\u81F4\u624D\u653E\u884C\u2014\u2014\u6709\u51B2\u7A81\u672A\u786E\u8BA4\u3001\u786E\u8BA4\u96C6\u8FC7\u671F\u3001\u51B2\u7A81\u6D88\u5931\u4ECD\u5E26\u65E7\u96C6\u5747\u62D2\u7EDD\uFF09\uFF0C\u4E8B\u52A1\u843D\u5E93\u4E14**\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4\u5E42\u7B49**\uFF0C\u672A\u786E\u8BA4\u524D\u6362\u53C2\u6570 = \u91CD\u65B0\u6392\u671F\uFF08\u91CD\u65B0\u8FC7\u786C\u6821\u9A8C\uFF09\uFF1B\u5DF2\u786E\u8BA4/\u5DF2\u53D6\u6D88\u7684\u8349\u6848\u62D2\u7EDD\u6392\u671F\uFF1B\u672A\u6392\u671F\u8349\u6848\u4E0D\u80FD\u786E\u8BA4\u3002**\u786E\u8BA4\u8FB9\u754C\u91CD\u68C0**\uFF1A\u786E\u8BA4\u65F6\u6309\u5F53\u4E0B\u5E93\u72B6\u6001\u518D\u7B97\u4E00\u6B21\uFF08\u5EFA\u8BA1\u5212\u540E\u8FD8\u590D\u68C0\u4E00\u6B21\u4EE5\u6355\u83B7\u5E76\u53D1\u5199\u5165\uFF0C\u4E0D\u4E00\u81F4\u6574\u4F53\u56DE\u9000\u5220\u8BA1\u5212\u5220\u5F85\u529E\uFF09\uFF1B\u65E7\u8DEF\u5F84\u8349\u6848\uFF08`draft_study_plan` \u521B\u5EFA\u5373\u6392\u671F\uFF0C\u65E0\u6392\u671F\u63D0\u4EA4\u65F6\u523B\u6807\u8BB0\uFF09\u786E\u8BA4\u4E0D\u8BBE\u51B2\u7A81\u95E8\u2014\u2014\u8C41\u514D\u4EC5\u9650\u8FD9\u4E00\u7C7B\uFF0C\u4E0D\u524A\u5F31\u65B0\u6392\u671F\u8349\u6848\u7684\u4EFB\u4F55\u6821\u9A8C\u3002\n- **\u8C03\u6574\u5EFA\u8BAE\u4F9D\u8D56\u611F\u77E5**\uFF1A\u6F0F\u505A\u6761\u76EE\u6539\u671F\u540E\uFF0C\u82E5\u5176**\u672A\u5B8C\u6210\u540E\u7EE7**\u6761\u76EE\u4F1A\u65E9\u4E8E\u524D\u7F6E\uFF08\u542B\u6539\u671F\u540E\u7684\u751F\u6548\u65E5\u671F\uFF09\uFF0C\u9884\u89C8\u4F1A**\u8054\u52A8\u987A\u5EF6\u540E\u7EE7**\u5230\u524D\u7F6E\u4E4B\u540E\u7684\u9884\u7B97\u7A7A\u4F4D\uFF0C\u7EDD\u4E0D\u8BA9\u540E\u7EE7\u6392\u5728\u672A\u5B8C\u6210\u524D\u7F6E\u4E4B\u524D\uFF1B\u5DF2\u5B8C\u6210/\u5DF2\u8DF3\u8FC7\u7684\u524D\u7F6E\u89C6\u4E3A\u5DF2\u6EE1\u8DB3\uFF0C\u4E0D\u518D\u7EA6\u675F\u540E\u7EE7\uFF1B\u7EA7\u8054\u9010\u65E5\u4F20\u64AD\u5E76\u9010\u6761\u9884\u5360\u6BCF\u65E5\u9884\u7B97\u3002\n- **\u4F9D\u8D56\u7EC4\u5B8C\u6574\u6027\uFF08\u90E8\u5206\u5E94\u7528\u4FDD\u62A4\uFF09**\uFF1A\u5E94\u7528\u65F6\u53EA\u52FE\u9009\u524D\u7F6E\u6539\u671F\u800C\u843D\u4E0B\u5176\u540E\u7EE7\u7684\u8054\u52A8\u5EFA\u8BAE\uFF0C\u4F1A\u88AB**\u6574\u7EC4\u62D2\u7EDD**\uFF08\u8BE5\u6761\u8DF3\u8FC7\u5E76\u8BF4\u660E\u9700\u4E00\u8D77\u52FE\u9009\u7684\u5EFA\u8BAE\uFF09\u2014\u2014\u843D\u5E93\u8BA1\u5212\u4EFB\u4F55\u65F6\u523B\u90FD\u4E0D\u4F1A\u51FA\u73B0\u300C\u540E\u7EE7\u65E9\u4E8E\u672A\u5B8C\u6210\u524D\u7F6E\u300D\uFF1B\u4F20\u9012\u94FE\uFF08A\u2192B\u2192C \u53EA\u52FE\u90E8\u5206\uFF09\u6309\u4E0D\u52A8\u70B9\u9010\u7EA7\u56DE\u9000\u3002\n- **\u638C\u63E1\u5EA6\u5224\u5B9A**\uFF08`get_mastery`\uFF0C\u53EA\u770B\u6D4B\u8BC4\u8BC1\u636E\uFF0C\u4E0E\u4EFB\u52A1\u5B8C\u6210\u7387\u5206\u5F00\u5C55\u793A\uFF1B**\u8BC1\u636E\u6309\u8BA1\u5212\u9694\u79BB**\u2014\u2014\u53EA\u7EDF\u8BA1\u5F52\u5C5E\u8BE5\u8BA1\u5212\u7684\u6D4B\u8BC4\uFF0C\u4F20 `plan_id` \u6216\u5173\u8054\u4F1A\u8BDD\u5373\u53EF\u5F52\u5C5E\uFF09\uFF1A\n\n| \u5224\u5B9A | \u6761\u4EF6 |\n| --- | --- |\n| unknown | \u8BA1\u5212\u5185\u5C1A\u65E0 self/objective \u6D4B\u8BC4\uFF08\u6253\u5361\u3001\u4F1A\u8BDD\u90FD\u4E0D\u7B97\u638C\u63E1\uFF09 |\n| strong | \u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u5BA2\u89C2\u5224\u9898\u901A\u8FC7\uFF1B\u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u81EA\u8BC4 \u2265 80 |\n| reviewing | \u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF0C\u6700\u65B0\u81EA\u8BC4 60~79 |\n| weak | \u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u5BA2\u89C2\u5224\u9898\u672A\u901A\u8FC7\uFF1B\u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u81EA\u8BC4 < 60 |\n\n- **\u5BA2\u89C2\u4F18\u5148**\uFF1A\u53EA\u8981\u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF0C\u5224\u5B9A\u53EA\u770B\u6700\u65B0\u5BA2\u89C2\u7ED3\u679C\uFF0C\u8F83\u65B0\u7684\u81EA\u8BC4\u4E0D\u8986\u76D6\u5BA2\u89C2\uFF1B`ai_suggestion` \u4E0D\u53C2\u4E0E\u5224\u5B9A\u3002\n- **\u53EF\u7EA0\u6B63**\uFF1A\u540C\u4E00\u6D4B\u8BC4 id \u91CD\u65B0\u63D0\u4EA4\u4F1A\u4FDD\u7559 `corrections` \u5386\u53F2\uFF08\u65E7\u8BC4\u5206\u4E0D\u4E22\u5931\uFF09\u3002\n- **\u5E42\u7B49**\uFF1A\u4F1A\u8BDD\u6309\u7A33\u5B9A id \u6216\uFF08\u76EE\u6807, attempt\uFF09\u590D\u7528\uFF1B\u8349\u6848\u786E\u8BA4\u4E00\u6B21\uFF08\u91CD\u590D\u786E\u8BA4\u8FD4\u56DE\u539F\u8BA1\u5212\uFF09\uFF1B\u6392\u671F\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4\u8FD4\u56DE\u539F\u6392\u671F\uFF1B\u5361\u7247\u6309\u5185\u5BB9\u54C8\u5E0C\u53BB\u91CD\u3002\n- **\u8C03\u6574\u8FB9\u754C**\uFF1A`apply` \u77AC\u95F4\u5DF2\u4E0D\u662F pending \u7684\u6761\u76EE\u81EA\u52A8\u8DF3\u8FC7\uFF1B\u5DF2\u5B8C\u6210\u6761\u76EE\u4E0E\u5386\u53F2\u4F1A\u8BDD\u6C38\u4E0D\u88AB\u6539\u5199\u3002\n- **\u7F3A\u7701\u503C**\uFF1A\u77E5\u8BC6\u70B9\u65F6\u957F\u7F3A\u7701 60 \u5206\u949F\uFF1B\u65E7\u8BA1\u5212\u65E0\u9884\u7B97\u65F6\u8C03\u6574\u6309 120 \u5206\u949F/\u5929\u4F30\u5BB9\u91CF\uFF1B\u81EA\u52A8\u8865\u590D\u4E60\u6761\u76EE 20 \u5206\u949F\u3002\n\n## \u5DE5\u5177\u5BF9\u7167\n\n| \u9636\u6BB5 | MCP \u5DE5\u5177 | \u8BFB\u5199 |\n| --- | --- | --- |\n| \u89C4\u8303 | `get_study_workflow` / \u8D44\u6E90 `tododesk://study/workflow` | \u8BFB |\n| \u8349\u6848\uFF08\u6709\u65E5\u671F\uFF09 | `draft_study_plan`\u3001`list_study_drafts`\u3001`get_study_draft` | \u5199\uFF08\u4EC5\u8349\u6848\u8868\uFF09/\u8BFB |\n| \u8349\u6848\uFF08\u65E0\u65E5\u671F\uFF09 | `draft_study_topic`\u3001`update_study_topic_draft` | \u5199\uFF08\u4EC5\u8349\u6848\u8868\uFF0C\u96F6\u526F\u4F5C\u7528\uFF09 |\n| \u6392\u671F | `preview_study_draft_schedule`\uFF08\u53EA\u8BFB\u9884\u89C8\uFF1A\u51B2\u7A81+\u4F9D\u8D56\uFF09\u3001`schedule_study_draft`\uFF08\u4E8B\u52A1+\u5E42\u7B49\uFF09 | \u9884\u89C8/\u5199 |\n| \u786E\u8BA4 | `confirm_study_plan_draft`\u3001`cancel_study_plan_draft` | \u5199\uFF08\u5E42\u7B49/\u65E0\u526F\u4F5C\u7528\uFF09 |\n| \u4F1A\u8BDD | `record_study_session`\u3001`list_study_sessions` | \u5199\uFF08\u5E42\u7B49\uFF09/\u8BFB |\n| \u6D4B\u8BC4 | `record_study_assessment`\u3001`list_study_assessments`\u3001`get_mastery` | \u5199\uFF08\u7559\u8BC1\uFF09/\u8BFB |\n| \u8C03\u6574 | `suggest_plan_adjustments`\u3001`apply_plan_adjustments` | \u9884\u89C8/\u5199 |\n| \u5361\u7247 | `preview_study_cards`\u3001`export_study_cards`\u3001`list_card_exports` | \u9884\u89C8/\u5199\u6587\u4EF6 |\n\n\u8BA1\u5212\u6761\u76EE\u672C\u4F53\uFF08`study_plan`/`plan_item`\uFF09\u3001\u6253\u5361\u4E0E\u5F85\u529E\u6CBF\u7528\u65E2\u6709\u5DE5\u5177\uFF08`create_study_plan`\u3001`update_plan_item`\u3001`get_today` \u7B49\uFF09\u3002\u8349\u6848\u786E\u8BA4\u751F\u6210\u7684\u8BA1\u5212\u4E0E\u666E\u901A\u8BA1\u5212\u5B8C\u5168\u540C\u6784\uFF0CApp\u300C\u5B66\u4E60\u8BA1\u5212\u300D\u9762\u677F\u4E0E `get_today` \u76F4\u63A5\u53EF\u89C1\u3002\n\n## \u5361\u7247\u683C\u5F0F\n\n\u5BFC\u51FA\u7684\u6BCF\u5F20\u5361\u7247\u5BF9\u5E94**\u4E00\u6B21\u771F\u5B9E\u4F1A\u8BDD**\uFF0C\u6587\u4EF6\u540D `TD-<\u77E5\u8BC6\u70B9>-<\u5B8C\u6574\u4F1A\u8BDDid>.md`\uFF08\u4F1A\u8BDD id \u5373\u4E3B\u952E\uFF0C\u6587\u4EF6\u540D\u5929\u7136\u4E0D\u78B0\u649E\uFF09\u3002frontmatter \u58F0\u660E `source`\uFF08TodoDesk \u5B66\u4E60\u4F1A\u8BDD\uFF09\u3001`session_id`\u3001`knowledge_key`\u3001`status: draft`\u3001`verified: false`\u3001`assessed`\uFF08\u6D4B\u8BC4\u8BC1\u636E\u6458\u8981\u6216 none\uFF09\uFF1B\u6B63\u6587\u662F\u5B66\u4E60\u8005\u5F53\u65F6\u7684\u81EA\u8FF0\uFF08\u6211\u7684\u89E3\u91CA/\u7591\u95EE/\u6D4B\u8BC4\u8BC1\u636E/\u6750\u6599\uFF09\uFF0C\u5E76\u5E26\u300C\u5F85\u5BA1\u5361\u7247\u300D\u8B66\u793A\uFF1A**\u5185\u5BB9\u672A\u7ECF\u6838\u5B9E\uFF0C\u4E0D\u4EE3\u8868\u4E3B\u4EBA\u89C2\u70B9\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u5DF2\u638C\u63E1**\u3002\u8BF7\u4EBA\u5DE5\u5BA1\u9605\u540E\u518D\u6574\u7406\u8FDB\u77E5\u8BC6\u5E93\u3002\n";
 
 // packages/core/src/index.ts
 var import_node_fs6 = require("node:fs");
@@ -21600,6 +21663,7 @@ CREATE TABLE IF NOT EXISTS news_tasks (
   claimed_by TEXT,
   claim_expires_at TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
+  accepted_count INTEGER NOT NULL DEFAULT 0,
   completed_at TEXT,
   completed_note TEXT,
   last_error TEXT,
@@ -21607,6 +21671,12 @@ CREATE TABLE IF NOT EXISTS news_tasks (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_news_tasks_status ON news_tasks(status);
+
+-- \u5220\u9664\u65B0\u95FB\u53EA\u7559\u4E0B\u4E0D\u53EF\u53CD\u63A8\u6B63\u6587\u7684\u53BB\u91CD\u6307\u7EB9\uFF0C\u9632\u4E0B\u4E00\u6B21 agent \u63D0\u4EA4\u540E\u7ACB\u5373\u56DE\u6D41\u3002
+CREATE TABLE IF NOT EXISTS news_deleted_fingerprints (
+  fingerprint TEXT PRIMARY KEY,
+  deleted_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS news_sources (
   id TEXT PRIMARY KEY,
@@ -22008,14 +22078,16 @@ var BOOT_OBJECT_TYPES = [
       { apiName: "title", dataType: S, nullable: false, origin: "builtin" },
       { apiName: "goal", dataType: S, nullable: false, origin: "builtin" },
       { apiName: "material_source", dataType: S, nullable: false, origin: "builtin" },
-      { apiName: "daily_minutes", dataType: I, nullable: false, origin: "builtin" },
-      { apiName: "start_date", dataType: D, nullable: false, origin: "builtin" },
-      { apiName: "end_date", dataType: D, nullable: false, origin: "builtin" },
+      { apiName: "daily_minutes", dataType: I, nullable: true, origin: "builtin" },
+      { apiName: "start_date", dataType: D, nullable: true, origin: "builtin" },
+      { apiName: "end_date", dataType: D, nullable: true, origin: "builtin" },
       { apiName: "knowledge_points", dataType: J, nullable: false, origin: "builtin" },
       { apiName: "items", dataType: J, nullable: false, origin: "builtin" },
       { apiName: "assumptions", dataType: J, nullable: false, origin: "builtin" },
       { apiName: "status", dataType: "enum", nullable: false, enumValues: ["draft", "confirmed", "cancelled"], origin: "builtin" },
       { apiName: "plan_id", dataType: I, nullable: true, origin: "builtin" },
+      { apiName: "course_id", dataType: I, nullable: true, origin: "builtin" },
+      { apiName: "conflict_checked_at", dataType: D, nullable: true, origin: "builtin" },
       { apiName: "notes", dataType: S, nullable: false, origin: "builtin" },
       { apiName: "created_at", dataType: D, nullable: false, origin: "builtin" },
       { apiName: "updated_at", dataType: D, nullable: false, origin: "builtin" },
@@ -23354,6 +23426,76 @@ var MIGRATIONS = [
       if (!newsCols.includes("source_name")) db2.exec("ALTER TABLE news ADD COLUMN source_name TEXT");
       db2.exec("CREATE INDEX IF NOT EXISTS idx_news_task ON news(task_id);");
     }
+  },
+  {
+    version: 9,
+    name: "dateless_drafts",
+    up: (db2) => {
+      db2.exec(`
+      CREATE TABLE study_plan_drafts_v9 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        goal TEXT NOT NULL DEFAULT '',
+        material_source TEXT NOT NULL DEFAULT '',
+        daily_minutes INTEGER,
+        start_date TEXT,
+        end_date TEXT,
+        knowledge_points TEXT NOT NULL DEFAULT '[]',
+        items TEXT NOT NULL DEFAULT '[]',
+        assumptions TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'draft',
+        plan_id INTEGER,
+        course_id INTEGER,
+        conflict_checked_at TEXT,
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        confirmed_at TEXT,
+        cancelled_at TEXT
+      );
+      INSERT INTO study_plan_drafts_v9
+        (id, title, goal, material_source, daily_minutes, start_date, end_date, knowledge_points, items, assumptions, status, plan_id, course_id, conflict_checked_at, notes, created_at, updated_at, confirmed_at, cancelled_at)
+      SELECT id, title, goal, material_source, daily_minutes, start_date, end_date, knowledge_points, items, assumptions, status, plan_id, NULL, NULL, notes, created_at, updated_at, confirmed_at, cancelled_at
+      FROM study_plan_drafts;
+      DROP TABLE study_plan_drafts;
+      ALTER TABLE study_plan_drafts_v9 RENAME TO study_plan_drafts;
+      CREATE INDEX IF NOT EXISTS idx_study_drafts_status ON study_plan_drafts(status);
+      CREATE INDEX IF NOT EXISTS idx_study_drafts_course ON study_plan_drafts(course_id);
+      `);
+    }
+  },
+  {
+    version: 10,
+    name: "course_overviews",
+    up: (db2) => db2.exec(`
+      -- \u8BFE\u7A0B\u603B\u89C8\u72EC\u7ACB\u4E8E D1..Dn\uFF1B\u65E7\u8BFE\u7A0B\u65E0\u603B\u89C8\u65F6\u4FDD\u6301\u539F\u6709\u65E5\u8BFE\u4E0E\u5B66\u4E60\u8BB0\u5F55\u4E0D\u53D8\u3002
+      CREATE TABLE IF NOT EXISTS course_overviews (
+        course_id INTEGER PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,
+        html_rel TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `)
+  },
+  {
+    version: 11,
+    name: "news_deletion_fingerprints",
+    up: (db2) => {
+      db2.exec(`
+      CREATE TABLE IF NOT EXISTS news_deleted_fingerprints (
+        fingerprint TEXT PRIMARY KEY,
+        deleted_at TEXT NOT NULL
+      );
+      `);
+      const cols = db2.prepare("PRAGMA table_info(news_tasks)").all().map((c) => String(c.name));
+      if (!cols.includes("accepted_count")) {
+        db2.exec("ALTER TABLE news_tasks ADD COLUMN accepted_count INTEGER NOT NULL DEFAULT 0");
+        db2.exec(`UPDATE news_tasks SET accepted_count = (
+          SELECT COUNT(*) FROM news WHERE news.task_id = news_tasks.id
+        )`);
+      }
+    }
   }
 ];
 function runMigrations(db2) {
@@ -23859,6 +24001,9 @@ function normalizeNewsEventTitle(text) {
 function sanitizeText(s) {
   return String(s ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ").trim();
 }
+function deletedFingerprint(kind, value) {
+  return `${kind}:${(0, import_node_crypto4.createHash)("sha256").update(value).digest("hex")}`;
+}
 function validateSourceUrl(raw) {
   const s = String(raw ?? "").trim();
   if (!s) throw new Error("\u6765\u6E90\u94FE\u63A5\u4E0D\u80FD\u4E3A\u7A7A\uFF08\u5FC5\u987B\u662F\u539F\u59CB\u6765\u6E90\u7F51\u9875\u7684 http(s) \u5730\u5740\uFF09");
@@ -23900,6 +24045,7 @@ function createNewsService(db2, opts = {}) {
     const inserted = Number(
       db2.prepare("SELECT COUNT(*) AS n FROM news WHERE task_id = ?").get(r.id).n
     );
+    const accepted = Math.max(Number(r.accepted_count ?? 0), inserted);
     const maxItems = Number(r.max_items);
     return {
       id: Number(r.id),
@@ -23913,7 +24059,8 @@ function createNewsService(db2, opts = {}) {
       claim_expires_at: r.claim_expires_at ?? null,
       attempts: Number(r.attempts ?? 0),
       inserted_count: inserted,
-      remaining: Math.max(maxItems - inserted, 0),
+      accepted_count: accepted,
+      remaining: Math.max(maxItems - accepted, 0),
       completed_at: r.completed_at ?? null,
       completed_note: r.completed_note ?? null,
       last_error: r.last_error ?? null,
@@ -24039,9 +24186,20 @@ function createNewsService(db2, opts = {}) {
         const tKey = normalizeNewsEventTitle(cleaned[i].title);
         if (tKey && existingTitles.has(tKey)) throw new Error(`\u7B2C ${i + 1} \u6761\u4E0E\u5E93\u5185\u5DF2\u6709\u65B0\u95FB\u540C\u4E8B\u4EF6\uFF08\u5F52\u4E00\u5316\u6807\u9898\u4E00\u81F4\uFF09\uFF0C\u4E0D\u8981\u91CD\u590D\u63D0\u4EA4`);
       }
-      if (task.inserted_count + cleaned.length > task.max_items) {
+      const fpHit = db2.prepare("SELECT 1 FROM news_deleted_fingerprints WHERE fingerprint = ?");
+      for (let i = 0; i < cleaned.length; i++) {
+        const urlKey = newsDedupKey("generic", cleaned[i].url, "");
+        if (fpHit.get(deletedFingerprint("link", urlKey))) {
+          throw new Error(`\u7B2C ${i + 1} \u6761\u5BF9\u5E94\u7684\u65B0\u95FB\u5DF2\u88AB\u7528\u6237\u5220\u9664\uFF0C\u4E0D\u63A5\u53D7\u76F8\u540C\u6765\u6E90\u94FE\u63A5\u91CD\u65B0\u63D0\u4EA4`);
+        }
+        const tKey = normalizeNewsEventTitle(cleaned[i].title);
+        if (tKey && fpHit.get(deletedFingerprint("event", tKey))) {
+          throw new Error(`\u7B2C ${i + 1} \u6761\u4E0E\u7528\u6237\u5DF2\u5220\u9664\u7684\u65B0\u95FB\u4E3A\u540C\u4E00\u4E8B\u4EF6\uFF0C\u4E0D\u63A5\u53D7\u91CD\u65B0\u63D0\u4EA4`);
+        }
+      }
+      if (task.accepted_count + cleaned.length > task.max_items) {
         throw new Error(
-          `\u8D85\u51FA\u4EFB\u52A1\u9884\u7B97\uFF1A\u4EFB\u52A1 #${task.id} \u5DF2\u5165\u5E93 ${task.inserted_count}/${task.max_items} \u6761\uFF0C\u5269\u4F59 ${task.remaining} \u6761\uFF0C\u672C\u6B21\u63D0\u4EA4 ${cleaned.length} \u6761\u2014\u2014\u8BF7\u524A\u51CF\u540E\u91CD\u8BD5\uFF0C\u91CD\u590D\u63D0\u4EA4\u65E0\u6CD5\u7ED5\u8FC7\u4E0A\u9650`
+          `\u8D85\u51FA\u4EFB\u52A1\u9884\u7B97\uFF1A\u4EFB\u52A1 #${task.id} \u5386\u53F2\u5DF2\u6536\u5F55 ${task.accepted_count}/${task.max_items} \u6761\uFF08\u5220\u9664\u4E0D\u8FD4\u8FD8\uFF09\uFF0C\u672C\u6B21\u63D0\u4EA4 ${cleaned.length} \u6761\u2014\u2014\u8BF7\u524A\u51CF\u540E\u91CD\u8BD5`
         );
       }
       const nowStr = nowIso();
@@ -24054,7 +24212,7 @@ function createNewsService(db2, opts = {}) {
         const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey("generic", c.url, ""), Number(task.id), c.sourceName || null);
         inserted.push(mapNews(db2.prepare("SELECT * FROM news WHERE id = ?").get(res.lastInsertRowid)));
       }
-      db2.prepare("UPDATE news_tasks SET updated_at = ? WHERE id = ?").run(nowStr, Number(task.id));
+      db2.prepare("UPDATE news_tasks SET accepted_count = accepted_count + ?, updated_at = ? WHERE id = ?").run(cleaned.length, nowStr, Number(task.id));
       return { task: mapTask(taskRow(Number(task.id))), inserted: cleaned.length, items: inserted };
     });
   };
@@ -24129,9 +24287,10 @@ function createNewsService(db2, opts = {}) {
       }
     }
     params.push(opts2.limit && opts2.limit > 0 ? opts2.limit : 100);
+    params.push(opts2.offset && opts2.offset > 0 ? opts2.offset : 0);
     return db2.prepare(
       `SELECT * FROM news WHERE ${where.join(" AND ")}
-         ORDER BY published_date DESC, id DESC LIMIT ?`
+         ORDER BY ${ROW_TS_SQL} DESC, id DESC LIMIT ? OFFSET ?`
     ).all(...params).map((r) => mapNews(r));
   };
   const markRead = (id, read) => {
@@ -24163,6 +24322,27 @@ function createNewsService(db2, opts = {}) {
     const rows = db2.prepare("SELECT source, COUNT(*) AS n FROM news GROUP BY source").all();
     return Object.fromEntries(rows.map((r) => [String(r.source), Number(r.n)]));
   };
+  const deleteItem = (id) => {
+    return immediateTx(db2, () => {
+      const numId = Number(id);
+      if (!Number.isInteger(numId) || numId <= 0) throw new Error("\u65B0\u95FB id \u65E0\u6548");
+      const row = db2.prepare("SELECT * FROM news WHERE id = ?").get(numId);
+      if (!row) {
+        return { deleted: false, id: numId, topic_links_removed: 0, media_refs_cleared: 0, fingerprints_kept: 0 };
+      }
+      const now = nowIso();
+      const fps = /* @__PURE__ */ new Set([deletedFingerprint("link", String(row.dedup_key ?? ""))]);
+      const tKey = normalizeNewsEventTitle(String(row.title ?? ""));
+      if (tKey) fps.add(deletedFingerprint("event", tKey));
+      const insFp = db2.prepare("INSERT OR IGNORE INTO news_deleted_fingerprints (fingerprint, deleted_at) VALUES (?, ?)");
+      let fingerprintsKept = 0;
+      for (const fp of fps) fingerprintsKept += insFp.run(fp, now).changes;
+      const topicLinksRemoved = db2.prepare("DELETE FROM news_topic_links WHERE news_id = ?").run(numId).changes;
+      const mediaRefsCleared = db2.prepare("UPDATE media_topics SET source_news_id = NULL, updated_at = ? WHERE source_news_id = ?").run(now, numId).changes + db2.prepare("UPDATE media_materials SET source_news_id = NULL, updated_at = ? WHERE source_news_id = ?").run(now, numId).changes;
+      db2.prepare("DELETE FROM news WHERE id = ?").run(numId);
+      return { deleted: true, id: numId, topic_links_removed: topicLinksRemoved, media_refs_cleared: mediaRefsCleared, fingerprints_kept: fingerprintsKept };
+    });
+  };
   return {
     createTask,
     getTask,
@@ -24176,6 +24356,7 @@ function createNewsService(db2, opts = {}) {
     markRead,
     markStarred,
     markAllRead,
+    deleteItem,
     lastFetchedAt,
     countBySource
   };
@@ -24466,10 +24647,17 @@ ${css}</style>`;
 function validateCourseManifest(raw) {
   const m = raw;
   if (!m || typeof m !== "object") throw new Error("course.json \u5FC5\u987B\u662F\u5BF9\u8C61");
+  if (m.schema_version !== void 0 && m.schema_version !== 1 && m.schema_version !== 2) {
+    throw new Error("schema_version \u53EA\u80FD\u662F 1 \u6216 2");
+  }
+  if (m.schema_version === 2 && !m.overview) throw new Error("v2 \u8BFE\u7A0B\u5305\u5FC5\u987B\u5355\u72EC\u63D0\u4F9B overview.html\uFF0C\u4E0D\u5F97\u628A\u8BFE\u7A0B\u603B\u89C8\u653E\u8FDB D1");
   if (typeof m.slug !== "string" || !SLUG_RE.test(m.slug)) throw new Error(`slug "${m.slug}" \u65E0\u6548\uFF1A\u5C0F\u5199 slug\uFF08\u5B57\u6BCD\u6570\u5B57 . _ -\uFF09\uFF0C\u226464 \u5B57\u7B26`);
   if (typeof m.title !== "string" || !m.title.trim() || m.title.length > 120) throw new Error("title \u4E0D\u80FD\u4E3A\u7A7A\u4E14 \u2264120 \u5B57\u7B26");
   if (typeof m.version !== "string" || !/^\d+\.\d+\.\d+$/.test(m.version)) throw new Error(`version "${m.version}" \u5FC5\u987B\u662F\u8BED\u4E49\u5316 x.y.z`);
   if (m.plan_id != null && !Number.isInteger(m.plan_id)) throw new Error("plan_id \u5FC5\u987B\u662F\u6574\u6570\u6216\u7701\u7565");
+  if (m.overview !== void 0 && (!m.overview || typeof m.overview !== "object" || typeof m.overview.html !== "string" || !SAFE_REL_RE.test(m.overview.html) || !/\.html$/i.test(m.overview.html))) {
+    throw new Error("overview.html \u5FC5\u987B\u662F\u5305\u5185\u5B89\u5168\u76F8\u5BF9 HTML \u8DEF\u5F84");
+  }
   if (!Array.isArray(m.lessons) || m.lessons.length === 0) throw new Error("lessons \u4E0D\u80FD\u4E3A\u7A7A");
   const days = /* @__PURE__ */ new Set();
   let samples = 0;
@@ -24481,6 +24669,7 @@ function validateCourseManifest(raw) {
     if (typeof l.html !== "string" || !SAFE_REL_RE.test(l.html)) {
       throw new Error(`lessons[${i}].html "${l.html}" \u8DEF\u5F84\u4E0D\u5B89\u5168\uFF1A\u987B\u4E3A\u5305\u5185\u5B89\u5168\u76F8\u5BF9\u8DEF\u5F84\uFF08html/css/\u56FE\u7247\u6269\u5C55\u540D\uFF0C\u65E0 .. \u65E0\u7EDD\u5BF9\u8DEF\u5F84\uFF09`);
     }
+    if (m.overview?.html === l.html) throw new Error("\u8BFE\u7A0B\u603B\u89C8\u4E0E\u6BCF\u65E5\u8BB2\u4E49\u4E0D\u80FD\u5171\u7528\u540C\u4E00\u4E2A HTML \u6587\u4EF6");
     if (l.is_sample) samples += 1;
     if (l.quiz) {
       if (!Array.isArray(l.quiz)) throw new Error(`lessons[${i}].quiz \u5FC5\u987B\u662F\u6570\u7EC4`);
@@ -24532,6 +24721,13 @@ function createCourseService(deps) {
     created_at: String(r.created_at),
     updated_at: String(r.updated_at)
   });
+  const mapOverview = (r) => ({
+    course_id: Number(r.course_id),
+    html_rel: String(r.html_rel),
+    content_hash: String(r.content_hash),
+    created_at: String(r.created_at),
+    updated_at: String(r.updated_at)
+  });
   const getCourse = (id) => {
     const row = db2.prepare("SELECT * FROM courses WHERE id = ?").get(id);
     if (!row) throw new Error(`\u8BFE\u7A0B ${id} \u4E0D\u5B58\u5728`);
@@ -24539,18 +24735,25 @@ function createCourseService(deps) {
   };
   const listCourses = () => db2.prepare("SELECT * FROM courses ORDER BY created_at DESC, id DESC").all().map(mapCourse);
   const listLessons = (courseId) => db2.prepare("SELECT * FROM course_lessons WHERE course_id = ? ORDER BY day ASC").all(courseId).map(mapLesson);
+  const getOverview = (courseId) => {
+    getCourse(courseId);
+    const row = db2.prepare("SELECT * FROM course_overviews WHERE course_id = ?").get(courseId);
+    return row ? mapOverview(row) : null;
+  };
   const getLesson = (courseId, day) => {
     const row = db2.prepare("SELECT * FROM course_lessons WHERE course_id = ? AND day = ?").get(courseId, day);
     if (!row) throw new Error(`\u8BFE\u7A0B ${courseId} \u7B2C ${day} \u5929\u8BB2\u4E49\u4E0D\u5B58\u5728\uFF08\u5F85\u751F\u6210\uFF09`);
     return mapLesson(row);
   };
-  const readLessonHtml = (lesson) => {
-    const abs = (0, import_node_path.resolve)(root, lesson.html_rel);
+  const readCourseHtml = (htmlRel) => {
+    const abs = (0, import_node_path.resolve)(root, htmlRel);
     if (abs !== root && !abs.startsWith(root + import_node_path.sep)) throw new Error("\u8DEF\u5F84\u8D8A\u754C\uFF1A\u62D2\u7EDD\u8BFB\u53D6");
-    assertNoSymlinkBelow(root, lesson.html_rel);
-    if (!(0, import_node_fs.existsSync)(abs)) throw new Error(`\u8BB2\u4E49\u6587\u4EF6\u7F3A\u5931\uFF1A${lesson.html_rel}\uFF08\u91CD\u65B0\u5BFC\u5165\u540C\u4E00\u8BFE\u7A0B\u5305\u53EF\u81EA\u52A8\u4FEE\u590D\uFF09`);
+    assertNoSymlinkBelow(root, htmlRel);
+    if (!(0, import_node_fs.existsSync)(abs)) throw new Error(`\u8BFE\u7A0B\u6587\u4EF6\u7F3A\u5931\uFF1A${htmlRel}\uFF08\u91CD\u65B0\u5BFC\u5165\u540C\u4E00\u8BFE\u7A0B\u5305\u53EF\u81EA\u52A8\u4FEE\u590D\uFF09`);
     return (0, import_node_fs.readFileSync)(abs, "utf8");
   };
+  const readLessonHtml = (lesson) => readCourseHtml(lesson.html_rel);
+  const readOverviewHtml = (overview) => readCourseHtml(overview.html_rel);
   const importCourse = (stagingDir) => {
     const manifestPath = (0, import_node_path.join)(stagingDir, "course.json");
     if (!(0, import_node_fs.existsSync)(manifestPath)) throw new Error("\u5305\u6839\u7F3A\u5C11 course.json");
@@ -24571,12 +24774,34 @@ function createCourseService(deps) {
       const sanitized = sanitizeLessonHtml(inlineLessonStylesheets(stageRoot, l.html, html));
       return { lesson: l, sanitized, hash: sha256(sanitized) };
     });
+    const preparedOverview = manifest.overview ? (() => {
+      const rel = manifest.overview.html;
+      const abs = (0, import_node_path.resolve)(stageRoot, rel);
+      if (!abs.startsWith(stageRoot + import_node_path.sep)) throw new Error(`overview.html "${rel}" \u8DEF\u5F84\u7A7F\u8D8A\uFF0C\u62D2\u7EDD`);
+      assertNoSymlinkBelow(stageRoot, rel);
+      const sanitized = sanitizeLessonHtml(inlineLessonStylesheets(stageRoot, rel, (0, import_node_fs.readFileSync)(abs, "utf8")));
+      return { html: rel, sanitized, hash: sha256(sanitized) };
+    })() : null;
     const sampleHash = prepared.find((p) => p.lesson.is_sample)?.hash ?? null;
     const sampleOnly = manifest.lessons.length === 1 && manifest.lessons[0].is_sample === true;
     const now = nowIso();
     const existingRow = db2.prepare("SELECT * FROM courses WHERE slug = ?").get(manifest.slug);
     const prev = existingRow ? mapCourse(existingRow) : null;
     const prevLessons = prev ? listLessons(prev.id) : [];
+    const prevOverview = prev ? getOverview(prev.id) : null;
+    if (preparedOverview && prevLessons.some((l) => l.html_rel === `${manifest.slug}/${preparedOverview.html}`)) {
+      throw new Error("\u8BFE\u7A0B\u603B\u89C8\u4E0E\u5DF2\u6709\u6BCF\u65E5\u8BB2\u4E49\u4E0D\u80FD\u5171\u7528\u540C\u4E00\u4E2A HTML \u6587\u4EF6");
+    }
+    if (!sampleOnly && prevOverview && !preparedOverview) {
+      throw new Error("\u5B8C\u6574\u5305\u7F3A\u5C11\u72EC\u7ACB\u8BFE\u7A0B\u603B\u89C8\uFF1A\u8BF7\u5728 course.json \u4E2D\u4FDD\u7559 overview.html");
+    }
+    if (sampleOnly && prevOverview && !preparedOverview) {
+      try {
+        readOverviewHtml(prevOverview);
+      } catch {
+        throw new Error("\u5DF2\u6709\u8BFE\u7A0B\u603B\u89C8\u6587\u4EF6\u7F3A\u5931\uFF1A\u8BF7\u5728\u91CD\u5BFC\u7684\u6837\u8BFE\u5305\u4E2D\u52A0\u5165 overview.html \u4EE5\u4FEE\u590D");
+      }
+    }
     if (prev && prev.plan_id != null && manifest.plan_id != null && manifest.plan_id !== prev.plan_id) {
       throw new Error(`plan_id \u4E0D\u53EF\u53D8\u66F4\uFF1A\u8BFE\u7A0B\u5DF2\u7ED1\u5B9A\u5B66\u4E60\u8BA1\u5212 ${prev.plan_id}\uFF0C\u4E0D\u5F97\u6539\u7ED1\u8BA1\u5212 ${manifest.plan_id}\uFF08\u7701\u7565 plan_id \u8868\u793A\u6CBF\u7528\u539F\u7ED1\u5B9A\uFF09`);
     }
@@ -24587,7 +24812,7 @@ function createCourseService(deps) {
     const completedSameContent = prev != null && !sampleOnly && prev.status === "complete" && prev.version === manifest.version && prev.sample_confirmed_at != null && prev.sample_content_hash != null && pkgSample != null && pkgSample.hash === prev.sample_content_hash && prevLessons.length === prepared.length && prevLessons.every((pl) => {
       const m = prepared.find((p) => p.lesson.day === pl.day);
       return m != null && m.hash === pl.content_hash && pl.is_sample === (m.lesson.is_sample === true);
-    });
+    }) && (preparedOverview == null || prevOverview?.content_hash === preparedOverview.hash);
     if (prev && !sampleOnly) {
       if (!prevLessons.some((l) => l.is_sample)) {
         throw new Error("\u5B8C\u6574\u5305\u5BFC\u5165\u88AB\u62D2\uFF1A\u8BFE\u7A0B\u7F3A\u5C11\u6837\u8BFE\u8BB0\u5F55\uFF08\u6570\u636E\u5F02\u5E38\uFF09\u2014\u2014\u987B\u4ECE\u6837\u8BFE\u5305\u91CD\u65B0\u5EFA\u7ACB\u786E\u8BA4\u94FE\u540E\u624D\u80FD\u5BFC\u5165\u5B8C\u6574\u5305");
@@ -24617,19 +24842,27 @@ function createCourseService(deps) {
           return false;
         }
       });
-      if (sameLessons && prev.version === manifest.version) {
+      const sameBinding = manifest.plan_id == null || prev.plan_id === manifest.plan_id;
+      const sameOverview = preparedOverview == null || prevOverview?.content_hash === preparedOverview.hash && (() => {
+        try {
+          return sha256(readOverviewHtml(prevOverview)) === prevOverview.content_hash;
+        } catch {
+          return false;
+        }
+      })();
+      if (sameLessons && sameOverview && prev.version === manifest.version && sameBinding) {
         return { course: prev, lessons: prevLessons, idempotent: true, confirmation_expired: false };
       }
     }
     const staged = (0, import_node_path.join)(root, `.staging-${manifest.slug}-${process.pid}-${Date.now()}`);
     try {
-      stageAssets(stagingDir, staged, prepared);
-      const { id: courseId, confirmationExpired } = writeCourseRows(prev?.id ?? null, prev, prevLessons, manifest, prepared, sampleHash, sampleOnly, now);
+      stageAssets(stagingDir, staged, prepared, preparedOverview);
+      const { id: courseId, confirmationExpired } = writeCourseRows(prev?.id ?? null, prev, prevLessons, manifest, prepared, preparedOverview, sampleHash, sampleOnly, now);
       try {
         if (sampleOnly) mergeAssetsIn(manifest.slug, staged);
         else swapAssetsIn(manifest.slug, staged);
       } catch (swapErr) {
-        rollbackCourseRows(courseId, prev, prevLessons);
+        rollbackCourseRows(courseId, prev, prevLessons, prevOverview);
         throw swapErr;
       }
       return { course: getCourse(courseId), lessons: listLessons(courseId), idempotent: false, confirmation_expired: confirmationExpired };
@@ -24638,7 +24871,7 @@ function createCourseService(deps) {
       throw e;
     }
   };
-  function stageAssets(stagingDir, staged, prepared) {
+  function stageAssets(stagingDir, staged, prepared, preparedOverview) {
     assertDirNotSymlink(root, "\u8BFE\u7A0B\u8D44\u4EA7\u6839\u76EE\u5F55");
     (0, import_node_fs.mkdirSync)(root, { recursive: true });
     (0, import_node_fs.rmSync)(staged, { recursive: true, force: true });
@@ -24667,6 +24900,11 @@ function createCourseService(deps) {
       if (!destAbs.startsWith((0, import_node_path.resolve)(staged) + import_node_path.sep)) continue;
       (0, import_node_fs.mkdirSync)((0, import_node_path.resolve)(destAbs, ".."), { recursive: true });
       (0, import_node_fs.writeFileSync)(destAbs, p.sanitized, "utf8");
+    }
+    if (preparedOverview) {
+      const destAbs = (0, import_node_path.resolve)(staged, preparedOverview.html);
+      (0, import_node_fs.mkdirSync)((0, import_node_path.resolve)(destAbs, ".."), { recursive: true });
+      (0, import_node_fs.writeFileSync)(destAbs, preparedOverview.sanitized, "utf8");
     }
   }
   function swapAssetsIn(slug, staged) {
@@ -24780,7 +25018,7 @@ function createCourseService(deps) {
     for (const p of plan) (0, import_node_fs.rmSync)(p.bak, { recursive: true, force: true });
     (0, import_node_fs.rmSync)(staged, { recursive: true, force: true });
   }
-  function writeCourseRows(courseId, prev, prevLessons, manifest, prepared, sampleHash, sampleOnly, now) {
+  function writeCourseRows(courseId, prev, prevLessons, manifest, prepared, preparedOverview, sampleHash, sampleOnly, now) {
     let confirmationExpired = false;
     db2.exec("BEGIN");
     try {
@@ -24847,6 +25085,12 @@ function createCourseService(deps) {
           );
         }
       }
+      if (preparedOverview) {
+        db2.prepare(`INSERT INTO course_overviews (course_id, html_rel, content_hash, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(course_id) DO UPDATE SET html_rel = excluded.html_rel,
+            content_hash = excluded.content_hash, updated_at = excluded.updated_at`).run(id, `${manifest.slug}/${preparedOverview.html}`, preparedOverview.hash, now, now);
+      }
       db2.exec("COMMIT");
       return { id, confirmationExpired };
     } catch (e) {
@@ -24857,10 +25101,11 @@ function createCourseService(deps) {
       throw e;
     }
   }
-  function rollbackCourseRows(courseId, prev, prevLessons) {
+  function rollbackCourseRows(courseId, prev, prevLessons, prevOverview) {
     try {
       db2.exec("BEGIN");
       db2.prepare("DELETE FROM course_lessons WHERE course_id = ?").run(courseId);
+      db2.prepare("DELETE FROM course_overviews WHERE course_id = ?").run(courseId);
       if (!prev) {
         db2.prepare("DELETE FROM courses WHERE id = ?").run(courseId);
       } else {
@@ -24888,6 +25133,9 @@ function createCourseService(deps) {
         db2.prepare(
           "UPDATE courses SET title = ?, goal = ?, status = ?, plan_id = ?, sample_content_hash = ?, sample_confirmed_at = ?, version = ?, updated_at = ? WHERE id = ?"
         ).run(prev.title, prev.goal, prev.status, prev.plan_id, prev.sample_content_hash, prev.sample_confirmed_at, prev.version, prev.updated_at, prev.id);
+        if (prevOverview) {
+          db2.prepare("INSERT INTO course_overviews (course_id, html_rel, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(prevOverview.course_id, prevOverview.html_rel, prevOverview.content_hash, prevOverview.created_at, prevOverview.updated_at);
+        }
       }
       db2.exec("COMMIT");
     } catch {
@@ -25025,7 +25273,9 @@ function createCourseService(deps) {
     listCourses,
     getCourse,
     listLessons,
+    getOverview,
     getLesson,
+    readOverviewHtml,
     readLessonHtml,
     markLessonRead,
     submitQuiz,
@@ -25786,14 +26036,16 @@ function mapDraft(row) {
     title: String(row.title),
     goal: String(row.goal ?? ""),
     material_source: String(row.material_source ?? ""),
-    daily_minutes: Number(row.daily_minutes),
-    start_date: String(row.start_date),
-    end_date: String(row.end_date),
+    daily_minutes: row.daily_minutes === null || row.daily_minutes === void 0 ? null : Number(row.daily_minutes),
+    start_date: row.start_date ?? null,
+    end_date: row.end_date ?? null,
     knowledge_points: parseJsonArray(row.knowledge_points),
     items: parseJsonArray(row.items),
     assumptions: parseJsonArray(row.assumptions),
     status: row.status,
     plan_id: row.plan_id === null || row.plan_id === void 0 ? null : Number(row.plan_id),
+    course_id: row.course_id === null || row.course_id === void 0 ? null : Number(row.course_id),
+    conflict_checked_at: row.conflict_checked_at ?? null,
     notes: String(row.notes ?? ""),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
@@ -25841,7 +26093,7 @@ function mapAssessment(row) {
     updated_at: String(row.updated_at)
   };
 }
-function scheduleKnowledgePoints(points, dailyMinutes, startDate) {
+function normalizeKnowledgePoints(points) {
   const assumptions = [];
   const byKey = /* @__PURE__ */ new Map();
   for (const p of points) {
@@ -25878,6 +26130,10 @@ function scheduleKnowledgePoints(points, dailyMinutes, startDate) {
     ordered.push(kp);
     done.add(kp.key);
   }
+  return { ordered, assumptions };
+}
+function scheduleKnowledgePoints(points, dailyMinutes, startDate) {
+  const { ordered, assumptions } = normalizeKnowledgePoints(points);
   const items = [];
   let date3 = startDate;
   let used = 0;
@@ -25911,9 +26167,7 @@ function createStudyService(db2, deps) {
     if (!Array.isArray(input.knowledge_points) || input.knowledge_points.length === 0) {
       throw new Error("knowledge_points \u4E0D\u80FD\u4E3A\u7A7A\uFF1A\u8BF7\u5148\u4E0E\u7528\u6237\u6F84\u6E05\u5E76\u5206\u89E3\u77E5\u8BC6\u70B9");
     }
-    if (!Number.isInteger(input.daily_minutes) || input.daily_minutes < 10 || input.daily_minutes > 600) {
-      throw new Error(`\u6BCF\u65E5\u9884\u7B97 daily_minutes \u5FC5\u987B\u4E3A 10~600 \u7684\u6574\u6570\uFF08\u5206\u949F\uFF09\uFF0C\u6536\u5230 "${input.daily_minutes}"`);
-    }
+    assertDailyMinutes(input.daily_minutes);
     const start = ensureValidDateStr(input.start_date);
     const scheduled = scheduleKnowledgePoints(input.knowledge_points, input.daily_minutes, start);
     const now = nowIso();
@@ -25937,6 +26191,192 @@ function createStudyService(db2, deps) {
     );
     return getDraft(Number(res.lastInsertRowid));
   };
+  const assertDailyMinutes = (v) => {
+    if (!Number.isInteger(v) || v < 10 || v > 600) {
+      throw new Error(`\u6BCF\u65E5\u9884\u7B97 daily_minutes \u5FC5\u987B\u4E3A 10~600 \u7684\u6574\u6570\uFF08\u5206\u949F\uFF09\uFF0C\u6536\u5230 "${v}"`);
+    }
+    return v;
+  };
+  const draftDateless = (input) => {
+    if (!input.title?.trim()) throw new Error("\u8349\u6848\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
+    if (!Array.isArray(input.knowledge_points) || input.knowledge_points.length === 0) {
+      throw new Error("knowledge_points \u4E0D\u80FD\u4E3A\u7A7A\uFF1A\u8BF7\u5148\u4E0E\u7528\u6237\u6F84\u6E05\u5E76\u5206\u89E3\u77E5\u8BC6\u70B9");
+    }
+    if (input.course_id != null) {
+      const row = db2.prepare("SELECT id FROM courses WHERE id = ?").get(input.course_id);
+      if (!row) throw new Error(`\u5173\u8054\u8BFE\u7A0B ${input.course_id} \u4E0D\u5B58\u5728\uFF1A\u8BF7\u5148\u5BFC\u5165\u8BE5\u8BFE\u7A0B\u7684\u6837\u8BFE\u5305\u518D\u5173\u8054`);
+    }
+    const { ordered, assumptions } = normalizeKnowledgePoints(input.knowledge_points);
+    const now = nowIso();
+    const res = db2.prepare(
+      `INSERT INTO study_plan_drafts
+         (title, goal, material_source, daily_minutes, start_date, end_date, knowledge_points, items, assumptions, status, plan_id, course_id, notes, created_at, updated_at)
+         VALUES (?, ?, ?, NULL, NULL, NULL, ?, '[]', ?, 'draft', NULL, ?, ?, ?, ?)`
+    ).run(
+      input.title.trim(),
+      input.goal?.trim() ?? "",
+      input.material_source?.trim() ?? "",
+      JSON.stringify(ordered),
+      JSON.stringify(["\u672A\u6392\u671F\uFF1A\u7B49\u5F85\u7528\u6237\u63D0\u4F9B\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u65F6\u95F4\u9884\u7B97\uFF08preview \u2192 schedule \u2192 confirm\uFF09", ...assumptions]),
+      input.course_id ?? null,
+      input.notes?.trim() ?? "",
+      now,
+      now
+    );
+    return getDraft(Number(res.lastInsertRowid));
+  };
+  const updateDraftMeta = (id, patch) => {
+    const d = getDraft(id);
+    if (d.status === "confirmed") throw new Error(`\u8349\u6848 ${id} \u5DF2\u786E\u8BA4\u4E3A\u8BA1\u5212 ${d.plan_id}\uFF0C\u4E0D\u80FD\u518D\u7F16\u8F91\u5185\u5BB9`);
+    if (d.status === "cancelled") throw new Error(`\u8349\u6848 ${id} \u5DF2\u53D6\u6D88\uFF0C\u4E0D\u80FD\u518D\u7F16\u8F91\u5185\u5BB9`);
+    if (d.start_date != null) {
+      throw new Error(`\u8349\u6848 ${id} \u5DF2\u6392\u671F\uFF08${d.start_date} \u8D77\uFF0C\u6BCF\u65E5 ${d.daily_minutes} \u5206\u949F\uFF09\uFF0C\u5185\u5BB9\u9501\u5B9A\u4E0D\u518D\u53EF\u6539\uFF1B\u5982\u9700\u6362\u77E5\u8BC6\u70B9\u8BF7\u53D6\u6D88\u540E\u91CD\u5EFA\u8349\u6848`);
+    }
+    const next = {
+      title: patch.title !== void 0 ? patch.title.trim() : d.title,
+      goal: patch.goal !== void 0 ? patch.goal?.trim() ?? "" : d.goal,
+      material_source: patch.material_source !== void 0 ? patch.material_source?.trim() ?? "" : d.material_source,
+      notes: patch.notes !== void 0 ? patch.notes?.trim() ?? "" : d.notes,
+      course_id: patch.course_id !== void 0 ? patch.course_id : d.course_id,
+      knowledge_points: patch.knowledge_points ?? d.knowledge_points
+    };
+    if (!next.title) throw new Error("\u8349\u6848\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
+    if (next.course_id != null) {
+      const row = db2.prepare("SELECT id FROM courses WHERE id = ?").get(next.course_id);
+      if (!row) throw new Error(`\u5173\u8054\u8BFE\u7A0B ${next.course_id} \u4E0D\u5B58\u5728\uFF1A\u8BF7\u5148\u5BFC\u5165\u8BE5\u8BFE\u7A0B\u7684\u6837\u8BFE\u5305\u518D\u5173\u8054`);
+    }
+    const kp = patch.knowledge_points ? normalizeKnowledgePoints(next.knowledge_points) : null;
+    const assumptions = kp ? ["\u672A\u6392\u671F\uFF1A\u7B49\u5F85\u7528\u6237\u63D0\u4F9B\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u65F6\u95F4\u9884\u7B97\uFF08preview \u2192 schedule \u2192 confirm\uFF09", ...kp.assumptions] : d.assumptions;
+    db2.prepare(
+      `UPDATE study_plan_drafts SET title = ?, goal = ?, material_source = ?, knowledge_points = ?, assumptions = ?, course_id = ?, notes = ?, updated_at = ? WHERE id = ?`
+    ).run(
+      next.title,
+      next.goal,
+      next.material_source,
+      JSON.stringify(kp ? kp.ordered : next.knowledge_points),
+      JSON.stringify(assumptions),
+      next.course_id,
+      next.notes,
+      nowIso(),
+      id
+    );
+    return getDraft(id);
+  };
+  const activeUsageBetween = (from, to, excludePlanId) => {
+    const rows = db2.prepare(
+      `SELECT pi.date AS date, SUM(COALESCE(pi.duration_min, ?)) AS minutes
+         FROM plan_items pi JOIN study_plans sp ON sp.id = pi.plan_id
+         WHERE sp.status = 'active' AND pi.date >= ? AND pi.date <= ?${excludePlanId != null ? " AND sp.id != ?" : ""}
+         GROUP BY pi.date`
+    ).all(...excludePlanId != null ? [DEFAULT_KNOWLEDGE_POINT_MINUTES, from, to, excludePlanId] : [DEFAULT_KNOWLEDGE_POINT_MINUTES, from, to]);
+    const usage = /* @__PURE__ */ new Map();
+    for (const r of rows) usage.set(String(r.date), Number(r.minutes ?? 0));
+    return usage;
+  };
+  const overDatesOf = (items, budget, excludePlanId) => {
+    if (items.length === 0) return [];
+    let min = items[0].date;
+    let max = items[0].date;
+    const newByDate = /* @__PURE__ */ new Map();
+    for (const it of items) {
+      min = it.date < min ? it.date : min;
+      max = it.date > max ? it.date : max;
+      newByDate.set(it.date, (newByDate.get(it.date) ?? 0) + it.duration_min);
+    }
+    const usage = activeUsageBetween(min, max, excludePlanId);
+    const over = [];
+    for (const [date3, mins] of newByDate) {
+      if ((usage.get(date3) ?? 0) + mins > budget) over.push(date3);
+    }
+    return over.sort();
+  };
+  const assertOverDatesConfirmed = (over, confirmed, stage) => {
+    const got = [...over].sort().join("\u3001");
+    const want = [...new Set((confirmed ?? []).map((d) => ensureValidDateStr(d)))].sort().join("\u3001");
+    if (got === want) return;
+    throw new Error(
+      `\u9884\u7B97\u51B2\u7A81\u786C\u6821\u9A8C\u5931\u8D25\uFF08${stage}\uFF09\uFF1A\u5F53\u524D\u8D85\u9884\u7B97\u65E5\u671F\u4E3A [${got || "\u65E0"}]\uFF0C\u4E0E\u7528\u6237\u786E\u8BA4\u7684 [${want || "\u65E0"}] \u4E0D\u4E00\u81F4\u3002` + (got.length > 0 ? `\u8BF7\u628A\u51B2\u7A81\u9010\u6761\u544A\u77E5\u7528\u6237\u5E76\u53D6\u5F97\u540C\u610F\u540E\uFF0C\u91CD\u65B0 preview_study_draft_schedule\uFF0C\u628A\u6700\u65B0 over_budget_dates \u539F\u6837\u4F5C\u4E3A confirmed_over_dates \u4F20\u56DE\uFF08\u6216\u8C03\u6574\u8D77\u59CB\u65E5\u671F/\u9884\u7B97/\u65E2\u6709\u8BA1\u5212\uFF09` : "\u5F53\u524D\u5DF2\u65E0\u8D85\u9884\u7B97\u51B2\u7A81\uFF1A\u8BF7\u6E05\u7A7A confirmed_over_dates \u540E\u91CD\u8BD5")
+    );
+  };
+  const previewDraftSchedule = (id, startDate, dailyMinutes) => {
+    const d = getDraft(id);
+    if (d.status === "confirmed") throw new Error(`\u8349\u6848 ${id} \u5DF2\u786E\u8BA4\u4E3A\u8BA1\u5212 ${d.plan_id}\uFF0C\u65E0\u9700\u518D\u6392\u671F\uFF1B\u5982\u9700\u8C03\u6574\u8BF7\u4F7F\u7528\u8BA1\u5212\u8C03\u6574\u5EFA\u8BAE`);
+    if (d.status === "cancelled") throw new Error(`\u8349\u6848 ${id} \u5DF2\u53D6\u6D88\uFF0C\u4E0D\u80FD\u6392\u671F\uFF1B\u8BF7\u91CD\u65B0\u521B\u5EFA\u8349\u6848`);
+    const start = ensureValidDateStr(startDate);
+    const budget = assertDailyMinutes(dailyMinutes);
+    const scheduled = scheduleKnowledgePoints(d.knowledge_points, budget, start);
+    const usage = activeUsageBetween(start, scheduled.endDate);
+    const newByDate = /* @__PURE__ */ new Map();
+    for (const it of scheduled.items) newByDate.set(it.date, (newByDate.get(it.date) ?? 0) + it.duration_min);
+    const conflicts = [];
+    for (const [date3, newMinutes] of [...newByDate.entries()].sort(([a], [b]) => a < b ? -1 : 1)) {
+      const existing = usage.get(date3) ?? 0;
+      if (existing === 0 && newMinutes <= budget) continue;
+      conflicts.push({
+        date: date3,
+        existing_minutes: existing,
+        new_minutes: newMinutes,
+        daily_minutes: budget,
+        over_budget: existing + newMinutes > budget
+      });
+    }
+    const keys = d.knowledge_points.map((k) => k.key);
+    const placeholders = keys.map(() => "?").join(", ");
+    const dupRows = keys.length ? db2.prepare(
+      `SELECT DISTINCT sp.id AS plan_id, sp.title AS plan_title, pi.knowledge_key AS knowledge_key
+             FROM plan_items pi JOIN study_plans sp ON sp.id = pi.plan_id
+             WHERE sp.status = 'active' AND pi.status = 'pending' AND pi.knowledge_key IS NOT NULL AND pi.knowledge_key IN (${placeholders})`
+    ).all(...keys) : [];
+    const duplicate_knowledge_keys = dupRows.map((r) => ({
+      knowledge_key: String(r.knowledge_key),
+      plan_id: Number(r.plan_id),
+      plan_title: String(r.plan_title)
+    }));
+    const warnings = [];
+    const overDays = conflicts.filter((c) => c.over_budget);
+    if (overDays.length > 0) {
+      warnings.push(
+        `\u9884\u7B97\u51B2\u7A81\uFF1A${overDays.map((c) => `${c.date}\uFF08\u65E2\u6709 ${c.existing_minutes}m + \u65B0\u6392 ${c.new_minutes}m > ${budget}m\uFF09`).join("\u3001")}\uFF1B\u53EF\u6362\u8D77\u59CB\u65E5\u671F\u3001\u8C03\u9AD8\u6BCF\u65E5\u9884\u7B97\u6216\u5148\u8C03\u6574\u65E2\u6709\u8BA1\u5212`
+      );
+    }
+    if (duplicate_knowledge_keys.length > 0) {
+      warnings.push(
+        `\u77E5\u8BC6\u70B9\u91CD\u590D\uFF1A${duplicate_knowledge_keys.map((x) => `${x.knowledge_key}\uFF08\u8BA1\u5212\u300C${x.plan_title}\u300D\u672A\u5B8C\u6210\uFF09`).join("\u3001")} \u5DF2\u5728\u5176\u4ED6\u8FDB\u884C\u4E2D\u8BA1\u5212\u91CC\uFF0C\u786E\u8BA4\u6392\u671F\u524D\u8BF7\u4E0E\u7528\u6237\u6838\u5BF9\u662F\u5426\u91CD\u590D\u5B66\u4E60`
+      );
+    }
+    return {
+      draft_id: id,
+      start_date: start,
+      end_date: scheduled.endDate,
+      daily_minutes: budget,
+      items: scheduled.items,
+      ordered_keys: scheduled.ordered.map((k) => k.key),
+      dependency_chains: scheduled.ordered.map((k) => ({ key: k.key, name: k.name, depends_on: k.depends_on })),
+      assumptions: scheduled.assumptions,
+      conflicts,
+      over_budget_dates: conflicts.filter((c) => c.over_budget).map((c) => c.date).sort(),
+      duplicate_knowledge_keys,
+      warnings
+    };
+  };
+  const scheduleDraft = (id, startDate, dailyMinutes, opts = {}) => {
+    const d = getDraft(id);
+    if (d.status === "confirmed") throw new Error(`\u8349\u6848 ${id} \u5DF2\u786E\u8BA4\u4E3A\u8BA1\u5212 ${d.plan_id}\uFF0C\u4E0D\u80FD\u518D\u6392\u671F\uFF1B\u5982\u9700\u8C03\u6574\u8BF7\u4F7F\u7528\u8BA1\u5212\u8C03\u6574\u5EFA\u8BAE`);
+    if (d.status === "cancelled") throw new Error(`\u8349\u6848 ${id} \u5DF2\u53D6\u6D88\uFF0C\u4E0D\u80FD\u6392\u671F\uFF1B\u8BF7\u91CD\u65B0\u521B\u5EFA\u8349\u6848`);
+    const start = ensureValidDateStr(startDate);
+    const budget = assertDailyMinutes(dailyMinutes);
+    if (d.start_date === start && d.daily_minutes === budget && d.items.length > 0) return d;
+    const scheduled = scheduleKnowledgePoints(d.knowledge_points, budget, start);
+    const now = nowIso();
+    inTx(db2, () => {
+      assertOverDatesConfirmed(overDatesOf(scheduled.items, budget), opts.confirmed_over_dates, "\u6392\u671F");
+      const r = db2.prepare(
+        `UPDATE study_plan_drafts SET daily_minutes = ?, start_date = ?, end_date = ?, items = ?, assumptions = ?, conflict_checked_at = ?, updated_at = ? WHERE id = ? AND status = 'draft'`
+      ).run(budget, start, scheduled.endDate, JSON.stringify(scheduled.items), JSON.stringify(scheduled.assumptions), now, now, id);
+      if (r.changes === 0) throw new Error(`\u8349\u6848 ${id} \u72B6\u6001\u5DF2\u53D8\u5316\uFF08\u5E76\u53D1\u786E\u8BA4/\u53D6\u6D88\uFF09\uFF0C\u672C\u6B21\u6392\u671F\u672A\u751F\u6548\uFF0C\u8BF7\u91CD\u8BFB\u8349\u6848\u540E\u518D\u8BD5`);
+    });
+    return getDraft(id);
+  };
   const listDrafts = (status) => {
     const where = status ? "WHERE status = ?" : "";
     const params = status ? [status] : [];
@@ -25947,12 +26387,23 @@ function createStudyService(db2, deps) {
     if (!row) throw new Error(`\u5B66\u4E60\u8BA1\u5212\u8349\u6848 ${id} \u4E0D\u5B58\u5728`);
     return mapDraft(row);
   };
-  const confirmDraft = (id) => {
+  const rollbackPlanWithTodos = (planId) => {
+    const todoIds = db2.prepare("SELECT todo_id FROM plan_items WHERE plan_id = ?").all(planId).map((r) => r.todo_id).filter((t) => t != null);
+    deps.plans.remove(planId);
+    for (const tid of todoIds) deps.todos.remove(tid);
+  };
+  const confirmDraft = (id, opts = {}) => {
     const d = getDraft(id);
     if (d.status === "confirmed" && d.plan_id != null) {
       return { draft: d, plan: deps.plans.get(d.plan_id) };
     }
     if (d.status === "cancelled") throw new Error(`\u8349\u6848 ${id} \u5DF2\u53D6\u6D88\uFF0C\u4E0D\u80FD\u786E\u8BA4\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u8349\u6848`);
+    if (d.start_date == null || d.end_date == null || d.daily_minutes == null || d.items.length === 0) {
+      throw new Error(`\u8349\u6848 ${id} \u5C1A\u672A\u6392\u671F\uFF08\u7F3A\u8D77\u59CB\u65E5\u671F/\u6BCF\u65E5\u9884\u7B97/\u9010\u65E5\u5B89\u6392\uFF09\uFF0C\u4E0D\u80FD\u786E\u8BA4\uFF1B\u8BF7\u5148 preview_study_draft_schedule \u9884\u89C8\u5E76 schedule_study_draft \u6392\u671F`);
+    }
+    if (d.conflict_checked_at != null) {
+      assertOverDatesConfirmed(overDatesOf(d.items, d.daily_minutes), opts.confirmed_over_dates, "\u786E\u8BA4");
+    }
     const plan = deps.plans.create({
       title: d.title,
       goal: d.goal || `\u76EE\u6807\uFF1A${d.title}`,
@@ -25974,11 +26425,20 @@ function createStudyService(db2, deps) {
       pendingError = e;
     }
     if (!confirmed) {
-      const todoIds = db2.prepare("SELECT todo_id FROM plan_items WHERE plan_id = ?").all(plan.id).map((r) => r.todo_id).filter((t) => t != null);
-      deps.plans.remove(plan.id);
-      for (const tid of todoIds) deps.todos.remove(tid);
+      rollbackPlanWithTodos(plan.id);
       if (pendingError) throw pendingError;
       throw new Error(`\u8349\u6848 ${id} \u786E\u8BA4\u4E2D\u65AD\uFF08\u72B6\u6001\u66F4\u65B0\u672A\u751F\u6548\uFF09\uFF0C\u5DF2\u56DE\u6EDA\u672C\u6B21\u751F\u6210\u7684\u8BA1\u5212 ${plan.id}`);
+    }
+    if (d.conflict_checked_at != null) {
+      try {
+        assertOverDatesConfirmed(overDatesOf(d.items, d.daily_minutes, plan.id), opts.confirmed_over_dates, "\u786E\u8BA4\u590D\u68C0");
+      } catch (e) {
+        db2.prepare(
+          `UPDATE study_plan_drafts SET status = 'draft', plan_id = NULL, confirmed_at = NULL, updated_at = ? WHERE id = ?`
+        ).run(nowIso(), id);
+        rollbackPlanWithTodos(plan.id);
+        throw e;
+      }
     }
     return { draft: getDraft(id), plan };
   };
@@ -26649,6 +27109,10 @@ ${body}`;
   const listCardExports = () => db2.prepare("SELECT card_key, file_path, content_hash, exported_at FROM card_exports ORDER BY exported_at DESC").all();
   return {
     draft,
+    draftDateless,
+    updateDraftMeta,
+    previewDraftSchedule,
+    scheduleDraft,
     listDrafts,
     getDraft,
     confirmDraft,
@@ -28150,10 +28614,11 @@ server.tool(
     search: external_exports.string().optional().describe("\u5728\u6807\u9898\u548C\u6458\u8981\u4E2D\u641C\u7D22\uFF08\u5E93\u5185\uFF0C\u4E0D\u8054\u7F51\uFF09"),
     filter: external_exports.enum(["all", "unread", "starred"]).optional().describe("\u9ED8\u8BA4 all\uFF1Bunread=\u53EA\u770B\u672A\u8BFB\uFF0Cstarred=\u53EA\u770B\u6536\u85CF"),
     since: external_exports.string().optional().describe("ISO \u65F6\u95F4\u6233\uFF1A\u53EA\u770B\u6B64\u65F6\u523B\u4E4B\u540E\u53D1\u5E03\u7684\uFF08\u5982\u8FD1 24 \u5C0F\u65F6\u7A97\u53E3\uFF09"),
-    limit: external_exports.number().int().positive().max(500).optional().describe("\u9ED8\u8BA4 100\uFF1B\u5386\u53F2\u5C55\u793A\u4E0D\u53D7\u4EFB\u52A1 10 \u6761\u9884\u7B97\u9650\u5236")
+    limit: external_exports.number().int().positive().max(500).optional().describe("\u9ED8\u8BA4 100\uFF1B\u5386\u53F2\u5C55\u793A\u4E0D\u53D7\u4EFB\u52A1 10 \u6761\u9884\u7B97\u9650\u5236"),
+    offset: external_exports.number().int().min(0).optional().describe("\u5206\u9875\u504F\u79FB\uFF08\u914D\u5408 limit \u4F7F\u7528\uFF0C\u6309\u53D1\u5E03\u65F6\u95F4\u5012\u5E8F\uFF09")
   },
-  async ({ days, source, task_id, search, filter, since, limit }) => wrap(() => {
-    const news = core.news.list({ days: days ?? 3, source, task_id, search, filter: filter ?? "all", since, limit });
+  async ({ days, source, task_id, search, filter, since, limit, offset }) => wrap(() => {
+    const news = core.news.list({ days: days ?? 3, source, task_id, search, filter: filter ?? "all", since, limit, offset });
     return {
       count: news.length,
       last_fetched_at: core.news.lastFetchedAt(),
@@ -28252,8 +28717,14 @@ server.tool(
   async ({ task_id }) => wrap(() => core.news.markAllRead({ task_id }))()
 );
 server.tool(
+  "delete_news_item",
+  "\u5220\u9664\u4E00\u6761\u65B0\u95FB\uFF08\u4E0D\u53EF\u6062\u590D\uFF09\u3002\u4EC0\u4E48\u573A\u666F\u8C03\u7528\u6211\uFF1A\u7528\u6237\u660E\u786E\u8981\u6C42\u5220\u9664\u67D0\u6761\u65B0\u95FB\uFF0C\u4E14\u4F60\u5DF2\u5411\u7528\u6237\u786E\u8BA4\u300C\u5220\u9664\u540E\u4E0D\u53EF\u6062\u590D\u300D\u3002\u52A1\u5FC5\u5148\u5411\u7528\u6237\u590D\u8FF0\u6807\u9898\u5E76\u5F97\u5230\u786E\u8BA4\u518D\u8C03\u7528\u3002\u884C\u4E3A\uFF1A\u5355\u4E8B\u52A1\u5220\u9664\u6B63\u6587\u4E0E\u6536\u85CF/\u5DF2\u8BFB\u72B6\u6001\uFF1B\u968F\u884C\u6E05\u7406\u4EC5\u65B0\u95FB\u72EC\u5360\u7684\u8BDD\u9898\u94FE\u63A5\uFF1B\u5F15\u7528\u5B83\u7684\u81EA\u5A92\u4F53\u9009\u9898/\u7D20\u6750\u4FDD\u7559\u6210\u679C\u4E0E\u6765\u6E90\u5FEB\u7167\u3001\u4EC5\u89E3\u9664\u5931\u6548\u5F15\u7528\uFF1B\u4FDD\u7559\u6700\u5C0F\u54C8\u5E0C\u53BB\u91CD\u6307\u7EB9\uFF0C\u4E4B\u540E\u540C\u94FE\u63A5/\u540C\u4E8B\u4EF6\u7684\u63D0\u4EA4\u4F1A\u88AB\u62D2\u7EDD\uFF1BAI \u91C7\u96C6\u4EFB\u52A1\u7684\u7D2F\u8BA1\u6536\u5F55\u540D\u989D\u4E0D\u56E0\u5220\u9664\u8FD4\u8FD8\u3002\u5E42\u7B49\uFF1A\u91CD\u590D\u5220\u9664\u540C\u4E00 id \u8FD4\u56DE deleted:false\u3002\u7EDD\u4E0D\u6279\u91CF\u5220\u9664\u3001\u7EDD\u4E0D\u672A\u7ECF\u7528\u6237\u786E\u8BA4\u8C03\u7528",
+  { id: external_exports.number().int().positive().describe("\u65B0\u95FB id\uFF08\u53EF\u4ECE list_news \u83B7\u53D6\uFF09") },
+  async ({ id }) => wrap(() => core.news.deleteItem(id))()
+);
+server.tool(
   "import_course",
-  "\u5BFC\u5165\u6559\u5B66\u8BFE\u7A0B\u5305\uFF08staging \u76EE\u5F55\u6839\u987B\u542B course.json \u4E0E\u8BB2\u4E49 HTML\uFF09\u3002\u5B89\u5168\uFF1A\u8DEF\u5F84\u7A7F\u8D8A\u4E0E\u7B26\u53F7\u94FE\u63A5\u62D2\u7EDD\uFF08\u542B\u8F93\u5165\u5305\u6839/\u8BFE\u7A0B\u8D44\u4EA7\u6839\u81EA\u8EAB\u4E3A\u7B26\u53F7\u94FE\u63A5\uFF09\u3001HTML \u6D88\u6BD2\uFF08\u5265 script/\u4E8B\u4EF6/\u5371\u9669\u534F\u8BAE\u3001\u4E2D\u548C\u5916\u90E8\u8D44\u6E90\uFF1B\u5305\u5185\u76F8\u5BF9 .css \u6837\u5F0F\u8868\u5185\u8054\u4E3A\u79BB\u7EBF <style>\uFF0C@import \u4E0E\u5916\u90E8 url() \u79FB\u9664\uFF0C\u5916\u90E8\u6837\u5F0F\u5F15\u7528\u4E00\u5F8B\u5265\u9664\u2014\u2014\u8BB2\u4E49\u79BB\u7EBF\u81EA\u5305\u542B\u4E14\u6392\u7248\u4FDD\u7559\uFF09\u3001\u8D44\u4EA7\u62F7\u8D1D\u5165\u5E94\u7528\u6570\u636E\u8BFE\u7A0B\u76EE\u5F55\uFF1B\u5E42\u7B49\uFF08\u540C\u5185\u5BB9\u4E14\u78C1\u76D8\u6587\u4EF6\u4E00\u81F4\u624D\u65E0\u53D8\u66F4\uFF0C\u7F3A\u6587\u4EF6\u81EA\u52A8\u4FEE\u590D\uFF09\uFF1B\u6837\u8BFE\u53D8\u66F4\u4F1A\u4F7F\u65E2\u6709\u786E\u8BA4\u8FC7\u671F\u3002\u7ED1\u5B9A\u65E2\u6709 plan_id \u53EA\u5F15\u7528\u4E0D\u521B\u5EFA\u8BA1\u5212\uFF08\u987B\u5DF2\u5B58\u5728\uFF1B\u5DF2\u7ED1\u5B9A\u7684\u8BFE\u7A0B\u4E0D\u5F97\u6539\u7ED1\u5176\u4ED6\u8BA1\u5212\uFF0C\u7701\u7565\u8868\u793A\u6CBF\u7528\uFF09\u3002\u8BFE\u7A0B\u5305\u5FC5\u987B\u6070\u597D\u542B\u4E00\u4E2A is_sample \u6837\u8BFE\u6807\u8BB0\uFF08\u6837\u8BFE\u5305\u4EC5\u6837\u8BFE\u4E00\u5929\uFF1B\u5B8C\u6574\u5305\u4FDD\u7559\u6837\u8BFE\u6807\u8BB0\uFF09\u3002\u5B8C\u6574\u5305\uFF08\u542B\u975E\u6837\u8BFE\u5929\uFF09\u5BF9\u5DF2\u8D70\u6837\u8BFE\u6D41\u7A0B\u7684\u8BFE\u7A0B\uFF1A\u4EC5\u5728\u7528\u6237\u5DF2\u786E\u8BA4\u6837\u8BFE\u3001\u5B58\u5728\u4F60\u65B9\u5DF2\u8BA4\u9886\uFF08claim_course_request\uFF09\u7684\u751F\u6210\u8BF7\u6C42\u3001\u4E14\u5305\u5185\u6837\u8BFE\u6B63\u6587\u4E0E\u7528\u6237\u786E\u8BA4\u7248\u672C\u9010\u5B57\u8282\u4E00\u81F4\u65F6\u653E\u884C\u2014\u2014\u4E0D\u80FD\u7ED5\u8FC7\u786E\u8BA4\u4E0E\u8BF7\u6C42\u961F\u5217\u76F4\u63A5\u5BFC\u5165\u3002\u4F8B\u5916\uFF1A\u8BFE\u7A0B\u5DF2\u5B8C\u6210\u540E\u91CD\u5BFC\u5B8C\u5168\u76F8\u540C\u5185\u5BB9\uFF08\u540C\u7248\u672C\u540C\u54C8\u5E0C\uFF09\u7684\u5B8C\u6574\u5305\u65E0\u9700\u518D\u8BA4\u9886\uFF08\u5E42\u7B49\u91CD\u8BD5/\u4E22\u6587\u4EF6\u4FEE\u590D\u7528\uFF09\uFF1B\u4EFB\u4F55\u5185\u5BB9\u53D8\u5316\u4ECD\u987B\u65B0\u786E\u8BA4+\u65B0\u8BF7\u6C42+\u8BA4\u9886",
+  '\u5BFC\u5165\u6559\u5B66\u8BFE\u7A0B\u5305\uFF08staging \u76EE\u5F55\u6839\u987B\u542B course.json\u3001\u72EC\u7ACB\u603B\u89C8 HTML \u4E0E D1..Dn \u8BB2\u4E49 HTML\uFF09\u3002\u65B0\u5305\u8BF7\u58F0\u660E schema_version: 2 \u548C overview: {"html":"overview.html"}\uFF1Bv2 \u5F3A\u5236\u603B\u89C8\u5355\u72EC\u751F\u6210\uFF0CD1 \u53EA\u5199\u7B2C\u4E00\u5929\u6559\u5B66\u5185\u5BB9\uFF0C\u4E0D\u8981\u628A\u603B\u89C8\u585E\u8FDB D1\u3002\u65E0 schema_version \u7684\u65E7\u5305\u4ECD\u53EF\u5BFC\u5165\uFF0C\u7F3A\u603B\u89C8\u65F6 App \u663E\u793A\u5F85\u751F\u6210\uFF1B\u8865\u5145\u603B\u89C8\u65F6\u5E26 overview.html \u91CD\u5BFC\u6837\u8BFE\u5305\u5373\u53EF\uFF0C\u4E0D\u4F1A\u6539\u5199\u5DF2\u751F\u6210\u7684\u5176\u4ED6\u5929\u3002\u5B89\u5168\uFF1A\u8DEF\u5F84\u7A7F\u8D8A\u4E0E\u7B26\u53F7\u94FE\u63A5\u62D2\u7EDD\u3001HTML \u6D88\u6BD2\u3001\u5305\u5185\u76F8\u5BF9 CSS \u5185\u8054\u5E76\u79FB\u9664\u5916\u90E8\u8D44\u6E90\uFF1B\u5E42\u7B49\uFF08\u540C\u5185\u5BB9\u4E14\u78C1\u76D8\u6587\u4EF6\u4E00\u81F4\u624D\u65E0\u53D8\u66F4\uFF0C\u7F3A\u6587\u4EF6\u81EA\u52A8\u4FEE\u590D\uFF09\uFF1B\u6837\u8BFE\u53D8\u66F4\u4F1A\u4F7F\u65E2\u6709\u786E\u8BA4\u8FC7\u671F\u3002\u7ED1\u5B9A\u65E2\u6709 plan_id \u53EA\u5F15\u7528\u4E0D\u521B\u5EFA\u8BA1\u5212\uFF08\u987B\u5DF2\u5B58\u5728\uFF1B\u5DF2\u7ED1\u5B9A\u8BFE\u7A0B\u4E0D\u5F97\u6539\u7ED1\uFF0C\u7701\u7565\u8868\u793A\u6CBF\u7528\uFF09\u3002\u8BFE\u7A0B\u5305\u5FC5\u987B\u6070\u597D\u542B\u4E00\u4E2A is_sample \u6837\u8BFE\u6807\u8BB0\uFF08\u6837\u8BFE\u5305\u4EC5\u6837\u8BFE\u4E00\u5929\uFF1B\u5B8C\u6574\u5305\u4FDD\u7559\u6807\u8BB0\uFF09\u3002\u5B8C\u6574\u5305\u4EC5\u5728\u7528\u6237\u5DF2\u786E\u8BA4\u6837\u8BFE\u3001\u751F\u6210\u8BF7\u6C42\u5DF2\u88AB\u8BA4\u9886\u4E14\u6837\u8BFE\u6B63\u6587\u4E0E\u786E\u8BA4\u7248\u672C\u9010\u5B57\u8282\u4E00\u81F4\u65F6\u653E\u884C\uFF1B\u5DF2\u5B8C\u6210\u8BFE\u7A0B\u540C\u5185\u5BB9\u91CD\u5BFC\u53EF\u5E42\u7B49\u4FEE\u590D',
   { staging_dir: external_exports.string().min(1).describe("\u8BFE\u7A0B\u5305 staging \u76EE\u5F55\u7EDD\u5BF9\u8DEF\u5F84\uFF08\u5305\u6839\u542B course.json\uFF09") },
   async ({ staging_dir }) => wrap(() => {
     const r = core.courses.importCourse(staging_dir);
@@ -28262,6 +28733,7 @@ server.tool(
       slug: r.course.slug,
       status: r.course.status,
       plan_id: r.course.plan_id,
+      has_overview: core.courses.getOverview(r.course.id) != null,
       lessons: r.lessons.map((l) => ({ day: l.day, title: l.title, is_sample: l.is_sample, estimated_minutes: l.estimated_minutes })),
       idempotent: r.idempotent,
       confirmation_expired: r.confirmation_expired,
@@ -28276,10 +28748,20 @@ server.tool(
   wrap(
     () => core.courses.listCourses().map((c) => ({
       ...c,
+      has_overview: core.courses.getOverview(c.id) != null,
       pending_requests: core.courses.listRequests({ course_id: c.id, status: "pending" }).length,
       lesson_days: core.courses.listLessons(c.id).map((l) => l.day)
     }))
   )
+);
+server.tool(
+  "get_course_overview",
+  "\u8BFB\u53D6\u72EC\u7ACB\u8BFE\u7A0B\u603B\u89C8\u7684\u5DF2\u6D88\u6BD2 HTML\uFF08\u4E0D\u5C5E\u4E8E D1..Dn\uFF0C\u4E5F\u4E0D\u8BA1\u5165\u6BCF\u65E5\u8BB2\u4E49\u8FDB\u5EA6\uFF09\uFF1B\u65E7\u8BFE\u7A0B\u5C1A\u672A\u751F\u6210\u603B\u89C8\u65F6\u8FD4\u56DE null",
+  { course_id: external_exports.number().int().positive() },
+  async ({ course_id }) => wrap(() => {
+    const overview = core.courses.getOverview(course_id);
+    return overview ? { overview, html: core.courses.readOverviewHtml(overview) } : null;
+  })()
 );
 server.tool(
   "get_course_lessons",
@@ -28368,15 +28850,16 @@ server.tool(
 );
 var STUDY_TOOL_CHAIN = [
   "get_study_workflow / draft_study_plan / confirm_study_plan_draft / cancel_study_plan_draft",
+  "draft_study_topic / update_study_topic_draft / preview_study_draft_schedule / schedule_study_draft\uFF08\u65E0\u65E5\u671F\u4E13\u9898\u8349\u6848\uFF1A\u5148\u5B58\u540E\u6392\u671F\uFF09",
   "record_study_session / record_study_assessment / get_mastery",
   "suggest_plan_adjustments / apply_plan_adjustments",
   "preview_study_cards / export_study_cards"
 ];
 server.tool(
   "get_study_workflow",
-  "\u83B7\u53D6 TodoDesk \u5B66\u4E60\u95ED\u73AF\u7684\u5B8C\u6574\u6267\u884C\u89C4\u8303\uFF08\u76EE\u6807\u6F84\u6E05\u2192\u5148\u4FEE\u8BCA\u65AD\u2192\u8349\u6848\u2192\u6BCF\u65E5\u5B66\u4E60\u4F1A\u8BDD\u2192\u6D4B\u8BC4\u7559\u8BC1\u2192\u590D\u76D8\u8C03\u6574\u2192\u77E5\u8BC6\u5361\u7247\u6C89\u6DC0\u7684 agent \u64CD\u4F5C\u89C4\u8303\u4E0E\u5168\u90E8\u900F\u660E\u89C4\u5219\uFF09\u3002\u7528\u6237\u8BF4\u300C\u5B66\u4E60 X\u300D\u300C\u5E2E\u6211\u5B89\u6392\u5B66\u4E60\u300D\u65F6\u5148\u8BFB\u5B83\uFF0C\u518D\u6309\u89C4\u8303\u6267\u884C\uFF1B\u5185\u5BB9\u4E0E App \u5E2E\u52A9\u9762\u677F\u540C\u6E90",
+  "\u83B7\u53D6 TodoDesk \u5B66\u4E60\u95ED\u73AF\u7684\u5B8C\u6574\u6267\u884C\u89C4\u8303\uFF08\u76EE\u6807\u6F84\u6E05\u2192\u5148\u4FEE\u8BCA\u65AD\u2192\u8349\u6848\uFF08\u53EF\u5148\u65E0\u65E5\u671F\u4FDD\u5B58\uFF09\u2192\u6392\u671F\u9884\u89C8\u4E0E\u63D0\u4EA4\u2192\u6BCF\u65E5\u5B66\u4E60\u4F1A\u8BDD\u2192\u6D4B\u8BC4\u7559\u8BC1\u2192\u590D\u76D8\u8C03\u6574\u2192\u77E5\u8BC6\u5361\u7247\u6C89\u6DC0\u7684 agent \u64CD\u4F5C\u89C4\u8303\u4E0E\u5168\u90E8\u900F\u660E\u89C4\u5219\uFF09\u3002\u7528\u6237\u8BF4\u300C\u5B66\u4E60 X\u300D\u300C\u5E2E\u6211\u5B89\u6392\u5B66\u4E60\u300D\u300C\u8FD9\u4E9B\u4E13\u9898\u5148\u5B58\u7740\u4EE5\u540E\u518D\u5B66\u300D\u65F6\u5148\u8BFB\u5B83\uFF0C\u518D\u6309\u89C4\u8303\u6267\u884C\uFF1B\u5185\u5BB9\u4E0E App \u5E2E\u52A9\u9762\u677F\u540C\u6E90",
   {},
-  wrap(() => ({ spec_version: "2026-10-v1", tool_chain: STUDY_TOOL_CHAIN, spec_markdown: study_loop_default }))
+  wrap(() => ({ spec_version: "2026-10-v2", tool_chain: STUDY_TOOL_CHAIN, spec_markdown: study_loop_default }))
 );
 var knowledgePointSchema = external_exports.object({
   key: external_exports.string().min(1).describe("\u77E5\u8BC6\u70B9\u7A33\u5B9A\u6807\u8BC6\uFF0C\u5C0F\u5199 slug\uFF08\u5982 matrix-multiply\uFF09\uFF0C\u5361\u7247\u4E0E\u4F1A\u8BDD\u9760\u5B83\u5173\u8054"),
@@ -28423,10 +28906,13 @@ server.tool(
 );
 server.tool(
   "confirm_study_plan_draft",
-  "\u786E\u8BA4\u8349\u6848\u4E3A\u6B63\u5F0F\u5B66\u4E60\u8BA1\u5212\uFF08\u751F\u6210\u9010\u65E5\u6761\u76EE\u4E0E\u5BF9\u5E94\u5F85\u529E\uFF0C\u8FDB\u5165\u4ECA\u65E5\u9762\u677F/\u5F85\u529E\u5217\u8868\uFF09\u3002\u5E42\u7B49\uFF1A\u5BF9\u5DF2\u786E\u8BA4\u8349\u6848\u91CD\u590D\u8C03\u7528\u8FD4\u56DE\u539F\u8BA1\u5212\u4E0D\u91CD\u590D\u521B\u5EFA\u3002\u5FC5\u987B\u5148\u628A\u9884\u89C8\u5FF5\u7ED9\u7528\u6237\u5E76\u53D6\u5F97\u540C\u610F",
-  { draft_id: external_exports.number().int().positive() },
-  async ({ draft_id }) => wrap(() => {
-    const { draft, plan } = core.study.confirmDraft(draft_id);
+  "\u786E\u8BA4\u8349\u6848\u4E3A\u6B63\u5F0F\u5B66\u4E60\u8BA1\u5212\uFF08\u751F\u6210\u9010\u65E5\u6761\u76EE\u4E0E\u5BF9\u5E94\u5F85\u529E\uFF0C\u8FDB\u5165\u4ECA\u65E5\u9762\u677F/\u5F85\u529E\u5217\u8868\uFF09\u3002\u5E42\u7B49\uFF1A\u5BF9\u5DF2\u786E\u8BA4\u8349\u6848\u91CD\u590D\u8C03\u7528\u8FD4\u56DE\u539F\u8BA1\u5212\u4E0D\u91CD\u590D\u521B\u5EFA\u3002\u5FC5\u987B\u5148\u628A\u9884\u89C8\u5FF5\u7ED9\u7528\u6237\u5E76\u53D6\u5F97\u540C\u610F\u3002**\u786E\u8BA4\u8FB9\u754C\u51B2\u7A81\u786C\u6821\u9A8C**\uFF08\u7ECF schedule_study_draft \u6392\u671F\u7684\u8349\u6848\uFF09\uFF1A\u6392\u671F\u540E\u65E2\u6709\u8BA1\u5212\u53D8\u52A8\u53EF\u80FD\u5F15\u5165\u65B0\u7684\u8D85\u9884\u7B97\u51B2\u7A81\u2014\u2014\u786E\u8BA4\u65F6\u670D\u52A1\u7AEF\u91CD\u7B97\uFF0C\u82E5\u5B58\u5728\u8D85\u9884\u7B97\u65E5\u671F\u5FC5\u987B\u628A\u7528\u6237\u786E\u8BA4\u7684\u96C6\u5408\u4F5C\u4E3A confirmed_over_dates \u4F20\u56DE\u4E14\u4E0E\u91CD\u7B97\u7CBE\u786E\u4E00\u81F4\uFF0C\u5426\u5219\u62D2\u7EDD\uFF08\u987B\u91CD\u65B0\u9884\u89C8\u6392\u671F\uFF09\u3002\u65E7\u8DEF\u5F84\u8349\u6848\uFF08draft_study_plan \u521B\u5EFA\u5373\u6392\u671F\uFF09\u4E0D\u8BBE\u6B64\u51B2\u7A81\u95E8",
+  {
+    draft_id: external_exports.number().int().positive(),
+    confirmed_over_dates: external_exports.array(dateSchema).optional().describe("\u7528\u6237\u786E\u8BA4\u63A5\u53D7\u7684\u8D85\u9884\u7B97\u65E5\u671F\uFF1A\u4E0E\u5F53\u4E0B\u91CD\u7B97\u7ED3\u679C\u5B8C\u5168\u4E00\u81F4\uFF1B\u65E0\u51B2\u7A81\u5219\u4E0D\u4F20")
+  },
+  async ({ draft_id, confirmed_over_dates }) => wrap(() => {
+    const { draft, plan } = core.study.confirmDraft(draft_id, { confirmed_over_dates });
     return {
       draft_status: draft.status,
       plan_id: plan.id,
@@ -28443,6 +28929,86 @@ server.tool(
   "\u53D6\u6D88\u5B66\u4E60\u8BA1\u5212\u8349\u6848\uFF08\u65E0\u4EFB\u4F55\u526F\u4F5C\u7528\uFF1A\u4E0D\u4EA7\u751F/\u4E0D\u5220\u9664\u8BA1\u5212\u4E0E\u5F85\u529E\uFF0C\u91CD\u590D\u53D6\u6D88\u5E42\u7B49\uFF09\u3002\u5DF2\u786E\u8BA4\u7684\u8349\u6848\u4E0D\u80FD\u53D6\u6D88\uFF0C\u8BF7\u6539\u7528\u8BA1\u5212\u7684\u5F52\u6863",
   { draft_id: external_exports.number().int().positive() },
   async ({ draft_id }) => wrap(() => core.study.cancelDraft(draft_id))()
+);
+var topicKnowledgePointSchema = knowledgePointSchema;
+server.tool(
+  "draft_study_topic",
+  "\u4FDD\u5B58**\u65E0\u65E5\u671F\u5B66\u4E60\u4E13\u9898\u8349\u6848**\uFF1A\u7528\u6237\u5C1A\u672A\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\uFF08\u5982\u300C\u8FD9\u516D\u4EFD\u4E13\u9898\u6587\u7A3F\u5148\u5B58\u7740\uFF0C\u4EC0\u4E48\u65F6\u5019\u5B66\u518D\u5B9A\u300D\uFF09\u65F6\u7528\u5B83\u3002\u53EA\u4FDD\u5B58\u4E3B\u9898\u5927\u7EB2\u3001\u77E5\u8BC6\u70B9\u5206\u89E3\u3001\u6750\u6599\u6765\u6E90\u4E0E\u53EF\u9009\u7684\u6837\u8BFE\u8BFE\u7A0B\u5173\u8054\uFF08course_id\uFF0C\u6837\u8BFE\u672A\u786E\u8BA4\u4E5F\u53EF\u5173\u8054\uFF09\u2014\u2014**\u4E0D\u6392\u65E5\u7A0B\u3001\u4E0D\u4EA7\u5F85\u529E\u3001\u4E0D\u5360\u6BCF\u65E5\u9884\u7B97**\u3002\u521B\u5EFA\u65F6\u5373\u6821\u9A8C\u77E5\u8BC6\u70B9\uFF08key \u683C\u5F0F/\u4F9D\u8D56/\u73AF\uFF09\u3002\u5F85\u7528\u6237\u7ED9\u51FA\u65E5\u671F\u4E0E\u9884\u7B97\u540E\u8D70 preview_study_draft_schedule \u2192 schedule_study_draft \u2192 confirm_study_plan_draft\u3002\u7528\u6237\u5DF2\u7ED9\u51FA\u65E5\u671F\u4E0E\u9884\u7B97\u65F6\u76F4\u63A5\u7528 draft_study_plan",
+  {
+    title: external_exports.string().min(1).describe("\u4E13\u9898\u6807\u9898\uFF0C\u5982\u300CRust \u4E13\u9898\uFF1A\u6240\u6709\u6743\u300D"),
+    goal: external_exports.string().optional().describe("\u5B66\u4E60\u76EE\u6807\uFF08\u5B66\u5B8C\u80FD\u505A\u4EC0\u4E48\uFF09"),
+    material_source: external_exports.string().optional().describe("\u6750\u6599\u6765\u6E90\uFF08\u6587\u7A3F/\u4E66/\u8BFE\u7A0B/\u94FE\u63A5\uFF09"),
+    knowledge_points: external_exports.array(topicKnowledgePointSchema).min(1).describe("\u77E5\u8BC6\u70B9\u5206\u89E3\u6E05\u5355\uFF08\u4F9D\u8D56\u62D3\u6251\u5728\u521B\u5EFA\u65F6\u5373\u6821\u9A8C\uFF0C\u4F46\u6B64\u65F6\u4E0D\u6392\u65E5\u671F\uFF09"),
+    course_id: external_exports.number().int().positive().nullable().optional().describe("\u5173\u8054\u8BFE\u7A0B id\uFF08\u53EF\u4E3A\u6837\u8BFE\u5C1A\u672A\u786E\u8BA4\u7684\u8BFE\u7A0B\uFF1B\u4EC5\u4FE1\u606F\u6027\u5173\u8054\uFF0C\u4E0D\u6539\u8BFE\u7A0B\u7ED1\u5B9A\uFF0C\u8BFE\u7A0B\u4E0E\u8BA1\u5212\u7684\u7ED1\u5B9A\u4ECD\u4EE5\u8BFE\u7A0B\u5305\u5BFC\u5165\u4E3A\u51C6\uFF09"),
+    notes: external_exports.string().optional()
+  },
+  async (input) => wrap(() => {
+    const draft = core.study.draftDateless(input);
+    return {
+      draft_id: draft.id,
+      status: draft.status,
+      scheduled: false,
+      knowledge_point_count: draft.knowledge_points.length,
+      course_id: draft.course_id,
+      assumptions: draft.assumptions,
+      hint: `\u65E0\u65E5\u671F\u4E13\u9898\u8349\u6848\u5DF2\u4FDD\u5B58\uFF08\u672A\u6392\u671F\uFF1A\u4E0D\u6392\u65E5\u7A0B\u3001\u4E0D\u4EA7\u5F85\u529E\u3001\u4E0D\u5360\u9884\u7B97\uFF09\u3002\u5F85\u7528\u6237\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u540E\uFF1Apreview_study_draft_schedule(draft_id=${draft.id}) \u9884\u89C8\u51B2\u7A81\u4E0E\u4F9D\u8D56 \u2192 \u7528\u6237\u786E\u8BA4 \u2192 schedule_study_draft \u6392\u671F \u2192 confirm_study_plan_draft \u751F\u6210\u8BA1\u5212`,
+      draft
+    };
+  })()
+);
+server.tool(
+  "update_study_topic_draft",
+  "\u66F4\u65B0**\u672A\u6392\u671F**\u4E13\u9898\u8349\u6848\u7684\u5185\u5BB9\uFF08\u6807\u9898/\u76EE\u6807/\u6750\u6599/\u77E5\u8BC6\u70B9/\u6837\u8BFE\u8BFE\u7A0B\u5173\u8054/\u5907\u6CE8\uFF1B\u77E5\u8BC6\u70B9\u6574\u4F53\u66FF\u6362\u5E76\u91CD\u65B0\u6821\u9A8C\uFF09\u3002\u4EC5\u8349\u6848\u672A\u6392\u671F\u4E14\u672A\u786E\u8BA4\u65F6\u53EF\u6539\uFF1B\u5DF2\u6392\u671F\u540E\u5185\u5BB9\u9501\u5B9A\uFF0C\u8C03\u6574\u8BF7\u53D6\u6D88\u91CD\u5EFA",
+  {
+    draft_id: external_exports.number().int().positive(),
+    title: external_exports.string().min(1).optional(),
+    goal: external_exports.string().optional().nullable(),
+    material_source: external_exports.string().optional().nullable(),
+    knowledge_points: external_exports.array(topicKnowledgePointSchema).min(1).optional().describe("\u6574\u4F53\u66FF\u6362\u77E5\u8BC6\u70B9\u6E05\u5355"),
+    course_id: external_exports.number().int().positive().nullable().optional().describe("\u4F20 null \u6E05\u9664\u5173\u8054"),
+    notes: external_exports.string().optional().nullable()
+  },
+  async ({ draft_id, ...patch }) => wrap(() => {
+    const draft = core.study.updateDraftMeta(draft_id, patch);
+    return { draft_id: draft.id, status: draft.status, scheduled: draft.start_date != null, draft };
+  })()
+);
+server.tool(
+  "preview_study_draft_schedule",
+  "**\u6392\u671F\u9884\u89C8\uFF08\u53EA\u8BFB\uFF0C\u4E0D\u5199\u5E93\uFF09**\uFF1A\u7528\u6237\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u540E\uFF0C\u5148\u628A\u65E0\u65E5\u671F\u8349\u6848\uFF08\u6216\u5DF2\u6392\u671F\u672A\u786E\u8BA4\u8349\u6848\uFF09\u7684\u6392\u671F\u7ED3\u679C\u5FF5\u7ED9\u7528\u6237\u2014\u2014\u9010\u65E5\u5B89\u6392\u3001\u77E5\u8BC6\u70B9\u4F9D\u8D56\u62D3\u6251\u987A\u5E8F\u3001\u4E0E\u5176\u4ED6**\u8FDB\u884C\u4E2D\u8BA1\u5212**\u7684\u6BCF\u65E5\u9884\u7B97\u51B2\u7A81\uFF08\u65E2\u6709\u5360\u7528+\u65B0\u6392\u8D85\u9884\u7B97\u7684\u65E5\u5B50\uFF0C\u6C47\u603B\u5728\u8FD4\u56DE\u7684 over_budget_dates\uFF09\u4E0E\u77E5\u8BC6\u70B9\u91CD\u590D\u9884\u8B66\u3001\u900F\u660E\u89C4\u5219\u5047\u8BBE\u3002\u7528\u6237\u9010\u6761\u786E\u8BA4\u51B2\u7A81\u540E\u8C03 schedule_study_draft \u5E76\u628A over_budget_dates \u539F\u6837\u4F5C\u4E3A confirmed_over_dates \u4F20\u56DE\u3002\u6709\u4F9D\u8D56\u73AF\u6216\u53C2\u6570\u975E\u6CD5\u5728\u6B64\u5373\u62A5\u9519",
+  {
+    draft_id: external_exports.number().int().positive(),
+    start_date: dateSchema.describe("\u8D77\u59CB\u65E5\u671F\uFF0C\u652F\u6301 today/\u660E\u5929 \u7B49\u522B\u540D"),
+    daily_minutes: external_exports.number().int().min(10).max(600).describe("\u6BCF\u65E5\u65F6\u95F4\u9884\u7B97\uFF08\u5206\u949F\uFF09\u2014\u2014\u7528\u7528\u6237\u4EB2\u53E3\u7ED9\u7684\u6570")
+  },
+  async ({ draft_id, start_date, daily_minutes }) => wrap(() => {
+    const preview = core.study.previewDraftSchedule(draft_id, start_date, daily_minutes);
+    return {
+      ...preview,
+      hint: preview.warnings.length > 0 ? `\u9884\u89C8\u5B8C\u6210\u4F46\u6709 ${preview.warnings.length} \u6761\u9884\u8B66\uFF0C\u5FC5\u987B\u5148\u5411\u7528\u6237\u9010\u6761\u8BF4\u660E\u5E76\u53D6\u5F97\u540C\u610F\uFF1A${preview.warnings.join("\uFF1B")}` : "\u9884\u89C8\u5B8C\u6210\uFF1A\u628A\u9010\u65E5\u5B89\u6392\u3001\u4F9D\u8D56\u987A\u5E8F\u4E0E\u5047\u8BBE\u5FF5\u7ED9\u7528\u6237\uFF1B\u7528\u6237\u786E\u8BA4 \u2192 schedule_study_draft\uFF08\u540C\u53C2\u6570\u63D0\u4EA4\uFF0C\u5E42\u7B49\uFF09"
+    };
+  })()
+);
+server.tool(
+  "schedule_study_draft",
+  "**\u6392\u671F\u63D0\u4EA4\uFF08\u4E8B\u52A1+\u5E42\u7B49+\u51B2\u7A81\u786C\u6821\u9A8C\uFF09**\uFF1A\u628A\u7528\u6237\u786E\u8BA4\u8FC7\u7684\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u5199\u5165\u8349\u6848\u5E76\u6309\u900F\u660E\u89C4\u5219\u751F\u6210\u9010\u65E5\u5B89\u6392\u3002**\u786C\u6821\u9A8C**\uFF1A\u670D\u52A1\u7AEF\u6309\u5F53\u4E0B\u5E93\u72B6\u6001\u91CD\u7B97\u8D85\u9884\u7B97\u65E5\u671F\u2014\u2014\u82E5\u9884\u89C8\u7684 over_budget_dates \u975E\u7A7A\uFF0C\u5FC5\u987B\u628A\u5B83\u539F\u6837\u4F5C\u4E3A confirmed_over_dates \u4F20\u56DE\u4E14\u4E0E\u91CD\u7B97\u7CBE\u786E\u4E00\u81F4\uFF08\u9884\u89C8\u540E\u6709\u65B0\u51B2\u7A81/\u51B2\u7A81\u5DF2\u6D88\u5931\u90FD\u4F1A\u62D2\u7EDD\uFF0C\u987B\u91CD\u65B0\u9884\u89C8\uFF09\uFF1B\u65E0\u51B2\u7A81\u65F6\u4E0D\u4F20\u3002\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4\u5E42\u7B49\uFF1B\u5DF2\u786E\u8BA4/\u5DF2\u53D6\u6D88\u7684\u8349\u6848\u62D2\u7EDD\u3002\u6392\u671F\u540E\u4ECD\u662F\u8349\u6848\u2014\u2014\u751F\u6210\u6B63\u5F0F\u8BA1\u5212\u8FD8\u9700 confirm_study_plan_draft\uFF08\u786E\u8BA4\u65F6\u540C\u6837\u786C\u6821\u9A8C\u51B2\u7A81\uFF0C\u987B\u518D\u5E26\u4E00\u6B21\u6700\u65B0\u786E\u8BA4\u96C6\uFF09",
+  {
+    draft_id: external_exports.number().int().positive(),
+    start_date: dateSchema.describe("\u8D77\u59CB\u65E5\u671F\uFF08\u4E0E\u9884\u89C8\u4E00\u81F4\uFF09"),
+    daily_minutes: external_exports.number().int().min(10).max(600).describe("\u6BCF\u65E5\u65F6\u95F4\u9884\u7B97\uFF08\u5206\u949F\uFF0C\u4E0E\u9884\u89C8\u4E00\u81F4\uFF09"),
+    confirmed_over_dates: external_exports.array(dateSchema).optional().describe("\u7528\u6237\u786E\u8BA4\u63A5\u53D7\u7684\u8D85\u9884\u7B97\u65E5\u671F\uFF1A\u4E0E\u6700\u65B0\u9884\u89C8\u7684 over_budget_dates \u5B8C\u5168\u4E00\u81F4\uFF08\u6392\u5E8F\u65E0\u5173\uFF09\uFF1B\u65E0\u51B2\u7A81\u5219\u4E0D\u4F20")
+  },
+  async ({ draft_id, start_date, daily_minutes, confirmed_over_dates }) => wrap(() => {
+    const draft = core.study.scheduleDraft(draft_id, start_date, daily_minutes, { confirmed_over_dates });
+    return {
+      draft_id: draft.id,
+      status: draft.status,
+      date_range: `${draft.start_date} ~ ${draft.end_date}`,
+      daily_minutes: draft.daily_minutes,
+      item_count: draft.items.length,
+      hint: `\u8349\u6848\u5DF2\u6392\u671F\uFF08${draft.start_date} ~ ${draft.end_date}\uFF0C\u6BCF\u65E5 ${draft.daily_minutes}m\uFF0C\u91CD\u590D\u63D0\u4EA4\u5E42\u7B49\uFF09\u3002\u628A\u9010\u65E5\u5B89\u6392\u5FF5\u7ED9\u7528\u6237\uFF0C\u7528\u6237\u540C\u610F\u540E confirm_study_plan_draft(draft_id=${draft.id}, confirmed_over_dates=\u5F53\u524D\u8D85\u9884\u7B97\u65E5\u671F\u96C6) \u751F\u6210\u6B63\u5F0F\u8BA1\u5212\u4E0E\u5F85\u529E`
+    };
+  })()
 );
 server.tool(
   "record_study_session",

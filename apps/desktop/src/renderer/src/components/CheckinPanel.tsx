@@ -101,13 +101,16 @@ export default function CheckinPanel() {
           />
         )}
         {records.map((r) => (
-          <div key={r.id} className="checkin-row">
-            <span className={`ref-badge mono ${r.ref_type}`}>{REF_LABEL[r.ref_type]}</span>
-            <span className="checkin-desc">{r.description}</span>
-            <span className="spacer" />
-            {r.note && <span className="sub">{r.note}</span>}
-            <span className="todo-meta mono">{r.date}</span>
-            <IconCheck className="subtle-icon" width={13} height={13} />
+          <div key={r.id} className="todo-card checkin-card">
+            <div className="todo-card-main">
+              <span className={`ref-badge mono ${r.ref_type}`}>{REF_LABEL[r.ref_type]}</span>
+              <span className="checkin-desc">{r.description}</span>
+              <IconCheck className="subtle-icon" width={13} height={13} />
+            </div>
+            <div className="todo-card-meta">
+              <span className="todo-meta mono">{r.date}</span>
+              {r.note && <span className="sub">{r.note}</span>}
+            </div>
           </div>
         ))}
       </section>

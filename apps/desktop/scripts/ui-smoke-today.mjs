@@ -54,17 +54,17 @@ await sleep(600);
 await clickNav('今日'); await sleep(500);
 const found = await evalJs(`[...document.querySelectorAll('.group')].some(g =>
   g.querySelector('.group-label')?.textContent?.includes('今天到期') &&
-  [...g.querySelectorAll('.todo-row')].some(r => r.textContent.includes(${JSON.stringify(title)})))`);
+  [...g.querySelectorAll('.todo-card')].some(r => r.textContent.includes(${JSON.stringify(title)})))`);
 console.log('今日面板出现新待办:', found);
 if (found !== true) throw new Error('今日面板未反映新待办');
 
 // 4. 在今日面板完成它 → 概览数字 +1
 const before = await evalJs(`document.querySelectorAll('.stat-num')[0]?.textContent`);
-await evalJs(`[...document.querySelectorAll('.todo-row')].find(r => r.textContent.includes(${JSON.stringify(title)})).querySelector('.check').click()`);
+await evalJs(`[...document.querySelectorAll('.todo-card')].find(r => r.textContent.includes(${JSON.stringify(title)})).querySelector('.check').click()`);
 await sleep(600);
 const after = await evalJs(`(() => ({
   num: document.querySelectorAll('.stat-num')[0]?.textContent,
-  stillThere: [...document.querySelectorAll('.todo-row')].some(r => r.textContent.includes(${JSON.stringify(title)})),
+  stillThere: [...document.querySelectorAll('.todo-card')].some(r => r.textContent.includes(${JSON.stringify(title)})),
   streak: document.querySelectorAll('.stat-num')[2]?.textContent,
 }))()`);
 console.log('完成前待办数:', before, '| 完成后:', JSON.stringify(after));

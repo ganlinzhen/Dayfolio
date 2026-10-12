@@ -1,7 +1,7 @@
 {
   "name": "tododesk-desktop",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.1",
   "description": "TodoDesk Mac 桌面端（Electron）",
   "main": "out/main/index.js",
   "scripts": {
@@ -13,10 +13,10 @@
     "better-sqlite3": "^12.2.0"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.1",
+    "@electron/rebuild": "^4.2.1",
     "@types/better-sqlite3": "^7.6.13",
     "@vitejs/plugin-react": "^4.4.1",
-    "electron": "^37.2.0",
+    "electron": "^44.7.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "@types/react": "^19.1.0",

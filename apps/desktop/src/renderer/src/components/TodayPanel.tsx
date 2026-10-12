@@ -26,6 +26,7 @@ interface Overview {
 }
 
 const TYPE_LABEL: Record<string, string> = { learn: '学习', review: '复习', practice: '练习', rest: '休息' };
+const PRIORITY_LABEL: Record<Todo['priority'], string> = { high: '高', medium: '中', low: '低' };
 
 export default function TodayPanel() {
   const [ov, setOv] = useState<Overview | null>(null);
@@ -123,13 +124,26 @@ export default function TodayPanel() {
           <div className="group-label mono danger">
             已逾期<span className="group-count">{ov.overdue_todos.length}</span>
           </div>
-          {ov.overdue_todos.map((t) => (
-            <div key={t.id} className="todo-row">
-              <button className={`check ${t.priority}`} onClick={() => void completeTodo(t.id)} title="完成" />
-              <span className="todo-title">{t.title}</span>
-              <span className="todo-meta mono danger">{t.due_date}</span>
-            </div>
-          ))}
+          {ov.overdue_todos.map((t) => {
+            const overdueDays = t.due_date ? Math.round((Date.parse(ov.date) - Date.parse(t.due_date)) / 86400000) : 0;
+            return (
+              <div key={t.id} className="todo-card">
+                <div className="todo-card-main">
+                  <button className={`check ${t.priority}`} onClick={() => void completeTodo(t.id)} title="完成" />
+                  <span className="todo-title">{t.title}</span>
+                </div>
+                <div className="todo-card-meta">
+                  <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
+                  {t.due_date && (
+                    <span className="todo-meta mono danger">
+                      {t.due_date}{overdueDays > 0 ? ` · 逾期 ${overdueDays} 天` : ''}
+                    </span>
+                  )}
+                  {t.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}
+                </div>
+              </div>
+            );
+          })}
         </section>
       )}
 
@@ -139,10 +153,15 @@ export default function TodayPanel() {
         </div>
         {ov.due_today_todos.length === 0 && <div className="sub row-pad">今天没有到期事项</div>}
         {ov.due_today_todos.map((t) => (
-          <div key={t.id} className="todo-row">
-            <button className={`check ${t.priority}`} onClick={() => void completeTodo(t.id)} title="完成" />
-            <span className="todo-title">{t.title}</span>
-            {t.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}
+          <div key={t.id} className="todo-card">
+            <div className="todo-card-main">
+              <button className={`check ${t.priority}`} onClick={() => void completeTodo(t.id)} title="完成" />
+              <span className="todo-title">{t.title}</span>
+            </div>
+            <div className="todo-card-meta">
+              <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
+              {t.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}
+            </div>
           </div>
         ))}
       </section>
@@ -153,22 +172,25 @@ export default function TodayPanel() {
         </div>
         {ov.today_plan_items.length === 0 && <div className="sub row-pad">今天没有学习安排</div>}
         {ov.today_plan_items.map((it) => (
-          <div key={it.id} className={`plan-item ${it.status}`}>
-            <button
-              className={`check ${it.status === 'done' ? 'checked' : ''}`}
-              onClick={() => it.status !== 'done' && void doneItem(it.id)}
-              title={it.status === 'done' ? '已完成' : '打卡'}
-            >
-              {it.status === 'done' && (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                  <path d="M4 12l5 5L20 6" />
-                </svg>
-              )}
-            </button>
-            <IconItemType type={it.item_type} className="type-icon" />
-            <span className="plan-item-content">{it.content}</span>
-            <span className="spacer" />
-            <span className="todo-meta mono">{it.plan_title} · {TYPE_LABEL[it.item_type]}</span>
+          <div key={it.id} className={`todo-card study-card ${it.status}`}>
+            <div className="todo-card-main">
+              <button
+                className={`check ${it.status === 'done' ? 'checked' : ''}`}
+                onClick={() => it.status !== 'done' && void doneItem(it.id)}
+                title={it.status === 'done' ? '已完成' : '打卡'}
+              >
+                {it.status === 'done' && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <path d="M4 12l5 5L20 6" />
+                  </svg>
+                )}
+              </button>
+              <IconItemType type={it.item_type} className="type-icon" />
+              <span className="todo-title">{it.content}</span>
+            </div>
+            <div className="todo-card-meta">
+              <span className="todo-meta mono">{it.plan_title} · {TYPE_LABEL[it.item_type]}</span>
+            </div>
           </div>
         ))}
       </section>
