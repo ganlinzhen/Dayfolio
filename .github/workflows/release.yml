@@ -80,6 +80,8 @@ jobs:
         run: npm run build:desktop
       - name: 隔离界面验收
         run: node apps/desktop/scripts/ui-smoke-demo.mjs
+      - name: 补齐 Electron 内嵌程序的签名
+        run: node scripts/release-sign-electron.mjs
       - name: 生成桌面包
         run: npm run package:desktop
       - name: 检查签名、版本和架构，生成下载包
