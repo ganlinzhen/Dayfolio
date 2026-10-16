@@ -1,0 +1,153 @@
+name: 发布 Dayfolio
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一提交避免重复构建；新提交不会取消正在验收的版本。
+concurrency:
+  group: dayfolio-release-${{ github.workflow }}-${{ github.event.after || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: 检查版本和发布记录
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - id: plan
+        name: 检查升版、说明和标签，跳过已发布版本
+        run: node scripts/release.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  build:
+    name: 验收并打包 macOS ${{ matrix.arch }}
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: 安装干净依赖
+        run: npm ci
+      - name: 单测和 MCP 端到端
+        run: npm test
+      - name: 类型检查
+        run: npm run typecheck
+      - name: 验证帮助已同步
+        run: |
+          npm run help:sync
+          git diff --exit-code -- apps/desktop/src/renderer/src/generated/helpContent.ts
+      - name: 构建兼容插件并验收能力包
+        run: |
+          npm run plugin:build
+          npm run plugin:verify
+      - name: 构建桌面端
+        run: npm run build:desktop
+      - name: 隔离界面验收
+        run: node apps/desktop/scripts/ui-smoke-demo.mjs
+      - name: 生成桌面包
+        run: npm run package:desktop
+      - name: 检查签名、版本和架构，生成下载包
+        run: node scripts/release-archive.mjs
+        env:
+          RELEASE_ARCH: ${{ matrix.arch }}
+      - name: 解压下载包并核对签名
+        run: |
+          ditto -x -k "dist/github-release/assets/Dayfolio-${VERSION}-macOS-${RELEASE_ARCH}.zip" "$RUNNER_TEMP/dayfolio-download"
+          codesign --verify --deep --strict "$RUNNER_TEMP/dayfolio-download/Dayfolio.app"
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          RELEASE_ARCH: ${{ matrix.arch }}
+      - name: 下载包中的 App 隔离启动验收
+        run: node apps/desktop/scripts/ui-smoke-demo.mjs
+        env:
+          TODODESK_SMOKE_APP: ${{ runner.temp }}/dayfolio-download/Dayfolio.app/Contents/MacOS/Dayfolio
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macOS-${{ matrix.arch }}
+          path: dist/github-release/assets/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  publish:
+    name: 发布源码、说明和两个架构的 App
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    # 发布按版本互斥，重复触发时重新读取 Release 状态。
+    concurrency:
+      group: dayfolio-publish-${{ needs.plan.outputs.version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: macOS-*
+          merge-multiple: true
+          path: dist/github-release/assets
+      - id: plan
+        name: 发布前重新核对标签和状态
+        run: node scripts/release.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: 校验下载包，上传齐全后公开 Release
+        if: steps.plan.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_EXISTS: ${{ steps.plan.outputs.exists }}
+        run: |
+          set -euo pipefail
+          cd dist/github-release/assets
+          test -s "Dayfolio-${VERSION}-macOS-arm64.zip"
+          test -s "Dayfolio-${VERSION}-macOS-x64.zip"
+          cat ./*.sha256 > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          if [ "$RELEASE_EXISTS" != 'true' ]; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "Dayfolio ${VERSION}" --notes-file ../notes.md
+          fi
+          gh release upload "$TAG" ./*.zip SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+          gh release edit "$TAG" --draft=false --title "Dayfolio ${VERSION}" --notes-file ../notes.md --repo "$GITHUB_REPOSITORY"

@@ -64,9 +64,9 @@
 
 ### 1. 在 Mac 上运行 Dayfolio
 
-目前公开发布提供源码，**尚未提供可直接下载安装的桌面安装包**。首次体验请按[本机运行与演示指引](apps/help/docs/14-isolated-preview.md)准备环境并启动；演示模式自带示例内容，退出后清理临时数据，适合先试用。
+先到[发布页面](https://github.com/ganlinzhen/Dayfolio/releases)查看可用版本。带桌面附件的版本提供 `macOS-arm64.zip`（Apple 芯片）与 `macOS-x64.zip`（Intel），选择对应文件，解压后将 `Dayfolio.app` 放入「应用程序」；`SHA256SUMS` 可用于核对下载文件。
 
-已安装的用户可直接打开 Dayfolio。支持情况和后续安装包请以[发布页面](https://github.com/ganlinzhen/Dayfolio/releases)为准。
+桌面包采用 ad-hoc 签名，尚未进行 Developer ID 签名和 Apple 公证，首次打开可能受到 macOS 安全机制拦截。若所选版本仅提供源码，请按[本机运行与演示指引](apps/help/docs/14-isolated-preview.md)准备环境并启动；演示模式自带示例内容，退出后清理临时数据，适合先试用。各版本实际附件和支持情况以发布页面为准。
 
 ### 2. 记下第一件事
 
