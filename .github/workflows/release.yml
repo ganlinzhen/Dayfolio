@@ -63,6 +63,9 @@ jobs:
         run: npm ci
       - name: 单测和 MCP 端到端
         run: npm test
+        env:
+          # 日程测试使用北京时间样例，避免云端默认 UTC 改变预期日期。
+          TZ: Asia/Shanghai
       - name: 类型检查
         run: npm run typecheck
       - name: 验证帮助已同步
