@@ -11,6 +11,7 @@ import { NEWS_SCHEME, registerNewsFileProtocol } from './news-store';
 import { HOST_ORIGIN, HOST_SCHEME, RUNTIME_SCHEME, registerRuntimeProtocols } from './runtime-protocol';
 import { registerRuntimeSessions } from './runtime-session';
 import { migrateCalendarView } from './storage-preferences';
+import { ensureOnboardingCourse } from './onboarding-course';
 
 // 改名只影响展示：先保存原 userData 路径，继续使用已有设置、备份与旧工具资产。
 const legacyUserData = app.getPath('userData');
@@ -113,6 +114,9 @@ app.whenReady().then(async () => {
     if (existsSync(devIcon)) app.dock.setIcon(devIcon);
   }
   migrateLegacyToolsDir();
+  ensureOnboardingCourse(core, app.isPackaged
+    ? join(process.resourcesPath, 'onboarding')
+    : join(app.getAppPath(), '../onboarding'));
   registerIpc(core);
   registerToolFileProtocol();
   registerNewsFileProtocol();

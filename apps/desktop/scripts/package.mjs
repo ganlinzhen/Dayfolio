@@ -63,6 +63,8 @@ writeFileSync(
   JSON.stringify({ name: 'tododesk-desktop', version, main: 'out/main/index.js' }, null, 2),
 );
 cpSync(join(root, 'out'), join(appDir, 'out'), { recursive: true });
+// 上手课程随正式 App 携带，启动时经课程服务补入用户库，资产仍落数据库旁。
+cpSync(join(monorepo, 'apps', 'onboarding'), join(appPath, 'Contents', 'Resources', 'onboarding'), { recursive: true });
 // 能力包在签名前随正式 App 写入；构建来源统一，正式安装后可离开源码仓库导出。
 const agentKit = join(monorepo, 'dist', 'agent-kit');
 const { verifyAgentKit, verifySourceFreshness } = await import('../../../packages/agent-kit/scripts/package.mjs');

@@ -1,6 +1,6 @@
 // 预览沙盒共享播种（apps/desktop/scripts/demo-seed.ts）定向单测：
 // 断言四模块演示数据完整成环、课程资产只落临时库推导目录、演示样课未被确认（红线）、
-// 播种入口的路径防御拒绝真实区。课程内容为内置常量（不依赖机器上的真实资产文件）。
+// 播种入口的路径防御拒绝真实区。课程内容复用 apps/onboarding，不依赖真实用户资产。
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -8,12 +8,14 @@ import { describe, expect, it } from 'vitest';
 import { seedDemo } from '../../../apps/desktop/scripts/demo-seed';
 import { mkCore } from './helpers';
 
+const courseSource = new URL('../../../apps/onboarding/', import.meta.url).pathname;
+
 describe('预览演示播种（四模块闭环）', () => {
   it('新闻 + 知识库 + 自媒体 + 演示样课全部落临时库；样课未确认；资产根随临时 DB', () => {
     const { core, dbPath, cleanup } = mkCore();
     try {
       const work = dirname(dbPath);
-      const r = seedDemo(core, work);
+      const r = seedDemo(core, work, courseSource);
 
       // 新闻：2 旧（1 收藏）+ 2 agent（其一为 X 本地快照形态）+ 已完成/待执行任务
       expect(r.news).toMatchObject({ legacy: 2, agent: 2, starred: 1 });
@@ -53,6 +55,12 @@ describe('预览演示播种（四模块闭环）', () => {
       const lesson = core.courses.getLesson(r.course.id, 1);
       const html = core.courses.readLessonHtml(lesson);
       expect(html).toContain('Dayfolio 上手之旅');
+      expect(html).toContain('创建请求只是排队');
+      expect(html).toContain('<style>'); // 仓库课程样式经真实导入后内联
+      const overview = core.courses.getOverview(r.course.id);
+      expect(overview).not.toBeNull();
+      expect(core.courses.readOverviewHtml(overview!)).toContain('你会学到什么');
+      expect(JSON.parse(readFileSync(join(courseSource, 'course.json'), 'utf8')).plan_id).toBeUndefined(); // 演示绑定只写临时副本
       const assetFile = join(dirname(dbPath), 'courses', 'tododesk-tour', 'lessons', '0001-quick-tour.html');
       expect(existsSync(assetFile)).toBe(true); // 资产在临时库推导目录，绝不在真实 Application Support
       expect(assetFile.startsWith(tmpdir())).toBe(true);
@@ -67,11 +75,11 @@ describe('预览演示播种（四模块闭环）', () => {
     const { core, cleanup } = mkCore();
     try {
       // 真实 HOME 本身（存在）→ 拒绝
-      expect(() => seedDemo(core, homedir())).toThrow(/拒绝执行/);
+      expect(() => seedDemo(core, homedir(), courseSource)).toThrow(/拒绝执行/);
       // 造一个位于 HOME 内的「数据区」目录（临时 HOME 下，存在即可）→ 拒绝
       const fakeZone = join(homedir(), 'Library', 'Application Support');
       mkdirSync(fakeZone, { recursive: true });
-      expect(() => seedDemo(core, fakeZone)).toThrow(/拒绝执行/);
+      expect(() => seedDemo(core, fakeZone, courseSource)).toThrow(/拒绝执行/);
     } finally {
       cleanup();
     }

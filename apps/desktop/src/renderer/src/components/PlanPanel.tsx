@@ -806,6 +806,7 @@ export default function PlanPanel() {
   // ---------- 列表 ----------
   const datelessCount = drafts.filter((d) => d.start_date == null).length;
   const datedCount = drafts.length - datelessCount;
+  const onboardingCourse = courses.find((course) => course.slug === 'tododesk-tour');
   return (
     <div className="panel" role="region" aria-label="学习">
       <header className="panel-head study-home-head">
@@ -818,6 +819,11 @@ export default function PlanPanel() {
             <>{plans.length} 个计划{datedCount > 0 ? ` · ${datedCount} 个待确认草案` : ''}{datelessCount > 0 ? ` · ${datelessCount} 个未排期专题` : ''}</>
           ) : `${courses.length} 门课程`}
         </div>
+        {onboardingCourse && (
+          <button type="button" className="btn slim onboarding-course-entry" onClick={() => enterCourse(onboardingCourse.id, null)}>
+            上手课程
+          </button>
+        )}
       </header>
       {homeTab === 'plans' ? <>
       <p className="sub">在 zcode 中对 AI 说「为某课程制定学习计划」，计划与每日待办会同步到这里。学习计划最终应关联一门课程。</p>

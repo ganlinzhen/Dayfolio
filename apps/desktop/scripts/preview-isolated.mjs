@@ -10,7 +10,7 @@
 //   - 退出码：隔离/前置断言失败 = 2；构建或播种失败 = 3；未捕获异常 = 1；Electron 真实退出码透传
 //     （信号死亡 = 1、启动失败 = 2）；正常/异常退出均清理临时目录（SIGKILL 除外）。
 //
-// 用法（仓库根目录，在真实用户 shell 中运行——脚本按当前 HOME 定位真实样课资产）：
+// 用法（仓库根目录，课程源固定为仓库内 apps/onboarding）：
 //   node apps/desktop/scripts/preview-isolated.mjs
 // 前置（如未构建过）：npm run build:web && (cd apps/desktop && node scripts/build.mjs)
 // 退出：关闭预览窗口后应用仍驻留菜单栏托盘（macOS 行为）——请从托盘菜单选「退出」（或 Dock 右键退出），
@@ -107,7 +107,7 @@ try {
     logLevel: 'silent',
   });
   await new Promise((res, rej) => {
-    const seedRun = spawn(process.execPath, [seedCjs, dbPath, work], { env: isolatedEnv, stdio: ['ignore', 'inherit', 'inherit'] });
+    const seedRun = spawn(process.execPath, [seedCjs, dbPath, work, join(repo, 'apps/onboarding')], { env: isolatedEnv, stdio: ['ignore', 'inherit', 'inherit'] });
     seedRun.on('exit', (code) => (code === 0 ? res() : rej(new Error(`演示数据写入失败：exit ${code}`))));
   });
 } catch (e) {

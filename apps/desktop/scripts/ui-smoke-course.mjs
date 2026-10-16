@@ -6,7 +6,7 @@
 //   2. 以临时 TODODESK_DB + TODODESK_USER_DATA + 隔离 HOME 拉起 Electron（CDP 用动态空闲端口，
 //      杜绝与残留 Electron/他人 dev 窗口 9223 的端口碰撞）；
 //   3. CDP 纯文本断言（无截图、无图像分析）。侧栏仅「学习计划」，首页左侧「计划 / 课程」切换：
-//      默认计划页只显示计划；课程页集中显示两门课程；计划详情每日摘要卡（未生成显示待生成）；
+//      默认计划页只显示计划；课程页显示两门测试课程与随 App 自动补入的上手课程；计划详情每日摘要卡（未生成显示待生成）；
 //      摘要卡直达当天完整讲义→返回计划详情（选择与滚动位置保留）；「进入课程总览」仍可达（面板内）；
 //      总览卡→正文→返回总览；样课后四天待生成；样课确认入口仍在（window.confirm 由 CDP 自动接受）；
 //      以及确认只落临时库的隔离断言。
@@ -190,7 +190,7 @@ try {
   // CDP 就绪
   const page = await waitFor(async () => {
     const list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
-    return list.find((t) => t.type === 'page');
+    return list.find((t) => t.type === 'page' && t.url === 'dayfolio-app://app/index.html');
   }, 30000, 'CDP 页面 target');
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
@@ -206,7 +206,12 @@ try {
     }
   };
   const send = (method, params = {}) =>
-    new Promise((res) => { const id = ++msgId; pending.set(id, res); ws.send(JSON.stringify({ id, method, params })); });
+    new Promise((res, rej) => {
+      const id = ++msgId;
+      const timer = setTimeout(() => { pending.delete(id); rej(new Error(`CDP 请求超时：${method}`)); }, 10000);
+      pending.set(id, (value) => { clearTimeout(timer); res(value); });
+      ws.send(JSON.stringify({ id, method, params }));
+    });
   const evalJs = async (expression) => {
     const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
     if (r.result?.exceptionDetails) throw new Error('页面执行失败: ' + JSON.stringify(r.result.exceptionDetails).slice(0, 400));
@@ -253,8 +258,8 @@ try {
   assert(await evalJs(`document.querySelectorAll('.plan-link').length`) === 2, '计划卡显示课程关联状态');
   await clickUntil(
     `[...document.querySelectorAll('.study-home-tabs button')].find(b => b.textContent === '课程')?.click()`,
-    () => evalJs(`document.querySelectorAll('.plan-course-entry').length === 2 && document.querySelectorAll('.plan-card:not(.plan-course-entry)').length === 0`),
-    10000, '课程页只显示两门课程',
+    () => evalJs(`document.querySelectorAll('.plan-course-entry').length === 3 && document.querySelectorAll('.plan-card:not(.plan-course-entry)').length === 0`),
+    10000, '课程页显示两门测试课程与随包上手课程',
   );
   assert(await evalJs(`document.querySelector('.study-home-tabs button.active')?.textContent === '课程'`), '切换后选中「课程」');
   assert(await evalJs(`[...document.querySelectorAll('.plan-course-entry')].some(c => c.textContent.includes('关联计划「冒烟五天计划」'))`), '课程卡显示计划名称');
@@ -404,7 +409,7 @@ try {
   );
   await clickUntil(
     `[...document.querySelectorAll('.study-home-tabs button')].find(b => b.textContent === '课程')?.click()`,
-    () => evalJs(`document.querySelectorAll('.plan-course-entry').length === 2`),
+    () => evalJs(`document.querySelectorAll('.plan-course-entry').length === 3`),
     10000, '切换到课程页',
   );
   await clickUntil(

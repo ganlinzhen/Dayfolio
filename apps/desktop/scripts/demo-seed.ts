@@ -6,7 +6,7 @@
 //      排期→手动发布占位→指标；另一条停在「待人工审核」留给用户体验；素材挂载；
 //   4. 课程：以内置的「Dayfolio 上手之旅」演示样课（自包含，不依赖任何外部资产）构造课程包
 //      导入临时库，绑定临时演示计划；**不确认样课**（确认入口留给用户）。
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { openNodeSqliteDb } from '../../../packages/core/src/adapters/node-sqlite';
@@ -26,27 +26,6 @@ export interface DemoSeedResult {
   calendar: { events: number };
 }
 
-/** 内置演示课程内容（自包含：预览与冒烟共用同一份，不依赖机器上的任何课程资产） */
-const DEMO_COURSE_LESSON_HTML = [
-  '<h1>Dayfolio 上手之旅 · 第 1 天</h1>',
-  '<link rel="stylesheet" href="../assets/style.css">',
-  '<p>欢迎打开 Dayfolio！这是一门内置的演示课程，带你用五分钟认识四个核心能力。</p>',
-  '<h2>本地优先</h2>',
-  '<p>待办、学习计划、打卡、新闻与知识库全部保存在本机 SQLite 数据库里，不上传、不联网同步。</p>',
-  '<h2>学习闭环</h2>',
-  '<p>把课程包导入学习计划，逐日阅读讲义、完成练习，再由打卡与间隔复习把知识留住。</p>',
-  '<h2>AI 接入</h2>',
-  '<p>通过 MCP 协议，外部 AI 客户端可以与你读写同一份数据——采集新闻、生成计划、整理素材都由它代办。</p>',
-  '<p><em>这是演示样课：阅读并确认后，完整课程才会生成。</em></p>',
-].join('\n');
-
-const DEMO_COURSE_STYLE_CSS = [
-  '/* Dayfolio 演示课程样式 */',
-  "body { font-family: -apple-system, 'PingFang SC', sans-serif; line-height: 1.7; color: #1a1a19; max-width: 640px; margin: 0 auto; padding: 24px; }",
-  'h1 { font-size: 22px; }',
-  'h2 { font-size: 17px; margin-top: 24px; }',
-].join('\n');
-
 /** 演示 vault 笔记（明确标注「演示」；只建在临时目录，绝不写真实 Obsidian） */
 const writeDemoVault = (vaultRoot: string): void => {
   mkdirSync(join(vaultRoot, 'knowledge/moc'), { recursive: true });
@@ -60,27 +39,18 @@ const writeDemoVault = (vaultRoot: string): void => {
   writeFileSync(join(vaultRoot, 'knowledge/inbox-cards/演示·待审草稿.md'), '---\nstatus: draft\n---\n【演示】待加工草稿。');
 };
 
-/** 内置演示课程包（slug/标题唯一且带「演示」语义；绝不改真实库或其确认字段） */
-const buildCourseStage = (stage: string, planId: number): string => {
-  mkdirSync(join(stage, 'lessons'), { recursive: true });
-  mkdirSync(join(stage, 'assets'), { recursive: true });
-  writeFileSync(join(stage, 'lessons/0001-quick-tour.html'), DEMO_COURSE_LESSON_HTML);
-  writeFileSync(join(stage, 'assets/style.css'), DEMO_COURSE_STYLE_CSS);
+/** 复用 apps/onboarding 课程源，只在临时副本绑定演示计划；不改源码或真实库。 */
+const buildCourseStage = (source: string, stage: string, planId: number): string => {
+  cpSync(source, stage, { recursive: true });
+  const manifest = JSON.parse(readFileSync(join(stage, 'course.json'), 'utf8'));
   writeFileSync(
     join(stage, 'course.json'),
-    JSON.stringify({
-      slug: 'tododesk-tour',
-      title: 'Dayfolio 上手之旅',
-      goal: '五分钟认识 Dayfolio 的四个核心能力（预览演示）',
-      version: '1.0.0',
-      plan_id: planId,
-      lessons: [{ day: 1, title: 'Dayfolio 上手之旅 · 第 1 天', html: 'lessons/0001-quick-tour.html', is_sample: true }],
-    }),
+    JSON.stringify({ ...manifest, plan_id: planId }),
   );
   return stage;
 };
 
-export function seedDemo(core: TodoDeskCore, work: string): DemoSeedResult {
+export function seedDemo(core: TodoDeskCore, work: string, courseSource: string): DemoSeedResult {
   // ---------- 防御性断言（realpath + 段级包含）：所有路径必须位于同一新建临时目录，
   // 拒绝真实 HOME / 真实 vault / 真实资产路径；同级前缀目录（如 td-preview-x-evil）不得通过 ----------
   const realWork = realpathSync(resolve(work));
@@ -173,7 +143,7 @@ export function seedDemo(core: TodoDeskCore, work: string): DemoSeedResult {
   });
   let imported: ReturnType<typeof core.courses.importCourse> | null = null;
   try {
-    imported = core.courses.importCourse(buildCourseStage(courseStage, plan.id));
+    imported = core.courses.importCourse(buildCourseStage(courseSource, courseStage, plan.id));
   } finally {
     rmSync(courseStage, { recursive: true, force: true }); // staging 只是导入源，绝不残留
   }
@@ -194,16 +164,16 @@ export function seedDemo(core: TodoDeskCore, work: string): DemoSeedResult {
   };
 }
 
-// ---------- cjs 入口（esbuild 打包后由预览/冒烟运行）：argv = <dbPath> <work> ----------
-// 课程内容为内置常量（自包含），无需任何外部资产参数。
+// ---------- cjs 入口（esbuild 打包后由预览/冒烟运行）：argv = <dbPath> <work> <courseSource> ----------
+// 调用方显式传入仓库内 apps/onboarding，避免依赖进程工作目录或真实用户课程。
 const isMain = typeof require !== 'undefined' && require.main === module;
 if (isMain) {
-  const [dbPath, work] = process.argv.slice(2);
+  const [dbPath, work, courseSource] = process.argv.slice(2);
   function failEntry(msg: string, code: number): never {
     console.error(JSON.stringify({ ok: false, error: msg }));
     process.exit(code);
   }
-  if (!dbPath || !work) failEntry(`播种入口断言失败：缺少 dbPath/work 参数`, 3);
+  if (!dbPath || !work || !courseSource) failEntry(`播种入口断言失败：缺少 dbPath/work/courseSource 参数`, 3);
   // 同目录校验用 lexical 空间（db 由同一 work 字符串拼接；realpath 混用会在 macOS /var vs /private/var 误判）
   const workLex = resolve(work);
   const relDb = relative(workLex, resolve(dbPath));
@@ -224,7 +194,7 @@ if (isMain) {
 
   const core = createCore(openNodeSqliteDb(dbPath), { dbPath });
   try {
-    const r = seedDemo(core, work);
+    const r = seedDemo(core, work, courseSource);
     if (r.course.sampleConfirmed) throw new Error('红线：演示样课不得处于已确认状态');
     console.log('SEED_OK', JSON.stringify(r));
   } finally {

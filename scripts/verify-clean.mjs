@@ -116,9 +116,11 @@ try {
   await npm('插件安装验收', ['run', 'plugin:verify']);
   await npm('桌面构建', ['run', 'build:desktop']);
   await run('隔离界面验收', process.execPath, ['apps/desktop/scripts/ui-smoke-demo.mjs'], { env: { ...env, TODODESK_SMOKE_SCREENSHOT: join(logs, 'today.png') } });
+  await run('上手课程空库与重启验收', process.execPath, ['apps/desktop/scripts/ui-smoke-onboarding.mjs']);
   await npm('桌面打包', ['run', 'package:desktop']);
   const app = join(repo, 'apps/desktop/release/Dayfolio.app');
   await run('安装包签名验证', '/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', app]);
+  await run('安装包上手课程验收', process.execPath, ['apps/desktop/scripts/ui-smoke-onboarding.mjs'], { env: { ...env, TODODESK_SMOKE_APP: join(app, 'Contents/MacOS/Dayfolio') } });
   const version = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', join(app, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
   if (version !== report.version) throw new Error(`安装包版本不一致：${version}`);
   for (const [rel, digest] of Object.entries(report.sourceFiles)) {

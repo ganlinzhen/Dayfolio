@@ -66,7 +66,7 @@ await build({
   logLevel: 'silent',
 });
 await new Promise((res, rej) => {
-  const seedRun = spawn(process.execPath, [seedCjs, dbPath, workAbs], { env: isolatedEnv, stdio: ['ignore', 'inherit', 'inherit'] });
+  const seedRun = spawn(process.execPath, [seedCjs, dbPath, workAbs, join(repo, 'apps/onboarding')], { env: isolatedEnv, stdio: ['ignore', 'inherit', 'inherit'] });
   seedRun.on('exit', (code) => (code === 0 ? res() : rej(new Error(`播种失败：exit ${code}（demo-seed 入口路径断言拒绝，见上方输出）`))));
 }).catch((e) => {
   // 播种失败也必须清理临时目录（此段在主 try 之前，需自行兜底）

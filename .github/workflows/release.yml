@@ -79,7 +79,9 @@ jobs:
       - name: 构建桌面端
         run: npm run build:desktop
       - name: 隔离界面验收
-        run: node apps/desktop/scripts/ui-smoke-demo.mjs
+        run: |
+          node apps/desktop/scripts/ui-smoke-demo.mjs
+          node apps/desktop/scripts/ui-smoke-onboarding.mjs
       - name: 补齐 Electron 内嵌程序的签名
         run: node scripts/release-sign-electron.mjs
       - name: 生成桌面包
@@ -96,7 +98,9 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
           RELEASE_ARCH: ${{ matrix.arch }}
       - name: 下载包中的 App 隔离启动验收
-        run: node apps/desktop/scripts/ui-smoke-demo.mjs
+        run: |
+          node apps/desktop/scripts/ui-smoke-demo.mjs
+          node apps/desktop/scripts/ui-smoke-onboarding.mjs
         env:
           TODODESK_SMOKE_APP: ${{ runner.temp }}/dayfolio-download/Dayfolio.app/Contents/MacOS/Dayfolio
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
