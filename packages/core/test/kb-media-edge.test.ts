@@ -38,8 +38,8 @@ describe('第三轮·重启持久化（模拟 App 退出重开）', () => {
     const topic = core.media.addTopic({ title: '重启选题' });
     const content = core.media.addContent({ topic_id: topic.id, title: '重启内容', master_content: 'm'.repeat(1024) });
     const ver = core.media.addVersion(content.id, { platform: 'weixin', body: 'v' });
-    core.media.reviewVersion(ver.id, 'submit');
-    core.media.reviewVersion(ver.id, 'approve');
+    core.commands.human.reviewMediaVersion(ver.id, 'submit');
+    core.commands.human.reviewMediaVersion(ver.id, 'approve');
     const cal = core.media.schedule({ content_version_id: ver.id, planned_date: '2026-10-12' });
     core.media.markPublished(cal.id, { publish_url: 'https://example.com/p/1' });
     core.media.addMetric({ calendar_id: cal.id, views: 99 });
@@ -117,8 +117,8 @@ describe('第三轮·重复操作（幂等或明确拒绝）', () => {
     const c = core.media.addContent({ title: '重复语义' });
     const ver = core.media.addVersion(c.id, { platform: 'x' });
     expect(() => core.media.addVersion(c.id, { platform: 'x' })).toThrow('已存在');
-    core.media.reviewVersion(ver.id, 'submit');
-    core.media.reviewVersion(ver.id, 'approve');
+    core.commands.human.reviewMediaVersion(ver.id, 'submit');
+    core.commands.human.reviewMediaVersion(ver.id, 'approve');
     const e1 = core.media.schedule({ content_version_id: ver.id, planned_date: '2026-10-13' });
     const e2 = core.media.schedule({ content_version_id: ver.id, planned_date: '2026-10-14' });
     expect(e2.id).toBe(e1.id); // 改期复用

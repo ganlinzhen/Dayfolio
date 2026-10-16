@@ -10,7 +10,7 @@ product
 
 ## Product Purpose
 
-TodoDesk 是 Mac 桌面待办 + 学习计划 + 打卡应用：管理待办、把学习计划拆到每一天、用连续打卡维持动力。它通过 MCP 与 zcode 等 AI 客户端共享同一 SQLite 数据库，AI 可以代替用户创建计划与待办。成功的标准：用户打开 App 后 30 秒内看清今天要做什么，并完成第一次勾选。
+Dayfolio 是 Mac 桌面待办 + 学习计划 + 打卡应用：管理待办、把学习计划拆到每一天、用连续打卡维持动力。它通过 MCP 与 zcode 等 AI 客户端共享同一 SQLite 数据库，AI 可以代替用户创建计划与待办。成功的标准：用户打开 App 后 30 秒内看清今天要做什么，并完成第一次勾选。
 
 ## Brand Personality
 

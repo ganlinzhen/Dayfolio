@@ -9,7 +9,7 @@
 // 前置：npm run build:web && (cd apps/desktop && node scripts/build.mjs)
 // 用法：node apps/desktop/scripts/ui-smoke-news.mjs
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -75,12 +75,19 @@ for (let i = 0; i < 35; i++) {
   );
 }
 raw.close();
-// 已完成任务：2 条 agent 新闻（真实提交路径）
+// 已完成任务：2 条 agent 新闻（真实提交路径；新闻二为 X 快照形态）
 const task = core.news.createTask({ title: '冒烟任务：已完成收录', instructions: '冒烟规则', max_items: 5 });
 const claim = core.news.claimTask(task.id, 'smoke-agent');
 core.news.submitItems(task.id, claim.claim_token, [
   { title: '冒烟 agent 新闻一', summary: '近一小时的核实摘要。', source_url: 'https://example.com/smoke-1', source_name: 'Example News', published_at: new Date(Date.now() - 3600_000).toISOString() },
-  { title: '冒烟 agent 新闻二', summary: '近两小时的核实摘要。', source_url: 'https://example.com/smoke-2', source_name: 'Example News', published_at: new Date(Date.now() - 7200_000).toISOString() },
+  {
+    title: '冒烟 agent 新闻二',
+    summary: '近两小时的核实摘要：X 来源，附本地 HTML 快照。',
+    source_url: 'https://x.com/smoke_demo/status/2222222222222222222',
+    source_name: 'X',
+    published_at: new Date(Date.now() - 7200_000).toISOString(),
+    html: '<article><h3>smoke_demo · 演示推文</h3><p>冒烟快照正文：本地 HTML 快照占位内容。</p><img src="https://pbs.twimg.com/media/smoke.jpg" alt="演示配图"></article>',
+  },
 ]);
 core.news.completeTask(task.id, claim.claim_token, '冒烟完成');
 // 待执行任务（离线保持待执行，App 只展示）
@@ -146,12 +153,18 @@ const stopAndCleanup = async (runDbCheck = false) => {
       const agent = sdb.prepare("SELECT COUNT(*) AS n FROM news WHERE source = 'agent'").get();
       const tasks = sdb.prepare("SELECT COUNT(*) AS n FROM news_tasks WHERE status = 'completed'").get();
       const fps = sdb.prepare('SELECT COUNT(*) AS n FROM news_deleted_fingerprints').get();
+      const htmlItems = sdb.prepare("SELECT COUNT(*) AS n FROM news WHERE content_kind = 'html'").get();
       sdb.close();
-      if (agent.n !== 0 || fps.n !== 4) {
+      // 快照文件随行删除：两条 agent（其一为快照形态）删完后，库旁 news/ 目录不应残留 html 文件
+      const newsDir = join(work, 'news');
+      const htmlLeft = existsSync(newsDir)
+        ? readdirSync(newsDir).filter((f) => /\.html?$/i.test(f)).length
+        : 0;
+      if (agent.n !== 0 || fps.n !== 4 || htmlItems.n !== 0 || htmlLeft !== 0) {
         failed = true;
-        console.error(`  ✗ 隔离落库校验失败：删除后应 agent=0、指纹=4，实际 agent=${agent.n} 指纹=${fps.n}`);
+        console.error(`  ✗ 隔离落库校验失败：删除后应 agent=0、指纹=4、快照条目=0、残留快照文件=0，实际 agent=${agent.n} 指纹=${fps.n} 快照条目=${htmlItems.n} 残留文件=${htmlLeft}`);
       }
-      console.log(`  ✓ 隔离落库校验：news=${news.n}（agent ${agent.n}，已全删）starred=${starred.n} 已完成任务=${tasks.n} 删除指纹=${fps.n}（全部只落在临时库）`);
+      console.log(`  ✓ 隔离落库校验：news=${news.n}（agent ${agent.n}，已全删）starred=${starred.n} 已完成任务=${tasks.n} 删除指纹=${fps.n} 残留快照文件=${htmlLeft}（全部只落在临时库）`);
     } catch (e) {
       failed = true;
       console.error(`  ✗ 隔离落库校验失败：${e.message}`);
@@ -319,6 +332,33 @@ try {
     10000, '返回独立列表页',
   );
   assert(await evalJs(`!!document.querySelector('.news3-collection-filter') && document.querySelectorAll('.news3-row').length === 2`), '返回后保留采集筛选与列表结果');
+
+  // ---------- 本地快照详情（content_kind=html：X 来源不走 webview，改用 news-file:// iframe） ----------
+  console.log('[smoke] 本地快照详情（X 来源）');
+  assert(await evalJs(`(() => { const row = [...document.querySelectorAll('.news3-row')].find(r => r.textContent.includes('冒烟 agent 新闻二')); return !!row && [...row.querySelectorAll('.ref-badge')].some(b => b.textContent.includes('快照')); })()`), '列表行标注「快照」形态');
+  await clickUntil(
+    `[...document.querySelectorAll('.news3-row')].find(r => r.textContent.includes('冒烟 agent 新闻二'))?.click()`,
+    () => evalJs(`!!document.querySelector('.news3-title')`),
+    10000, '打开快照新闻详情',
+  );
+  assert(await evalJs(`[...document.querySelectorAll('.news3-detail-meta .ref-badge')].some(b => b.textContent.includes('本地快照'))`), '详情元信息标注「本地快照」');
+  assert(await evalJs(`(() => { const f = document.querySelector('iframe.news3-source-view'); return !!f && (f.getAttribute('src') || '').startsWith('news-file://n/') && f.getAttribute('src').endsWith('.html'); })()`), '快照 iframe 指向 news-file:// 协议下的 html 文件');
+  assert(await evalJs(`(() => { const f = document.querySelector('iframe.news3-source-view'); const r = f?.getBoundingClientRect(); return !!r && r.height > 200; })()`), '快照 iframe 占满内嵌容器高度');
+  assert(await evalJs(`!document.querySelector('.news3-detail webview') && !!document.querySelector('.news3-detail iframe.news3-source-view')`), '快照形态不渲染 webview（iframe 承载）');
+  assert(await evalJs(`[...document.querySelectorAll('.news3-detail .btn')].some(b => b.textContent.includes('打开原文'))`), '快照新闻仍保留「打开原文」入口');
+  assert(await evalJs(`[...document.querySelectorAll('.news-source-embed .btn')].some(b => b.textContent.includes('重新加载'))`), '快照区可重新加载');
+  // 快照 frame 真实加载：NewsPanel 给 iframe 接了 onLoad → 状态徽标变「已加载」（跨源 iframe 的 load
+  // 事件不会传到 window 捕获监听，元素级 React 回调是可靠信号）
+  await waitFor(() => evalJs(`(() => { const s = document.querySelector('.news3-source-status'); return !!s && s.classList.contains('s-ready') && s.textContent.includes('已加载'); })()`), 10000, '快照 iframe onLoad 已触发（news-file:// 内容真实加载）');
+  console.log('  ✓ 快照 iframe onLoad 已触发（状态徽标「已加载」）');
+  // 重新加载会重建 iframe 并回到「加载中…」，随后再次就绪（协议第二次服务同一文件）
+  await evalJs(`[...document.querySelectorAll('.news-source-embed .btn')].find(b => b.textContent.includes('重新加载'))?.click()`);
+  await waitFor(() => evalJs(`(() => { const s = document.querySelector('.news3-source-status'); return !!s && s.classList.contains('s-ready') && s.textContent.includes('已加载'); })()`), 10000, '重新加载后快照再次就绪');
+  await clickUntil(
+    `[...document.querySelectorAll('.news3-back')].find(b => b.textContent.includes('返回列表'))?.click()`,
+    () => evalJs(`!!document.querySelector('[aria-label="新闻列表页"]') && document.querySelectorAll('.news3-row').length === 2`),
+    10000, '返回列表（快照详情）',
+  );
 
   // ---------- 自适应高度与窗口尺寸变化（列表容器吃满剩余高度，无底部大片空白） ----------
   console.log('[smoke] 自适应高度与窗口尺寸变化');

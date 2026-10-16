@@ -5,7 +5,7 @@
 //      B「上手之旅样课课程」：绑定自己的五天计划，仅导入 Day1 样课（后四天绝不生成），未读未确认；
 //   2. 以临时 TODODESK_DB + TODODESK_USER_DATA + 隔离 HOME 拉起 Electron（CDP 用动态空闲端口，
 //      杜绝与残留 Electron/他人 dev 窗口 9223 的端口碰撞）；
-//   3. CDP 纯文本断言（无截图、无图像分析）。侧栏仅「学习计划」，首页右侧「计划 / 课程」切换：
+//   3. CDP 纯文本断言（无截图、无图像分析）。侧栏仅「学习计划」，首页左侧「计划 / 课程」切换：
 //      默认计划页只显示计划；课程页集中显示两门课程；计划详情每日摘要卡（未生成显示待生成）；
 //      摘要卡直达当天完整讲义→返回计划详情（选择与滚动位置保留）；「进入课程总览」仍可达（面板内）；
 //      总览卡→正文→返回总览；样课后四天待生成；样课确认入口仍在（window.confirm 由 CDP 自动接受）；
@@ -84,7 +84,7 @@ const stageA = mkPkg(fs.mkdtempSync(require('node:os').tmpdir() + '/td-smoke-a-'
 // 课程 B：样课课程——绑定自己的五天计划，仅 Day1 样课，后四天不生成（待用户确认+请求+agent 认领）
 const planB = mkPlan('样课五天计划', '样课 ');
 const stageB = mkPkg(fs.mkdtempSync(require('node:os').tmpdir() + '/td-smoke-b-'), 'tour-sample', '上手之旅样课课程', planB.id, [
-  { day: 1, title: 'TodoDesk 上手全景', file: 'tour-d1.html', sample: true, html: '<h1>Tour Day 1</h1>' + styleLink + '<p>样课正文：五分钟核心能力之旅。</p>' },
+  { day: 1, title: 'Dayfolio 上手全景', file: 'tour-d1.html', sample: true, html: '<h1>Tour Day 1</h1>' + styleLink + '<p>样课正文：五分钟核心能力之旅。</p>' },
 ], undefined, false);
 // staging 只是导入源；导入中途抛错也必须在 finally 清掉，绝不残留 td-smoke-a/b-* 临时目录
 try {
@@ -93,7 +93,7 @@ try {
   fs.writeFileSync(stageA + '/course.json', JSON.stringify(m));
   const r1 = core.courses.importCourse(stageA);
   core.courses.markLessonRead(r1.course.id, 1);
-  core.courses.confirmSample(r1.course.id);
+  core.commands.human.confirmCourseSample(r1.course.id);
   const req = core.courses.createGenerationRequest(r1.course.id, 'app');
   core.courses.claimRequest(req.id, 'smoke-agent');
   // 认领后导入完整包（第 1~2 天；第 1 天与样课逐字节一致，版本升 1.1.0）
@@ -240,12 +240,12 @@ try {
   // 3a. 应用启动：侧栏仅「学习计划」一个学习入口，不再有独立「课程」菜单
   await waitFor(() => evalJs(`!!document.querySelector('.nav-item')`), 15000, '应用启动');
   const navTexts = await evalJs(`[...document.querySelectorAll('.nav-item')].map((b) => b.textContent.trim())`);
-  assert(navTexts.filter((t) => t.includes('学习计划')).length === 1, '侧栏恰有一个「学习计划」入口');
+  assert(navTexts.filter((t) => t.includes('学习')).length === 1, '侧栏恰有一个「学习计划」入口');
   assert(!navTexts.some((t) => t === '课程'), '侧栏无独立「课程」菜单');
 
   // 3b. 首页默认计划，标题右侧切到课程再切回；两页内容互不混排
   await clickUntil(
-    `[...document.querySelectorAll('.nav-item')].find(b => b.textContent.includes('学习计划'))?.click()`,
+    `[...document.querySelectorAll('.nav-item')].find(b => b.textContent.includes('学习'))?.click()`,
     () => evalJs(`document.querySelectorAll('.panel .plan-card:not(.plan-course-entry)').length === 2 && document.querySelectorAll('.plan-course-entry').length === 0`),
     15000, '学习首页默认只显示两个计划',
   );
@@ -284,9 +284,9 @@ try {
     () => evalJs(`!!document.querySelector('.course-lesson-frame')`),
     10000, '摘要卡直达当天讲义视图',
   );
-  assert(await evalJs(`document.querySelector('.panel h1')?.textContent`) === '第一天·样课', '直达第 1 天讲义正文');
+  assert(await evalJs(`document.querySelector('.embed-frame-title')?.textContent`) === '第一天·样课', '直达第 1 天讲义正文');
   assert((await evalJs(`document.querySelector('.backlink')?.textContent`))?.includes('返回计划详情'), '直达讲义的返回指向计划详情');
-  assert(await evalJs(`document.querySelector('.nav-item.active')?.textContent.includes('学习计划')`), '全程仍在「学习计划」入口内');
+  assert(await evalJs(`document.querySelector('.nav-item.active')?.textContent.includes('学习')`), '全程仍在「学习计划」入口内');
   // 讲义 iframe：sandbox/CSP/外部资源中和/包内样式内联（与直达路径无关，渲染防护不变）
   const frameInfo = await evalJs(`(() => { const f = document.querySelector('.course-lesson-frame'); const d = f.getAttribute('srcdoc') || ''; return { sandbox: f.getAttribute('sandbox'), hasCsp: d.includes('Content-Security-Policy'), noExternal: !d.includes('evil.example.com'), noLink: !d.includes('<link'), hasInlineCss: d.includes('内联自课程包 assets/style.css'), cssMarker: d.includes('--smoke-ink') }; })()`);
   assert(frameInfo.sandbox === '', 'iframe sandbox 为最严格（空串）');
@@ -324,7 +324,7 @@ try {
   const itemScrollBefore = await evalJs(`(() => { const el = document.querySelector('.content'); el.scrollTop = 80; return el.scrollTop; })()`);
   await clickUntil(
     `document.querySelector('.plan-item-open')?.click()`,
-    () => evalJs(`document.querySelector('.panel h1')?.textContent === '计划条目'`),
+    () => evalJs(`!!document.querySelector('.plan-item-detail')`),
     10000, '点击计划条目进入详情',
   );
   assert((await evalJs(`document.querySelector('.plan-item-detail-content')?.textContent`))?.includes('第1天任务'), '条目详情显示完整安排');
@@ -349,7 +349,7 @@ try {
     () => evalJs(`document.querySelector('.panel h1')?.textContent === '冒烟课程'`),
     10000, '课程总览打开（学习计划面板内）',
   );
-  assert(await evalJs(`document.querySelector('.nav-item.active')?.textContent.includes('学习计划')`), '总览仍挂在「学习计划」入口下');
+  assert(await evalJs(`document.querySelector('.nav-item.active')?.textContent.includes('学习')`), '总览仍挂在「学习计划」入口下');
   assert((await evalJs(`document.querySelector('.backlink')?.textContent`))?.includes('返回计划详情'), '总览返回指向计划详情');
   assert(await evalJs(`document.querySelectorAll('.course-card:not(.course-overview-entry)').length`) === 5, '课程每日卡片共 5 张（= 计划天数）');
   assert(await evalJs(`document.querySelectorAll('.course-card:not(.course-overview-entry):not(.pending)').length`) === 2, '其中 2 张讲义卡（第 1/2 天）');
@@ -361,7 +361,7 @@ try {
   assert(await evalJs(`document.querySelectorAll('.course-card:not(.course-overview-entry)').length`) === 5, '独立总览不计入五天日课');
   await clickUntil(
     `document.querySelector('.course-overview-entry')?.click()`,
-    () => evalJs(`document.querySelector('.panel h1')?.textContent === '课程总览' && !!document.querySelector('.course-lesson-frame')`),
+    () => evalJs(`document.querySelector('.embed-frame-title')?.textContent === '课程总览' && !!document.querySelector('.course-lesson-frame')`),
     10000, '打开独立课程总览正文',
   );
   assert(await evalJs(`(() => { const f = document.querySelector('.course-lesson-frame'); const d = f.getAttribute('srcdoc') || ''; return f.getAttribute('sandbox') === '' && d.includes('独立课程总览') && !d.includes('<script'); })()`), '总览正文已消毒并用 sandbox 阅读');
@@ -374,7 +374,7 @@ try {
   // 3g. 总览卡 → 正文 → 返回总览：卡片与进度保留
   await clickUntil(
     `[...document.querySelectorAll('.course-card:not(.pending)')].find(c => c.textContent.includes('第二天'))?.click()`,
-    () => evalJs(`!!document.querySelector('.course-lesson-frame') && (document.querySelector('.panel h1')?.textContent ?? '').includes('第二天')`),
+    () => evalJs(`!!document.querySelector('.course-lesson-frame') && (document.querySelector('.embed-frame-title')?.textContent ?? '').includes('第二天')`),
     10000, '从总览打开第 2 天讲义',
   );
   await clickUntil(
@@ -399,7 +399,7 @@ try {
   // 3i. 返回计划页 → 切换课程页进入 样课课程：后四天待生成 + 确认入口仍在
   await clickUntil(
     `document.querySelector('.backlink')?.click()`,
-    () => evalJs(`document.querySelector('.panel h1')?.textContent === '学习计划' && document.querySelector('.study-home-tabs button.active')?.textContent === '计划'`),
+    () => evalJs(`!!document.querySelector('.study-home-tabs') && document.querySelector('.study-home-tabs button.active')?.textContent === '计划'`),
     10000, '返回计划页',
   );
   await clickUntil(
@@ -443,7 +443,7 @@ try {
   // 3k. 返回课程页：课程状态回流，切换视图仍选中课程
   await clickUntil(
     `document.querySelector('.backlink')?.click()`,
-    () => evalJs(`document.querySelector('.panel h1')?.textContent === '学习计划'`),
+    () => evalJs(`!!document.querySelector('.study-home-tabs')`),
     10000, '返回课程页',
   );
   assert(await evalJs(`document.querySelector('.study-home-tabs button.active')?.textContent === '课程'`), '从课程总览返回后仍选中「课程」');

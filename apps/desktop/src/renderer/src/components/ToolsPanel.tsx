@@ -145,10 +145,9 @@ export default function ToolsPanel() {
   }
 
   return (
-    <div className="panel">
+    <div className="panel" role="region" aria-label="工具箱">
       <header className="panel-head">
-        <h1>工具箱</h1>
-        <div className="head-meta mono">HTML 小工具 · 应用内打开</div>
+        <div className="head-meta mono">{tools.length} 个工具</div>
         <span className="spacer" />
         <button className="btn slim" onClick={() => setCatModalOpen(true)}>
           管理分类
@@ -160,7 +159,7 @@ export default function ToolsPanel() {
             setFormOpen(true);
           }}
         >
-          <IconPlus width={13} height={13} style={{ marginRight: 4, verticalAlign: -2 }} />
+          <IconPlus width={13} height={13} />
           新增工具
         </button>
       </header>
@@ -391,7 +390,7 @@ function CategoryModal({ cats, onClose, onChanged, onGoAddTool }: {
               onKeyDown={(e) => e.key === 'Enter' && void add()}
             />
             <button className="btn slim" disabled={busy || !newName.trim()} onClick={() => void add()}>
-              <IconPlus width={12} height={12} style={{ marginRight: 3, verticalAlign: -1 }} />
+              <IconPlus width={12} height={12} />
               添加
             </button>
           </div>

@@ -5,7 +5,11 @@
 // 任务状态 / 认领令牌 / 认领时间窗 / 条数预算 / 来源 URL / 事件去重 / 字段参数；
 // 预算按任务累计（跨批次与重试最多 max_items 条新入库，重复提交不能绕过）。
 // 旧新闻与收藏（is_starred）只读保留，展示不受预算限制。
+// 内容形态（2026-10-13）：'url'=详情页内嵌来源网页（默认）；'html'=本地快照——
+// X/Twitter 等无法内嵌的来源，agent 提交可选 html 字段，消毒后写入 dirname(db)/news。
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 import type { DbAdapter } from '../db';
 import { mapNews } from '../db';
 import type { NewsDeleteResult, NewsItem, NewsSubmissionItem, NewsTask } from '../types';
@@ -27,6 +31,74 @@ export const NEWS_TASK_WINDOW_DEFAULT_HOURS = 24;
 /** 任务时间窗允许范围（小时） */
 export const NEWS_TASK_WINDOW_MIN_HOURS = 1;
 export const NEWS_TASK_WINDOW_MAX_HOURS = 720;
+/** 单条本地 HTML 快照的最大字符数（消毒前；足够容纳整页推文/长文快照） */
+export const NEWS_HTML_MAX_CHARS = 1_000_000;
+/** 本地快照目录名：位于 dirname(db)/news（与 tools/courses 同一应用数据推导规则） */
+export const NEWS_DIR_NAME = 'news';
+
+/** 本地快照根目录：dirname(db)/news（App 的 news-file:// 协议与 MCP 共用同一推导） */
+export function newsRootForDb(dbPath: string): string {
+  return join(resolve(dbPath, '..'), NEWS_DIR_NAME);
+}
+
+/** 快照相对路径 → 绝对路径（仅允许 news 根目录内的单段安全文件名，防路径逃逸） */
+function htmlAbsPath(root: string, htmlRel: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.html?$/i.test(htmlRel)) throw new Error(`快照路径不安全：${htmlRel}`);
+  const abs = resolve(root, htmlRel);
+  if (abs !== root && !abs.startsWith(root + sep)) throw new Error(`快照路径越界：${htmlRel}`);
+  return abs;
+}
+
+/** 快照 HTML 消毒：剥离脚本与危险属性、中和危险属性与协议；**保留 https 外链图片**
+ *  （推文配图在 pbs.twimg.com 等图床上，必须远程加载才能展示）。App 侧 iframe 渲染，双重防线。 */
+const SAFE_URL_PREFIXES = ['#', '/', './', '../', 'https://', 'http://', 'mailto:'];
+export function sanitizeNewsHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<script\b[^>]*\/>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed[\s\S]*?<\/embed>/gi, '')
+    .replace(/<link\b[^>]*>/gi, '')
+    .replace(/<meta\b[^>]*>/gi, '')
+    // 事件属性 on*="..."
+    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    // href/src 只放行白名单协议/相对地址（javascript:/data:/file:/协议相对 // 等一律中和为 #）
+    .replace(/\s(href|src)\s*=\s*(["'])([^"']*)\2/gi, (m, attr: string, quote: string, rawUrl: string) => {
+      const u = rawUrl.trim().toLowerCase();
+      return SAFE_URL_PREFIXES.some((p) => u.startsWith(p)) ? m : ` ${attr}=${quote}#${quote}`;
+    })
+    .replace(/\ssrcset\s*=\s*(["'])[^"']*\1/gi, '')
+    // 内联 style 中的 expression/url(javascript:)
+    .replace(/style\s*=\s*(["'])\s*[^"']*(?:expression|javascript:)[^"']*\1/gi, '');
+}
+
+/** 保证快照是自带 UTF-8 声明的完整文档（自定义协议响应头不带 charset，靠 meta 兜底，防中文乱码） */
+export function ensureStandaloneNewsHtml(html: string, title: string): string {
+  const safeTitle = title.replace(/</g, '&lt;').slice(0, 120);
+  if (/<html[\s>]/i.test(html)) {
+    return /<meta[^>]+charset/i.test(html)
+      ? html
+      : html.replace(/<head([^>]*)>/i, `<head$1><meta charset="utf-8">`);
+  }
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${safeTitle}</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 20px 24px 40px; font: 15px/1.75 -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; color: #1a1a1a; background: #fff; }
+  img, video { max-width: 100%; height: auto; border-radius: 10px; }
+  a { color: #0b57d0; }
+</style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+}
 
 /** 精确发布时间（ISO）→ 北京时间日期 YYYY-MM-DD（供展示与「今天」判定） */
 export function beijingDateOf(iso: string): string {
@@ -101,9 +173,11 @@ function immediateTx<T>(db: DbAdapter, fn: () => T): T {
   }
 }
 
-export function createNewsService(db: DbAdapter, opts: { leaseMs?: number } = {}) {
+export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseMs?: number } = {}) {
   const LEASE_MS = Math.max(opts.leaseMs ?? NEWS_TASK_LEASE_MS, 1);
   const leaseUntil = (): string => isoAfter(LEASE_MS);
+  // 本地快照根目录：必须从数据库路径推导（App 与 MCP 共用；缺省交给 createCore 传真实路径）
+  const htmlRoot = opts.dbPath ? newsRootForDb(opts.dbPath) : null;
 
   const taskRow = (id: number): Record<string, unknown> | undefined =>
     db.prepare('SELECT * FROM news_tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
@@ -256,7 +330,15 @@ export function createNewsService(db: DbAdapter, opts: { leaseMs?: number } = {}
     if (ts > now + 5 * 60_000) throw new Error(`${label}：发布时间在未来（不接受未发布/时钟异常的条目）`);
     const windowMs = windowHours * 3600_000;
     if (ts < now - windowMs) throw new Error(`${label}：发布时间超出任务时间窗（任务要求最近 ${windowHours} 小时内）`);
-    return { title, summary, url, sourceName, publishedAt: new Date(ts).toISOString() };
+    // 可选本地 HTML 快照：X/Twitter 等无法内嵌展示的来源，把核实到的原文整理成自包含 HTML
+    let html: string | null = null;
+    if (raw.html != null) {
+      const rawHtml = String(raw.html);
+      if (!rawHtml.trim()) throw new Error(`${label}：html 快照不能为空字符串（不需要快照就别传该字段）`);
+      if (rawHtml.length > NEWS_HTML_MAX_CHARS) throw new Error(`${label}：html 快照过长（>${NEWS_HTML_MAX_CHARS} 字符）`);
+      html = ensureStandaloneNewsHtml(sanitizeNewsHtml(rawHtml), title);
+    }
+    return { title, summary, url, sourceName, publishedAt: new Date(ts).toISOString(), html };
   };
 
   /** 提交一批新闻（整批原子：任何一条不合法/重复/超预算 → 全部拒绝，绝不部分入库）。
@@ -316,15 +398,37 @@ export function createNewsService(db: DbAdapter, opts: { leaseMs?: number } = {}
           `超出任务预算：任务 #${task.id} 历史已收录 ${task.accepted_count}/${task.max_items} 条（删除不返还），本次提交 ${cleaned.length} 条——请削减后重试`,
         );
       }
+      if (cleaned.some((c) => c.html) && !htmlRoot) {
+        throw new Error('本地快照未配置存储目录（dbPath），无法提交 html 条目');
+      }
       const nowStr = nowIso();
       const insert = db.prepare(
-        `INSERT INTO news (source, title, url, summary, published_date, published_at, fetched_at, dedup_key, is_read, is_starred, task_id, source_name)
-         VALUES ('agent', ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+        `INSERT INTO news (source, title, url, summary, published_date, published_at, fetched_at, dedup_key, is_read, is_starred, task_id, source_name, content_kind, html_rel)
+         VALUES ('agent', ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`,
       );
       const inserted: NewsItem[] = [];
-      for (const c of cleaned) {
-        const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey('generic', c.url, ''), Number(task.id), c.sourceName || null);
-        inserted.push(mapNews(db.prepare('SELECT * FROM news WHERE id = ?').get(res.lastInsertRowid) as Record<string, unknown>));
+      // 先落盘快照文件再入库；后续任一 INSERT 失败则回滚并清理已写文件（不留孤儿快照）
+      const written: string[] = [];
+      try {
+        mkdirSync(htmlRoot!, { recursive: true });
+        for (const c of cleaned) {
+          const htmlRel = c.html ? `${randomUUID()}.html` : null;
+          if (c.html && htmlRel) {
+            const abs = htmlAbsPath(htmlRoot!, htmlRel);
+            writeFileSync(abs, c.html, 'utf8');
+            written.push(abs);
+            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey('generic', c.url, ''), Number(task.id), c.sourceName || null, 'html', htmlRel);
+            inserted.push(mapNews(db.prepare('SELECT * FROM news WHERE id = ?').get(res.lastInsertRowid) as Record<string, unknown>));
+          } else {
+            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey('generic', c.url, ''), Number(task.id), c.sourceName || null, 'url', null);
+            inserted.push(mapNews(db.prepare('SELECT * FROM news WHERE id = ?').get(res.lastInsertRowid) as Record<string, unknown>));
+          }
+        }
+      } catch (e) {
+        for (const abs of written) {
+          try { unlinkSync(abs); } catch { /* 尽力清理，不掩盖原始错误 */ }
+        }
+        throw e;
       }
       // 历史累计收录数随提交递增（删除不减）：预算跨批次/跨重试累计的唯一依据
       db.prepare('UPDATE news_tasks SET accepted_count = accepted_count + ?, updated_at = ? WHERE id = ?')
@@ -469,7 +573,7 @@ export function createNewsService(db: DbAdapter, opts: { leaseMs?: number } = {}
    *  2) 清理仅新闻独占的关联：旧版话题链接行随新闻删除；
    *  3) 自媒体选题/素材（media_topics/media_materials）是独立成果：保留行与其来源快照
    *     （source_note 已含标题与链接），仅把失效的 source_news_id 置空；
-   *  4) 删除新闻正文行（收藏/已读状态随行消失）。
+   *  4) 删除新闻正文行（收藏/已读状态随行消失），本地 HTML 快照文件一并移除（新闻独占资产）。
    *  任务预算按历史累计（accepted_count），删除不返还；幂等：条目不存在时返回 deleted:false。 */
   const deleteItem = (
     id: number,
@@ -480,7 +584,7 @@ export function createNewsService(db: DbAdapter, opts: { leaseMs?: number } = {}
       const row = db.prepare('SELECT * FROM news WHERE id = ?').get(numId) as Record<string, unknown> | undefined;
       if (!row) {
         // 幂等：重复删除/并发已删 → 成功返回未删（不报错、不重复计指纹）
-        return { deleted: false, id: numId, topic_links_removed: 0, media_refs_cleared: 0, fingerprints_kept: 0 };
+        return { deleted: false, id: numId, topic_links_removed: 0, media_refs_cleared: 0, fingerprints_kept: 0, html_removed: 0 };
       }
       const now = nowIso();
       const fps = new Set<string>([deletedFingerprint('link', String(row.dedup_key ?? ''))]);
@@ -493,14 +597,57 @@ export function createNewsService(db: DbAdapter, opts: { leaseMs?: number } = {}
       const mediaRefsCleared =
         db.prepare('UPDATE media_topics SET source_news_id = NULL, updated_at = ? WHERE source_news_id = ?').run(now, numId).changes +
         db.prepare('UPDATE media_materials SET source_news_id = NULL, updated_at = ? WHERE source_news_id = ?').run(now, numId).changes;
+      // 本地快照是新闻独占资产：随行删除（事务提交后执行；失败不阻断删除本身）
+      const htmlRel = (row.html_rel as string | null) ?? null;
+      let htmlRemoved = 0;
+      let pendingRemove: string | null = null;
+      if (row.content_kind === 'html' && htmlRel && htmlRoot) {
+        try {
+          pendingRemove = htmlAbsPath(htmlRoot, htmlRel);
+        } catch {
+          pendingRemove = null; // 路径异常：不删任意文件，行照常删除
+        }
+      }
       db.prepare('DELETE FROM news WHERE id = ?').run(numId);
-      return { deleted: true, id: numId, topic_links_removed: topicLinksRemoved, media_refs_cleared: mediaRefsCleared, fingerprints_kept: fingerprintsKept };
+      if (pendingRemove) {
+        try {
+          unlinkSync(pendingRemove);
+          htmlRemoved = 1;
+        } catch {
+          /* 文件缺失/占用：不阻断删除，行已删即可 */
+        }
+      }
+      return { deleted: true, id: numId, topic_links_removed: topicLinksRemoved, media_refs_cleared: mediaRefsCleared, fingerprints_kept: fingerprintsKept, html_removed: htmlRemoved };
     });
+  };
+
+  /** 读取一条新闻的本地快照（content_kind='html' 专用；agent 核对与 App 兜底展示共用）。
+   *  url 形态返回 html:null；快照文件缺失时 missing:true（不抛错，调用方自行降级）。 */
+  const readHtml = (
+    id: number,
+  ): { id: number; content_kind: 'url' | 'html'; html_rel: string | null; html: string | null; missing: boolean } => {
+    const row = db.prepare('SELECT * FROM news WHERE id = ?').get(Number(id)) as Record<string, unknown> | undefined;
+    if (!row) throw new Error(`新闻 ${id} 不存在`);
+    const htmlRel = (row.html_rel as string | null) ?? null;
+    if (row.content_kind !== 'html' || !htmlRel) return { id: Number(id), content_kind: 'url', html_rel: null, html: null, missing: false };
+    if (!htmlRoot) throw new Error('本地快照未配置存储目录（dbPath），无法读取');
+    let html: string | null = null;
+    let missing = true;
+    try {
+      const abs = htmlAbsPath(htmlRoot, htmlRel);
+      if (existsSync(abs)) {
+        html = readFileSync(abs, 'utf8');
+        missing = false;
+      }
+    } catch (e) {
+      throw new Error(`快照路径不安全或不可读：${htmlRel}（${(e as Error).message}）`);
+    }
+    return { id: Number(id), content_kind: 'html', html_rel: htmlRel, html, missing };
   };
 
   return {
     createTask, getTask, listTasks, claimTask, submitItems, completeTask, releaseTask, cancelTask,
-    list, markRead, markStarred, markAllRead, deleteItem, lastFetchedAt, countBySource,
+    list, markRead, markStarred, markAllRead, deleteItem, readHtml, lastFetchedAt, countBySource,
   };
 }
 

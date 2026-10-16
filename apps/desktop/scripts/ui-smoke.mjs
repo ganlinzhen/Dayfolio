@@ -1,4 +1,4 @@
-// TodoDesk 新 UI（Codex 风格）CDP 冒烟：添加待办 → 分组校验 → 完成联动 → 打卡热力 → 截图
+// Dayfolio 新 UI（Codex 风格）CDP 冒烟：添加待办 → 分组校验 → 完成联动 → 打卡热力 → 截图
 import { writeFileSync } from 'node:fs';
 
 const BASE = 'http://127.0.0.1:9223';
@@ -26,7 +26,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 1. 外壳渲染
 const brand = await evalJs(`document.querySelector('.brand-name')?.textContent`);
 console.log('品牌名:', brand);
-if (brand !== 'TodoDesk') throw new Error('界面未渲染');
+if (brand !== 'Dayfolio') throw new Error('界面未渲染');
 
 // 2. 添加待办（composer）
 const title = `冒烟 ${new Date().toLocaleTimeString('sv-SE')}`;
@@ -42,6 +42,7 @@ await sleep(400);
 await evalJs(setInput('.composer-input', title));
 await evalJs(setInput('.composer .chip-select', 'high', 'HTMLSelectElement'));
 await evalJs(setInput('.composer .chip-date', today));
+await evalJs(setInput('.todo-schedule select', 'date', 'HTMLSelectElement'));
 await evalJs(`document.querySelector('.composer .btn.primary').click()`);
 await sleep(600);
 
@@ -54,7 +55,7 @@ const row = await evalJs(`(() => {
            due: hit.querySelector('.todo-meta')?.textContent, mono: !!hit.querySelector('.todo-meta') };
 })()`);
 console.log('新增行:', JSON.stringify(row));
-if (!row || !row.group.startsWith('今天') || !row.high || row.due !== today) throw new Error('待办分组/样式异常');
+if (!row || !row.group.startsWith('今天') || !row.high || !row.due.startsWith(today)) throw new Error('待办分组/样式异常');
 
 // 4. 搜索过滤
 await evalJs(setInput('.searchbox input', title.slice(0, 4)));
@@ -76,7 +77,7 @@ console.log('完成联动: 未完成移除 =', gone, '| 已完成勾选 =', done
 if (gone !== true || doneChecked !== true) throw new Error('完成流程异常');
 
 // 6. 打卡面板：大数字 + 28 天热力点 + 今日已打卡状态
-await evalJs(`[...document.querySelectorAll('.nav-item')].find(b => b.textContent.includes('打卡')).click()`);
+await evalJs(`[...document.querySelectorAll('.todo-toolbar button')].find(b => b.textContent === '记录').click()`);
 await sleep(500);
 const checkin = await evalJs(`(() => ({
   num: document.querySelector('.streak-num')?.textContent,
@@ -89,7 +90,7 @@ console.log('打卡面板:', JSON.stringify(checkin));
 if (!checkin.num || Number(checkin.num) < 1 || checkin.heat !== 28 || checkin.heatOn < 1) throw new Error('打卡面板异常');
 
 // 7. 计划面板空态
-await evalJs(`[...document.querySelectorAll('.nav-item')].find(b => b.textContent.includes('学习计划')).click()`);
+await evalJs(`[...document.querySelectorAll('.nav-item')].find(b => b.textContent.includes('学习')).click()`);
 await sleep(400);
 const planEmpty = await evalJs(`document.querySelector('.panel .empty')?.textContent?.trim()`);
 console.log('计划空态:', planEmpty);

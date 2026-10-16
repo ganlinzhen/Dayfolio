@@ -1,6 +1,6 @@
 // 菜单栏常驻 + 菜单「快速捕获…」呼出速记窗
 // - Tray title 实时显示「今日该做数量」（逾期加 ! 前缀）
-// - 菜单：今日概览 / 快速捕获 / 每日打卡 / 打开主窗口 / 退出
+// - 菜单：今日概览 / 快速捕获 / 打开主窗口 / 退出
 // - 「快速捕获…」呼出速记小窗（回车入库，Esc/失焦关闭）
 import { app, BrowserWindow, Menu, Tray, nativeImage, screen } from 'electron';
 import { join } from 'node:path';
@@ -84,7 +84,7 @@ export function createTrayAndQuickCapture(core: TodoDeskCore, openMainWindow: ()
   // ---------- Tray ----------
 
   tray = new Tray(nativeImage.createEmpty());
-  tray.setToolTip('TodoDesk');
+  tray.setToolTip('Dayfolio');
 
   const buildMenu = () => {
     const today = core.today.getToday();
@@ -103,10 +103,9 @@ export function createTrayAndQuickCapture(core: TodoDeskCore, openMainWindow: ()
           label: '快速捕获…',
           click: () => toggleQuickWindow(),
         },
-        { label: '每日打卡', click: () => { core.checkins.checkin({ ref_type: 'day' }); refresh(); } },
         { type: 'separator' },
         { label: '打开主窗口', click: openMainWindow },
-        { label: '退出 TodoDesk', role: 'quit' },
+        { label: '退出 Dayfolio', role: 'quit' },
       ]),
     );
   };

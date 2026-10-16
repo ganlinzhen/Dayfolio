@@ -1,12 +1,12 @@
 // 第一轮模拟用户迭代：核心闭环旅程（模拟用户场景，非真人测试）。
-// 以「用户第一天使用 TodoDesk 知识库与自媒体」的视角顺序走完两个模块的主链路，
+// 以「用户第一天使用 Dayfolio 知识库与自媒体」的视角顺序走完两个模块的主链路，
 // 断言每一步的可见结果；配套记录见 claude_doc/TodoDesk知识库与自媒体交付记录.md。
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openNodeSqliteDb } from '../src/adapters/node-sqlite';
-import { createCore, type TodoDeskCore } from '../src/index';
+import { createCore, todayStr, type TodoDeskCore } from '../src/index';
 
 let dir: string;
 let core: TodoDeskCore;
@@ -80,8 +80,8 @@ describe('第一轮·自媒体核心闭环（模拟用户）', () => {
     core.media.updateTopic(topic.id, { status: 'selected' });
     const xhs = core.media.addVersion(content.id, { platform: 'xiaohongshu', body: '小红书版：3 图文' });
     const wx = core.media.addVersion(content.id, { platform: 'weixin', body: '公众号版：长文' });
-    core.media.reviewVersion(xhs.id, 'submit');
-    core.media.reviewVersion(wx.id, 'submit');
+    core.commands.human.reviewMediaVersion(xhs.id, 'submit');
+    core.commands.human.reviewMediaVersion(wx.id, 'submit');
     const ov = core.media.getOverview();
     expect(ov.versions.in_review).toBe(2);
     expect(ov.pending_review.map((p) => p.platform).sort()).toEqual(['weixin', 'xiaohongshu'].sort());
@@ -91,8 +91,8 @@ describe('第一轮·自媒体核心闭环（模拟用户）', () => {
   it('概览逐条人工审核：通过小红书、拒绝公众号（拒绝原因可见）', () => {
     const ov = core.media.getOverview();
     for (const p of ov.pending_review) {
-      if (p.platform === 'xiaohongshu') core.media.reviewVersion(p.id, 'approve', '首发可发');
-      else core.media.reviewVersion(p.id, 'reject', '开头太长，压缩到 50 字内');
+      if (p.platform === 'xiaohongshu') core.commands.human.reviewMediaVersion(p.id, 'approve', '首发可发');
+      else core.commands.human.reviewMediaVersion(p.id, 'reject', '开头太长，压缩到 50 字内');
     }
     const after = core.media.getOverview();
     expect(after.versions.approved).toBe(1);
@@ -105,7 +105,7 @@ describe('第一轮·自媒体核心闭环（模拟用户）', () => {
   it('排期 → 到期手动发布 → 回填链接 → 录两次指标（次日增量覆盖当日）', () => {
     const c = core.media.listContents({ search: '我的知识库工作流' })[0];
     const xhs = core.media.getContent(c.id).versions.find((v) => v.platform === 'xiaohongshu')!;
-    const cal = core.media.schedule({ content_version_id: xhs.id, planned_date: '2026-10-12' });
+    const cal = core.media.schedule({ content_version_id: xhs.id, planned_date: todayStr() });
     expect(core.media.getOverview().upcoming.map((u) => u.id)).toContain(cal.id);
 
     core.media.markPublished(cal.id, { publish_url: 'https://xhs.example.com/p/1' });

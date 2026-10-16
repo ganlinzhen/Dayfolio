@@ -1,7 +1,10 @@
 // 通用对象仓储：类型驱动的 CRUD / 搜索 / 筛选 / 链接解析。
 // 列名一律经 ObjectTypeDef 白名单映射（杜绝标识符注入），值全部参数化。
 import { randomUUID } from 'node:crypto';
-import type { DbAdapter } from '../db';
+import { inTx, type DbAdapter } from '../db';
+import { assertRelationPatch } from './relations';
+import { assertObjectWrite } from './policy';
+import { ensureValidDateStr } from '../utils/date';
 import { nowIso } from '../utils/date';
 import { quoteIdent } from './ddl';
 import type { OntologyService } from './registry';
@@ -58,8 +61,8 @@ const writeValue = (p: PropertyDef, value: unknown, apiName: string): unknown =>
     if (p.enumValues && !p.enumValues.includes(s)) throw new Error(`${apiName}.${p.apiName} 取值须为 ${p.enumValues.join('/')}`);
     return s;
   }
-  if (p.dataType === 'json') return typeof value === 'string' ? value : JSON.stringify(value);
-  if (p.dataType === 'boolean') return value ? 1 : 0;
+  if (p.dataType === 'json') { const text=typeof value === 'string' ? value : JSON.stringify(value); JSON.parse(text); return text; }
+  if (p.dataType === 'boolean') { if (![true,false,0,1].includes(value as boolean)) throw new Error(`${apiName}.${p.apiName} 须为布尔值`); return value ? 1 : 0; }
   if (p.dataType === 'integer') {
     const n = Number(value);
     if (!Number.isInteger(n)) throw new Error(`${apiName}.${p.apiName} 须为整数`);
@@ -67,9 +70,10 @@ const writeValue = (p: PropertyDef, value: unknown, apiName: string): unknown =>
   }
   if (p.dataType === 'float') {
     const n = Number(value);
-    if (Number.isNaN(n)) throw new Error(`${apiName}.${p.apiName} 须为数字`);
+    if (!Number.isFinite(n)) throw new Error(`${apiName}.${p.apiName} 须为数字`);
     return n;
   }
+  if (p.dataType === 'date') { const text=String(value); ensureValidDateStr(text.slice(0,10)); if (text.length!==10 && !Number.isFinite(Date.parse(text))) throw new Error('日期无效'); return text; }
   return String(value);
 };
 
@@ -80,11 +84,12 @@ export function createObjectRepo(db: DbAdapter, ontology: OntologyService) {
     if (def.isVirtual || !def.tableName) throw new Error(`虚拟类型 ${apiName} 没有实例数据`);
     return def;
   };
+  const assertHealthy=(apiName:string)=>{if(ontology.listLinkTypes().some(l=>l.constraintState==='needs_repair'&&(l.rightType===apiName||l.linkTable===apiName)))throw new Error('RELATION_NEEDS_REPAIR：相关对象暂不可写');};
 
   const project = (def: ObjectTypeDef, row: Record<string, unknown>): ObjectRow => {
     const out: ObjectRow = {};
     for (const p of def.properties) {
-      if (p.apiName in row) out[p.apiName] = readValue(p, row[p.apiName]);
+      if (p.readable !== false && p.apiName in row) out[p.apiName] = readValue(p, row[p.apiName]);
     }
     return out;
   };
@@ -93,22 +98,28 @@ export function createObjectRepo(db: DbAdapter, ontology: OntologyService) {
     const conds: string[] = [];
     const params: unknown[] = [];
     for (const w of where ?? []) {
-      propOf(def, w.property); // 白名单校验
+      if (propOf(def, w.property).readable === false) throw new Error('不可读字段不能筛选'); // 白名单校验
       const opSql = { eq: '=', ne: '!=', like: 'LIKE', in: 'IN', gte: '>=', lte: '<=' }[w.op];
+      if (!opSql) throw new Error('不支持的过滤操作符');
+      const bind = (value: unknown) => typeof value === 'boolean' ? (value ? 1 : 0) : value;
+      if ((w.op === 'eq' || w.op === 'ne') && w.value === null) {
+        conds.push(`${quoteIdent(w.property)} IS ${w.op === 'ne' ? 'NOT ' : ''}NULL`);
+        continue;
+      }
       if (w.op === 'in') {
         const arr = Array.isArray(w.value) ? w.value : [w.value];
         if (arr.length === 0) { conds.push('1=0'); continue; }
         conds.push(`${quoteIdent(w.property)} IN (${arr.map(() => '?').join(',')})`);
-        params.push(...arr);
+        params.push(...arr.map(bind));
       } else {
         conds.push(`${quoteIdent(w.property)} ${opSql} ?`);
-        params.push(w.op === 'like' ? `%${String(w.value)}%` : w.value);
+        params.push(w.op === 'like' ? `%${String(w.value)}%` : bind(w.value));
       }
     }
     if (search && search.trim()) {
-      const textProps = def.properties.filter((p) => p.dataType === 'string' || p.dataType === 'enum' || p.dataType === 'date');
+      const textProps = def.properties.filter((p) => p.readable !== false && (p.dataType === 'string' || p.dataType === 'enum' || p.dataType === 'date'));
       if (textProps.length > 0) {
-        conds.push(`(${textProps.map((p) => quoteIdent(p.apiName)).join(` || ' ' || `)} LIKE ?)`);
+        conds.push(`(${textProps.map((p) => `COALESCE(${quoteIdent(p.apiName)}, '')`).join(` || ' ' || `)} LIKE ?)`);
         params.push(`%${search.trim()}%`);
       }
     }
@@ -120,6 +131,7 @@ export function createObjectRepo(db: DbAdapter, ontology: OntologyService) {
     const { sql, params } = buildWhere(def, opts.where, opts.search);
     const total = Number((db.prepare(`SELECT COUNT(*) AS n FROM ${quoteIdent(def.tableName!)}${sql}`).get(...params) as { n: number }).n);
     const orderBy = opts.orderBy ? propOf(def, opts.orderBy).apiName : def.primaryKey;
+    if (propOf(def,orderBy).readable === false) throw new Error('不可读字段不能排序');
     const dir = opts.order === 'asc' ? 'ASC' : 'DESC';
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
     const offset = Math.max(opts.offset ?? 0, 0);
@@ -140,6 +152,9 @@ export function createObjectRepo(db: DbAdapter, ontology: OntologyService) {
 
   const insert = (apiName: string, values: ObjectRow): ObjectRow => {
     const def = defOf(apiName);
+    assertHealthy(apiName);
+    assertObjectWrite(def,'create',values);
+    for (const key of Object.keys(values)) propOf(def,key);
     const pk = def.properties.find((p) => p.apiName === def.primaryKey)!;
     const cols: string[] = [];
     const params: unknown[] = [];
@@ -175,6 +190,9 @@ export function createObjectRepo(db: DbAdapter, ontology: OntologyService) {
 
   const update = (apiName: string, id: unknown, patch: ObjectRow): ObjectRow => {
     const def = defOf(apiName);
+    assertHealthy(apiName);
+    assertObjectWrite(def,'update',patch);
+    assertRelationPatch(ontology,apiName,patch);
     const pkType = def.properties.find((p) => p.apiName === def.primaryKey)!.dataType;
     const key = pkType === 'integer' ? Number(id) : String(id);
     const sets: string[] = [];
@@ -201,6 +219,9 @@ export function createObjectRepo(db: DbAdapter, ontology: OntologyService) {
   /** 按属性筛选更新（动作 modify_object 用），返回更新行数 */
   const updateBy = (apiName: string, property: string, value: unknown, patch: ObjectRow): number => {
     const def = defOf(apiName);
+    assertHealthy(apiName);
+    assertObjectWrite(def,'update',patch);
+    assertRelationPatch(ontology,apiName,patch);
     propOf(def, property);
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -223,6 +244,8 @@ export function createObjectRepo(db: DbAdapter, ontology: OntologyService) {
 
   const remove = (apiName: string, id: unknown): void => {
     const def = defOf(apiName);
+    assertHealthy(apiName);
+    assertObjectWrite(def,'delete');
     const pkType = def.properties.find((p) => p.apiName === def.primaryKey)!.dataType;
     const key = pkType === 'integer' ? Number(id) : String(id);
     const res = db.prepare(`DELETE FROM ${quoteIdent(def.tableName!)} WHERE ${quoteIdent(def.primaryKey)} = ?`).run(key);
@@ -231,6 +254,8 @@ export function createObjectRepo(db: DbAdapter, ontology: OntologyService) {
 
   const deleteBy = (apiName: string, property: string, value: unknown): number => {
     const def = defOf(apiName);
+    assertHealthy(apiName);
+    assertObjectWrite(def,'delete');
     propOf(def, property);
     return db.prepare(`DELETE FROM ${quoteIdent(def.tableName!)} WHERE ${quoteIdent(property)} = ?`).run(value).changes;
   };

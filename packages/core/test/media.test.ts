@@ -87,24 +87,24 @@ describe('一母稿多平台版本与人工审核', () => {
     expect(() => core.media.schedule({ content_version_id: v1.id, planned_date: '2026-10-12' })).toThrow('approved');
 
     // 提交审核 → 通过
-    core.media.reviewVersion(v1.id, 'submit');
-    expect(core.media.reviewVersion(v1.id, 'approve', '可以发').status).toBe('approved');
+    core.commands.human.reviewMediaVersion(v1.id, 'submit');
+    expect(core.commands.human.reviewMediaVersion(v1.id, 'approve', '可以发').status).toBe('approved');
     // approved 不可直接改
     expect(() => core.media.updateVersion(v1.id, { body: '偷改' })).toThrow('不可直接编辑');
     // 撤回重编
-    core.media.reviewVersion(v1.id, 'revoke');
+    core.commands.human.reviewMediaVersion(v1.id, 'revoke');
     expect(core.media.getContent(c.id).versions.find((v) => v.id === v1.id)?.status).toBe('draft');
 
     // 第二版走拒绝
-    core.media.reviewVersion(v2.id, 'submit');
-    core.media.reviewVersion(v2.id, 'reject', '开头太闷');
+    core.commands.human.reviewMediaVersion(v2.id, 'submit');
+    core.commands.human.reviewMediaVersion(v2.id, 'reject', '开头太闷');
     const rej = core.media.getContent(c.id).versions.find((v) => v.id === v2.id);
     expect(rej?.status).toBe('rejected');
     expect(rej?.review_note).toBe('开头太闷');
     // rejected 修改后可重新提交，再次审核通过
     core.media.updateVersion(v2.id, { body: '改好了' });
-    core.media.reviewVersion(v2.id, 'submit');
-    expect(core.media.reviewVersion(v2.id, 'approve').status).toBe('approved');
+    core.commands.human.reviewMediaVersion(v2.id, 'submit');
+    expect(core.commands.human.reviewMediaVersion(v2.id, 'approve').status).toBe('approved');
   });
 
   it('母稿定稿与复盘笔记', () => {
@@ -170,8 +170,8 @@ describe('日历：排期与人工发布回填', () => {
     expect(stats[0].views).toBe(1500);
     // 未发布排期不可录指标
     const wx2 = core.media.addVersion(c.id, { platform: 'douyin', body: '口播稿' });
-    core.media.reviewVersion(wx2.id, 'submit');
-    core.media.reviewVersion(wx2.id, 'approve');
+    core.commands.human.reviewMediaVersion(wx2.id, 'submit');
+    core.commands.human.reviewMediaVersion(wx2.id, 'approve');
     const plan = core.media.schedule({ content_version_id: wx2.id, planned_date: '2026-10-15' });
     expect(() => core.media.addMetric({ calendar_id: plan.id, views: 1 })).toThrow('published');
   });

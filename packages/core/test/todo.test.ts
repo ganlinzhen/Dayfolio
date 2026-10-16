@@ -1,9 +1,73 @@
 // 待办服务测试
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { addDays, todayStr } from '../src/utils/date';
 import { mkCore } from './helpers';
+import { openNodeSqliteDb } from '../src/adapters/node-sqlite';
+import { createCore } from '../src';
 
 describe('待办服务', () => {
+  it('旧版 v14 日期待办升级后不丢失原值，也不伪造时段', () => {
+    const { core, dbPath, cleanup } = mkCore();
+    let upgraded: ReturnType<typeof openNodeSqliteDb> | undefined;
+    try {
+      const old = core.todos.add({ title: '旧日期任务', due_date: todayStr(), tags: ['保留'] });
+      core.db.exec('ALTER TABLE todos DROP COLUMN start_time; ALTER TABLE todos DROP COLUMN end_time; PRAGMA user_version = 14;');
+      core.db.close();
+      upgraded = openNodeSqliteDb(dbPath);
+      const next = createCore(upgraded, { dbPath });
+      expect(next.todos.get(old.id)).toMatchObject({ title: old.title, due_date: old.due_date, tags: old.tags, start_time: null, end_time: null, created_at: old.created_at });
+      expect(upgraded.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
+    } finally { upgraded?.close(); cleanup(); }
+  });
+
+  it('时段在新增、编辑、日历聚合和清除日期后保持一致', () => {
+    const { core, cleanup } = mkCore();
+    try {
+      const date = todayStr();
+      const t = core.todos.add({ title: '下午阅读', due_date: date, start_time: '14:00', end_time: '15:30' });
+      expect(core.todos.get(t.id)).toMatchObject({ start_time: '14:00', end_time: '15:30' });
+      expect(core.calendar.rangeAgenda({ from: date, to: date }).days[date].todos[0]).toMatchObject({ start_time: '14:00', end_time: '15:30' });
+      expect(core.todos.update(t.id, { end_time: '16:00' }).end_time).toBe('16:00');
+      expect(core.todos.update(t.id, { start_time: null, end_time: null })).toMatchObject({ due_date: date, start_time: null, end_time: null });
+      core.todos.update(t.id, { start_time: '09:00', end_time: '10:00' });
+      expect(core.todos.update(t.id, { due_date: null })).toMatchObject({ due_date: null, start_time: null, end_time: null });
+    } finally { cleanup(); }
+  });
+
+  it('拒绝不完整、倒序、非法时间与无日期时段，失败不改原记录', () => {
+    const { core, cleanup } = mkCore();
+    try {
+      const base = { title: '时间校验', due_date: todayStr() };
+      for (const timing of [
+        { start_time: '09:00' }, { end_time: '10:00' },
+        { start_time: '10:00', end_time: '10:00' },
+        { start_time: '11:00', end_time: '10:00' },
+        { start_time: '24:00', end_time: '25:00' },
+        { start_time: '9:00', end_time: '10:00' },
+      ]) expect(() => core.todos.add({ ...base, ...timing })).toThrow();
+      expect(() => core.todos.add({ title: '无日期', start_time: '09:00', end_time: '10:00' })).toThrow('日期');
+      const t = core.todos.add({ ...base, start_time: '09:00', end_time: '10:00' });
+      expect(() => core.todos.update(t.id, { start_time: '11:00' })).toThrow('结束时间');
+      expect(core.todos.get(t.id).start_time).toBe('09:00');
+    } finally { cleanup(); }
+  });
+
+  it('时段结束时才逾期，列表与今日概览一致；仅日期当天不逾期', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 15, 9, 59));
+    const { core, cleanup } = mkCore();
+    try {
+      const t = core.todos.add({ title: '有时段', due_date: todayStr(), start_time: '09:00', end_time: '10:00' });
+      const day = core.todos.add({ title: '仅日期', due_date: todayStr() });
+      expect(t.is_overdue).toBe(false);
+      vi.setSystemTime(new Date(2026, 9, 15, 10, 0));
+      expect(core.todos.get(t.id).is_overdue).toBe(true);
+      expect(core.todos.list({ overdue: true }).map(t => t.id)).toEqual([t.id]);
+      expect(core.today.getToday().overdue_todos.map(t => t.id)).toEqual([t.id]);
+      expect(core.todos.get(day.id).is_overdue).toBe(false);
+    } finally { cleanup(); vi.useRealTimers(); }
+  });
+
   it('新增 → 查询：字段完整、默认值正确', () => {
     const { core, cleanup } = mkCore();
     try {

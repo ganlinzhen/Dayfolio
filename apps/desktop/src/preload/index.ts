@@ -4,6 +4,10 @@ import { contextBridge, ipcRenderer } from 'electron';
 const invoke = (channel: string) => (payload?: unknown) => ipcRenderer.invoke(channel, payload);
 
 const api = {
+  agent: {
+    status: invoke('agent:status'),
+    export: invoke('agent:export'),
+  },
   todos: {
     list: invoke('todos:list'),
     add: invoke('todos:add'),
@@ -27,6 +31,13 @@ const api = {
   },
   today: {
     get: invoke('today:get'),
+  },
+  calendar: {
+    list: invoke('calendar:list'),
+    rangeAgenda: invoke('calendar:rangeAgenda'),
+    add: invoke('calendar:add'),
+    update: invoke('calendar:update'),
+    delete: invoke('calendar:delete'),
   },
   study: {
     listDrafts: invoke('study:listDrafts'),
@@ -127,7 +138,16 @@ const api = {
     getOverview: invoke('data:getOverview'),
     listTypes: invoke('data:listTypes'),
     listObjects: invoke('data:listObjects'),
+    queryObjects: invoke('data:queryObjects'),
+    aggregateObjects: invoke('data:aggregateObjects'),
+    queryRelated: invoke('data:queryRelated'),
+    readObject: invoke('data:readObject'),
+    queryContract: invoke('data:queryContract'),
     getObject: invoke('data:getObject'),
+    listLinks: invoke('data:listLinks'),
+    createLink: invoke('data:createLink'),
+    deleteLink: invoke('data:deleteLink'),
+    updateObject: invoke('data:updateObject'),
     createObjectType: invoke('data:createObjectType'),
     updateObjectType: invoke('data:updateObjectType'),
     deleteObjectType: invoke('data:deleteObjectType'),
@@ -137,6 +157,8 @@ const api = {
     updateActionType: invoke('data:updateActionType'),
     deleteActionType: invoke('data:deleteActionType'),
     invokeAction: invoke('data:invokeAction'),
+    previewAction: invoke('data:previewAction'),
+    listActionExecutions: invoke('data:listActionExecutions'),
     backup: invoke('data:backup'),
     exportJson: invoke('data:exportJson'),
     healthCheck: invoke('data:healthCheck'),

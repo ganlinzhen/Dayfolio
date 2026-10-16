@@ -7,6 +7,15 @@ const root = new URL('..', import.meta.url).pathname;
 
 // 0. 帮助文档先同步一次；之后监听 apps/help/docs/ 变更自动重跑（vite 会对生成文件热更新）
 spawnSync('node', ['../../apps/help/scripts/sync.mjs'], { cwd: root, stdio: 'inherit' });
+const catalog = () => spawnSync('node', ['../../packages/agent-kit/scripts/catalog.mjs'], { cwd: root, stdio: 'inherit' });
+if (catalog().status !== 0) process.exit(1);
+let catalogTimer;
+for (const directory of ['../../apps/mcp/src', '../../packages/agent-kit/manifest.json']) {
+  watch(join(root, directory), { recursive: true }, () => {
+    clearTimeout(catalogTimer);
+    catalogTimer = setTimeout(catalog, 300);
+  });
+}
 let helpTimer;
 watch(join(root, '../../apps/help/docs'), { recursive: true }, () => {
   clearTimeout(helpTimer);

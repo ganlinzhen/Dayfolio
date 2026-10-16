@@ -1,6 +1,6 @@
 // 知识库 vault 服务（只读联动）：
 //   索引（可重建缓存）↔ 磁盘 Markdown（内容唯一来源）。本服务绝不写 vault 内任何文件、
-//   不改 frontmatter、不触发 Git 提交；唯一写动作发生在 TodoDesk 自己的 SQLite（注册/索引/概念关联）。
+//   不改 frontmatter、不触发 Git 提交；唯一写动作发生在 Dayfolio 自己的 SQLite（注册/索引/概念关联）。
 //
 // 安全红线：
 // 1. 路径隔离：rel_path 必须是安全相对路径（拒绝绝对路径/..//反斜杠/控制字符），读取时逐组件
@@ -9,7 +9,7 @@
 // 3. 渲染安全：renderMarkdownHtml 先转义全部原始 HTML 再生成受控标签——脚本/事件属性/危险协议
 //    不可能出现在输出中（App 侧再加 iframe sandbox 双保险）；附件图片一律不加载（显示占位）；
 // 4. 缺失保留：磁盘上消失的笔记标 missing=1，记录与概念关联历史保留，绝不静默删除；
-// 5. 概念关联只写 TodoDesk 库（vault_concept_links），knowledge_key 与 plan_items.knowledge_key
+// 5. 概念关联只写 Dayfolio 库（vault_concept_links），knowledge_key 与 plan_items.knowledge_key
 //    同一命名空间，一个概念可关联多张卡，一张卡可被多处引用。
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';

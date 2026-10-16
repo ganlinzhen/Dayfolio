@@ -179,9 +179,25 @@ export function createPlanService(db: DbAdapter, deps: PlanServiceDeps) {
     })(), ...progressOf(id) };
   };
 
-  /** 删除计划：条目与其打卡记录一并删除；由计划生成的待办保留（仅解除关联） */
-  const remove = (id: number): void => {
+  /** 删除计划：默认连删自动生成的待办及相关打卡；可显式保留待办。 */
+  const remove = (id: number, options: { delete_todos?: boolean } = {}): void => {
     inTx(db, () => {
+      get(id);
+      if (options.delete_todos !== false) {
+        // 仅删除本计划独占、由计划生成的待办，保护手工待办与其他计划共用的待办。
+        const todos = db.prepare(`
+          SELECT DISTINCT t.id FROM todos t
+          JOIN plan_items pi ON pi.todo_id = t.id
+          WHERE pi.plan_id = ? AND t.source = 'plan'
+            AND NOT EXISTS (SELECT 1 FROM plan_items other WHERE other.todo_id = t.id AND other.plan_id <> ?)
+        `).all(id, id);
+        // 已处于计划删除事务内，直接完成待办服务的清理步骤，避免嵌套 BEGIN。
+        for (const todo of todos) {
+          db.prepare("DELETE FROM checkins WHERE ref_type = 'todo' AND ref_id = ?").run(todo.id);
+          db.prepare('UPDATE plan_items SET todo_id = NULL WHERE todo_id = ?').run(todo.id);
+          db.prepare('DELETE FROM todos WHERE id = ?').run(todo.id);
+        }
+      }
       db.prepare(
         "DELETE FROM checkins WHERE ref_type = 'plan_item' AND ref_id IN (SELECT id FROM plan_items WHERE plan_id = ?)",
       ).run(id);

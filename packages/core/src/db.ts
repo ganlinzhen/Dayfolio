@@ -1,7 +1,7 @@
 // 数据库抽象层：App 侧用 better-sqlite3，MCP 侧用 node:sqlite，
 // 两个驱动 API 形态接近，这里统一成一个最小适配接口。
-import type { Todo, Priority, TodoStatus, NewsSource } from './types';
-import { todayStr } from './utils/date';
+import type { CalendarColor, NewsItem, NewsSource, Priority, Todo, TodoStatus } from './types';
+import { nowIso, todayStr } from './utils/date';
 
 export interface SqlResult {
   changes: number;
@@ -24,19 +24,38 @@ export interface DbAdapter {
  *  一律 BEGIN IMMEDIATE：deferred 事务先读后写时，若他进程（App ↔ MCP 共库）在中间提交，
  *  升级写锁会立刻抛 SQLITE_BUSY（快照冲突，busy_timeout 救不了）；立即取写锁则按
  *  busy_timeout 排队等待，是 SQLite 官方推荐的跨进程写法。 */
+const transactionDepth = new WeakMap<DbAdapter, number>();
+let savepointSequence = 0;
+/** 同一连接上的内部组合使用保存点；外层仍持有 BEGIN IMMEDIATE 写锁。 */
 export function inTx<T>(db: DbAdapter, fn: () => T): T {
-  db.exec('BEGIN IMMEDIATE');
+  const depth=transactionDepth.get(db) ?? 0;
+  const savepoint=`dayfolio_tx_${++savepointSequence}`;
+  db.exec(depth ? `SAVEPOINT ${savepoint}` : 'BEGIN IMMEDIATE');
+  transactionDepth.set(db,depth+1);
   try {
-    const r = fn();
+    const result=fn();
+    db.exec(depth ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT');
+    return result;
+  } catch(error) {
+    try { db.exec(depth ? `ROLLBACK TO SAVEPOINT ${savepoint}` : 'ROLLBACK'); if(depth) db.exec(`RELEASE SAVEPOINT ${savepoint}`); } catch { /* 保留原始错误 */ }
+    throw error;
+  } finally { if(depth) transactionDepth.set(db,depth); else transactionDepth.delete(db); }
+}
+
+/** 同一次查询的计数和行列表共享短读快照；不提前取得写锁。 */
+export function readSnapshot<T>(db: DbAdapter, fn: () => T): T {
+  if (transactionDepth.has(db)) return fn();
+  db.exec('BEGIN');
+  transactionDepth.set(db, 1);
+  try {
+    const result = fn();
     db.exec('COMMIT');
-    return r;
-  } catch (e) {
-    try {
-      db.exec('ROLLBACK');
-    } catch {
-      /* 忽略回滚异常，保留原始错误 */
-    }
-    throw e;
+    return result;
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch { /* 保留原始查询错误 */ }
+    throw error;
+  } finally {
+    transactionDepth.delete(db);
   }
 }
 
@@ -110,6 +129,8 @@ CREATE TABLE IF NOT EXISTS news (
   is_starred INTEGER NOT NULL DEFAULT 0,
   task_id INTEGER,
   source_name TEXT,
+  content_kind TEXT NOT NULL DEFAULT 'url',
+  html_rel TEXT,
   UNIQUE(dedup_key)
 );
 CREATE INDEX IF NOT EXISTS idx_news_date ON news(published_date);
@@ -240,12 +261,14 @@ export function mapTodo(row: Record<string, unknown>): Todo {
     priority: row.priority as Priority,
     status,
     due_date: due,
+    start_time: (row.start_time as string | null) ?? null,
+    end_time: (row.end_time as string | null) ?? null,
     tags,
     source: String(row.source ?? 'app'),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
     completed_at: (row.completed_at as string | null) ?? null,
-    is_overdue: status === 'open' && due !== null && due < todayStr(),
+    is_overdue: status === 'open' && due !== null && (row.end_time ? `${due}T${row.end_time}` <= nowIso().slice(0, 16) : due < todayStr()),
   };
 }
 
@@ -305,7 +328,23 @@ export function mapCheckin(row: Record<string, unknown>) {
   };
 }
 
-export function mapNews(row: Record<string, unknown>) {
+export function mapCalendarEvent(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    title: String(row.title),
+    date: String(row.date),
+    end_date: (row.end_date as string | null) ?? null,
+    start_time: (row.start_time as string | null) ?? null,
+    end_time: (row.end_time as string | null) ?? null,
+    note: String(row.note ?? ''),
+    color: row.color as CalendarColor,
+    source: row.source === 'mcp' ? 'mcp' as const : 'app' as const,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
+export function mapNews(row: Record<string, unknown>): NewsItem {
   return {
     id: Number(row.id),
     source: row.source as 'x' | 'zhihu_daily' | 'hacker_news' | 'agent' | `rss/${string}`,
@@ -320,6 +359,8 @@ export function mapNews(row: Record<string, unknown>) {
     is_starred: Number(row.is_starred ?? 0) === 1,
     task_id: row.task_id == null ? null : Number(row.task_id),
     source_name: (row.source_name as string | null) ?? null,
+    content_kind: row.content_kind === 'html' ? 'html' : 'url',
+    html_rel: (row.html_rel as string | null) ?? null,
   };
 }
 

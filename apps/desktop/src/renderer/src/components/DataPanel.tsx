@@ -1,21 +1,17 @@
-// 数据面板：本体（对象/链接/动作类型）管理 + 存储总览 + 对象浏览 + 维护（备份/导出/体检）
-// 布局复用帮助面板的左侧目录结构。
-import { useCallback, useEffect, useState } from 'react';
+// 数据首页依次展示总览、对象类型与维护；对象类型详情集中展示结构、关系、动作与实例。
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, call } from '../api';
 import { toast } from './Toast';
 import { ActionTypeManager, LinkTypeManager, ObjectTypeManager } from './DataTypes';
 import DataObjects from './DataObjects';
-import { fmtBytes, type ActionTypeDef, type LinkTypeDef, type ObjectTypeDef } from './data-shared';
+import { actionsForType, fmtBytes, type ActionTypeDef, type LinkTypeDef, type ObjectTypeDef } from './data-shared';
 
-type View = 'overview' | 'objects' | 'otypes' | 'ltypes' | 'atypes' | 'care';
-
-const VIEWS: Array<{ key: View; label: string; hint: string }> = [
-  { key: 'overview', label: '总览', hint: '这个 App 的全部数据存储' },
-  { key: 'objects', label: '对象', hint: '按类型浏览实例数据' },
-  { key: 'otypes', label: '对象类型', hint: 'ObjectType 管理' },
-  { key: 'ltypes', label: '链接类型', hint: 'LinkType 管理' },
-  { key: 'atypes', label: '动作类型', hint: 'ActionType 管理' },
-  { key: 'care', label: '维护', hint: '备份 / 导出 / 体检' },
+type DetailTab = 'schema' | 'relations' | 'actions' | 'objects';
+const DETAIL_TABS: Array<{ key: DetailTab; label: string }> = [
+  { key: 'schema', label: '表结构' },
+  { key: 'relations', label: '关系' },
+  { key: 'actions', label: '动作' },
+  { key: 'objects', label: '已有对象' },
 ];
 
 interface Overview {
@@ -26,7 +22,12 @@ interface Overview {
 }
 
 export default function DataPanel() {
-  const [view, setView] = useState<View>('overview');
+  const [selectedType, setSelectedType] = useState('');
+  const [tab, setTab] = useState<DetailTab>('schema');
+  const [objectId, setObjectId] = useState<string | number | undefined>();
+  const homeRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [types, setTypes] = useState<ObjectTypeDef[]>([]);
   const [links, setLinks] = useState<LinkTypeDef[]>([]);
@@ -62,29 +63,91 @@ export default function DataPanel() {
     void refreshOverview();
   };
 
+  const current = types.find((t) => t.apiName === selectedType);
+  const relatedLinks = current ? links.filter((l) => l.leftType === current.apiName || l.rightType === current.apiName || l.linkTable === current.apiName) : [];
+  const relatedActions = current ? actionsForType(current.apiName, actions, links) : [];
+  const counts = Object.fromEntries(overview?.tables.map((t) => [t.apiName, t.count]) ?? []);
+
+  const openType = (apiName: string, nextTab: DetailTab = 'schema', id?: string | number) => {
+    if (!selectedType) openerRef.current = document.activeElement as HTMLElement;
+    setSelectedType(apiName);
+    setTab(nextTab);
+    setObjectId(id);
+    void refreshOverview();
+  };
+  const backHome = () => {
+    setSelectedType('');
+    setObjectId(undefined);
+    requestAnimationFrame(() => openerRef.current?.focus());
+  };
+  useEffect(() => {
+    if (selectedType && types.length && !current) { setSelectedType(''); setObjectId(undefined); }
+  }, [selectedType, types, current]);
+  useEffect(() => {
+    if (selectedType) backRef.current?.focus();
+  }, [selectedType]);
+
   return (
     <section className="panel">
-      <div className="help-layout data-layout">
-        <nav className="help-toc data-toc">
-          <div className="help-toc-title">数据</div>
-          {VIEWS.map((v, i) => (
-            <button key={v.key} className={`help-toc-item${view === v.key ? ' on' : ''}`} onClick={() => setView(v.key)}>
-              <span className="help-toc-num">{String(i + 1).padStart(2, '0')}</span>
-              <span className="help-toc-text">
-                {v.label}
-                <span className="help-toc-desc">{v.hint}</span>
-              </span>
-            </button>
-          ))}
-        </nav>
-        <div className="data-view">
-          {view === 'overview' && <OverviewView overview={overview} onOpenDir={(which) => void openDir(which)} />}
-          {view === 'objects' && <DataObjects types={types} actions={actions} />}
-          {view === 'otypes' && <ObjectTypeManager types={types} links={links} onChanged={refreshAll} />}
-          {view === 'ltypes' && <LinkTypeManager types={types} links={links} onChanged={refreshAll} />}
-          {view === 'atypes' && <ActionTypeManager actions={actions} types={types} links={links} onChanged={refreshAll} />}
-          {view === 'care' && <CareView health={health} setHealth={setHealth} onChanged={refreshAll} />}
+      <div className="data-view">
+        <header className="panel-head data-head">
+          {current ? <>
+            <button ref={backRef} className="btn slim ghost" onClick={backHome}>← 返回数据首页</button>
+            <span className="panel-context">{current.title}</span>
+            <span className="sub mono">{current.apiName}</span>
+          </> : <span className="head-meta mono">{types.length} 种对象类型</span>}
+          <div className="spacer" />
+          <button className="btn slim ghost" onClick={refreshAll}>刷新数据</button>
+        </header>
+        <div className="data-home" ref={homeRef} hidden={!!current}>
+          <section className="data-home-section" aria-labelledby="data-overview-title">
+            <h2 id="data-overview-title">总览</h2>
+            <OverviewView overview={overview} onOpenDir={(which) => void openDir(which)} />
+          </section>
+          <section className="data-home-section" aria-labelledby="data-types-title">
+            <h2 id="data-types-title">对象类型 <span className="sub">{types.length} 种</span></h2>
+            <ObjectTypeManager types={types.filter(t=>t.visibility!=='history')} links={links} counts={counts} onChanged={refreshAll} onOpenType={openType} />
+            {types.some(t=>t.visibility==='history') && <div className="data-history"><h3>历史数据（只读）</h3><ObjectTypeManager types={types.filter(t=>t.visibility==='history')} links={links} counts={counts} onChanged={refreshAll} onOpenType={openType}/></div>}
+          </section>
+          <section className="data-home-section" aria-labelledby="data-care-title">
+            <h2 id="data-care-title">维护</h2>
+            <CareView health={health} setHealth={setHealth} onChanged={refreshAll} />
+          </section>
         </div>
+        {current && <div className="data-type-detail" key={current.apiName}>
+          <p className="sub data-type-description">{current.description || '未填写类型说明'}</p>
+          <dl className="data-type-meta">
+            <div><dt>物理表</dt><dd className="mono">{current.tableName ?? '虚拟类型，无物理表'}</dd></div>
+            <div><dt>主键</dt><dd className="mono">{current.primaryKey}</dd></div>
+            <div><dt>标题属性</dt><dd className="mono">{current.titleProperty}</dd></div>
+            <div><dt>来源</dt><dd>{current.isSystem ? '系统内置' : '自定义'}</dd></div><div><dt>写入方式</dt><dd>{current.writeMode==='managed'?'业务动作':current.writeMode==='read_only'?'只读记录或索引':current.writeMode==='virtual'?'虚拟对象':'自定义对象'}</dd></div>
+          </dl>
+          <div className="data-detail-tabs" role="tablist" aria-label="对象类型详情">
+            {DETAIL_TABS.map((item) => <button key={item.key} id={`data-tab-${item.key}`} role="tab" aria-selected={tab === item.key} aria-controls="data-type-tabpanel" tabIndex={tab === item.key ? 0 : -1} className={tab === item.key ? 'active' : ''}
+              onClick={() => setTab(item.key)} onKeyDown={(e) => {
+                const index = DETAIL_TABS.findIndex((t) => t.key === item.key);
+                let next = index;
+                if (e.key === 'ArrowRight') next = (index + 1) % DETAIL_TABS.length;
+                else if (e.key === 'ArrowLeft') next = (index + DETAIL_TABS.length - 1) % DETAIL_TABS.length;
+                else if (e.key === 'Home') next = 0;
+                else if (e.key === 'End') next = DETAIL_TABS.length - 1;
+                else return;
+                e.preventDefault(); setTab(DETAIL_TABS[next].key); document.getElementById(`data-tab-${DETAIL_TABS[next].key}`)?.focus();
+              }}>{item.label}{item.key === 'schema' ? ` ${current.properties.length}` : item.key === 'relations' ? ` ${relatedLinks.length}` : item.key === 'actions' ? ` ${relatedActions.length}` : current.isVirtual ? '' : ` ${counts[current.apiName] ?? '…'}`}</button>)}
+          </div>
+          <div className="data-type-content" id="data-type-tabpanel" role="tabpanel" aria-labelledby={`data-tab-${tab}`}>
+            {tab === 'schema' && <ObjectTypeManager types={types} links={links} detailType={current} onChanged={refreshAll} />}
+            {tab === 'relations' && <>
+              {relatedLinks.length === 0 && <p className="sub">暂无与此类型关联的关系，可新建链接类型。</p>}
+              <LinkTypeManager types={types} links={links} focusedType={current.apiName} onChanged={refreshAll} />
+            </>}
+            {tab === 'actions' && <>
+              {relatedActions.length === 0 && <p className="sub">暂无与此类型关联的动作，可新建动作类型。</p>}
+              <ActionTypeManager actions={relatedActions} composableCommands={actions.filter(action => action.isBuiltin && action.composable)} types={types} links={links} focusedType={current.apiName} onChanged={refreshAll} />
+            </>}
+            {tab === 'objects' && (current.isVirtual ? <p className="empty">这是虚拟对象类型，没有独立的物理表。可在「关系」中查看它与其他类型的关联。</p> : <DataObjects key={current.apiName} types={types} actions={relatedActions} objectType={current.apiName} initialObjectId={objectId} onChanged={refreshAll} onJump={(apiName, id) => openType(apiName, 'objects', id)} />)}
+          </div>
+        </div>}
       </div>
     </section>
   );
@@ -101,86 +164,22 @@ export default function DataPanel() {
 function OverviewView({ overview, onOpenDir }: { overview: Overview | null; onOpenDir: (which: 'db' | 'tools' | 'backups') => void }) {
   if (!overview) return <p className="empty">加载中…</p>;
   return (
-    <div>
-      <div className="panel-head">
-        <h2>存储总览</h2>
-        <span className="sub">App 的全部持久化数据都在这里</span>
+    <div className="data-overview-summary">
+      <dl className="data-overview-stats">
+        <div><dt>数据库大小</dt><dd>{fmtBytes(overview.db.sizeBytes)}</dd></div>
+        <div><dt>已有对象</dt><dd>{overview.tables.reduce((sum, table) => sum + table.count, 0)} 条</dd></div>
+        <div><dt>对象类型</dt><dd>{overview.meta.objectTypes} 种</dd></div>
+        <div><dt>关系</dt><dd>{overview.meta.linkTypes} 种</dd></div>
+        <div><dt>动作</dt><dd>{overview.meta.actionTypes} 种</dd></div>
+        <div><dt>迁移版本</dt><dd>v{overview.db.userVersion}</dd></div>
+      </dl>
+      <div className="data-storage-row">
+        <div><strong>SQLite 主库</strong><p className="mono data-path">{overview.db.path}</p></div>
+        <div className="btn-row"><button className="btn slim ghost" onClick={() => onOpenDir('db')}>打开数据目录</button><button className="btn slim ghost" onClick={() => onOpenDir('backups')}>打开备份目录</button></div>
       </div>
-      <div className="data-cards">
-        <section className="data-card">
-          <h3>SQLite 主库</h3>
-          <div className="stat-row">
-            <div className="stat">
-              <div className="stat-num">{fmtBytes(overview.db.sizeBytes)}</div>
-              <div className="stat-label">库大小（含 WAL）</div>
-            </div>
-            <div className="stat">
-              <div className="stat-num">{overview.tables.reduce((s, t) => s + t.count, 0)}</div>
-              <div className="stat-label">实例总数</div>
-            </div>
-            <div className="stat">
-              <div className="stat-num">v{overview.db.userVersion}</div>
-              <div className="stat-label">迁移版本</div>
-            </div>
-          </div>
-          <p className="mono sub data-path">{overview.db.path}</p>
-          <div className="btn-row">
-            <button className="btn slim ghost" onClick={() => onOpenDir('db')}>
-              打开数据目录
-            </button>
-            <button className="btn slim ghost" onClick={() => onOpenDir('backups')}>
-              打开备份目录
-            </button>
-          </div>
-        </section>
-        <section className="data-card">
-          <h3>本体</h3>
-          <div className="stat-row">
-            <div className="stat">
-              <div className="stat-num">{overview.meta.objectTypes}</div>
-              <div className="stat-label">对象类型</div>
-            </div>
-            <div className="stat">
-              <div className="stat-num">{overview.meta.linkTypes}</div>
-              <div className="stat-label">链接类型</div>
-            </div>
-            <div className="stat">
-              <div className="stat-num">{overview.meta.actionTypes}</div>
-              <div className="stat-label">动作类型</div>
-            </div>
-          </div>
-          <table className="data-table inner">
-            <tbody>
-              {overview.tables.map((t) => (
-                <tr key={t.apiName}>
-                  <td>
-                    {t.title} <span className="sub mono">{t.apiName}</span>
-                  </td>
-                  <td className="mono">{t.count} 行</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-        <section className="data-card">
-          <h3>工具箱文件</h3>
-          <div className="stat-row">
-            <div className="stat">
-              <div className="stat-num">{overview.toolsDir.toolCount}</div>
-              <div className="stat-label">工具数</div>
-            </div>
-            <div className="stat">
-              <div className="stat-num">{fmtBytes(overview.toolsDir.sizeBytes)}</div>
-              <div className="stat-label">磁盘占用</div>
-            </div>
-          </div>
-          <p className="mono sub data-path">{overview.toolsDir.path}</p>
-          <div className="btn-row">
-            <button className="btn slim ghost" onClick={() => onOpenDir('tools')}>
-              打开工具目录
-            </button>
-          </div>
-        </section>
+      <div className="data-storage-row">
+        <div><strong>工具箱文件</strong><span className="sub"> {overview.toolsDir.toolCount} 个工具 · {fmtBytes(overview.toolsDir.sizeBytes)}</span><p className="mono data-path">{overview.toolsDir.path}</p></div>
+        <button className="btn slim ghost" onClick={() => onOpenDir('tools')}>打开工具目录</button>
       </div>
     </div>
   );
@@ -205,10 +204,7 @@ function CareView({ health, setHealth, onChanged }: { health: string; setHealth:
 
   return (
     <div>
-      <div className="panel-head">
-        <h2>维护</h2>
-        <span className="sub">备份使用 SQLite 在线备份（VACUUM INTO），不影响其他进程读写</span>
-      </div>
+      <p className="sub data-note">备份使用 SQLite 在线备份（VACUUM INTO），不影响其他进程读写</p>
       <div className="data-cards">
         <section className="data-card">
           <h3>备份与导出</h3>
@@ -226,8 +222,8 @@ function CareView({ health, setHealth, onChanged }: { health: string; setHealth:
           <h3>体检与压缩</h3>
           <div className="btn-row">
             <button className="btn" disabled={busy !== ''} onClick={() => void run('health', async () => {
-              const res = await call<{ integrityOk: boolean; integrityMessages: string[]; foreignKeyViolations: number }>(() => api.data.healthCheck());
-              return `完整性：${res.integrityMessages.join('; ')}；外键违规：${res.foreignKeyViolations}`;
+              const res = await call<{ integrityOk: boolean; integrityMessages: string[]; foreignKeyViolations: number; relationIssues:unknown[] }>(() => api.data.healthCheck());
+              return `完整性：${res.integrityMessages.join('; ')}；外键违规：${res.foreignKeyViolations}；待修复关系：${res.relationIssues.length}`;
             })}>
               运行体检
             </button>

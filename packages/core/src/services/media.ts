@@ -868,7 +868,7 @@ export function createMediaService(db: DbAdapter): MediaService {
       write(
         'README.txt',
         [
-          'TodoDesk 自媒体素材包',
+          'Dayfolio 自媒体素材包',
           `内容：${detail.content.title}（id=${content_id}）`,
           `导出时间：${stamp}`,
           '',

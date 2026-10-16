@@ -17,6 +17,7 @@ export interface PropertyDef {
   /** builtin=随代码/建表自带（系统类型里不可删改）；user=管理界面后加的，可删 */
   origin: 'builtin' | 'user';
   description?: string;
+  readable?: boolean;
 }
 
 export interface ObjectTypeDef {
@@ -36,6 +37,9 @@ export interface ObjectTypeDef {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  writeMode?: 'managed' | 'custom' | 'read_only' | 'virtual';
+  extensionWritable?: boolean;
+  visibility?: 'normal' | 'history';
 }
 
 export interface NewPropertyInput {
@@ -53,6 +57,8 @@ export interface CreateObjectTypeInput {
   description?: string;
   titleProperty?: string;
   properties: NewPropertyInput[];
+  /** 缺省生成基础动作；关闭后仅能通过明确的自定义动作写入。 */
+  generateActions?: boolean;
 }
 
 export interface UpdateObjectTypeInput {
@@ -79,7 +85,10 @@ export interface LinkTypeDef {
   rightLinkName: string | null;
   /** 落地形态一：外键列（1:1 / 1:N），挂在 right 侧表 */
   fkColumn?: string;
-  onDelete?: 'cascade' | 'set_null' | 'none';
+  onDelete?: 'cascade' | 'set_null' | 'none' | 'restrict';
+  referenceKind?: 'strong' | 'historical' | 'derived';
+  constraintState?: 'enforced' | 'needs_repair';
+  backingTableName?: string;
   /** 落地形态二：多态判别列 + 引用列（right 侧表）；仅系统链接使用 */
   discriminatorColumn?: string;
   discriminatorValue?: string;
@@ -95,6 +104,7 @@ export interface LinkTypeDef {
 }
 
 export interface CreateLinkTypeInput {
+  onDelete?: 'restrict' | 'set_null' | 'cascade';
   apiName: string;
   title: string;
   leftType: string;
@@ -118,6 +128,8 @@ export interface ActionParamDef {
   required: boolean;
   defaultValue?: unknown;
   description?: string;
+  objectType?: string;
+  jsonSchema?: unknown;
 }
 
 export interface ActionParamInput extends Partial<ActionParamDef> {
@@ -128,7 +140,8 @@ export interface ActionParamInput extends Partial<ActionParamDef> {
 export type ValueMapping =
   | { source: { parameter: string } }
   | { literal: unknown }
-  | { fn: 'now' | 'uuid' };
+  | { fn: 'now' | 'uuid' }
+  | { result: { step: number; path: string[] } };
 
 export interface SelectorDef {
   property: string;
@@ -140,7 +153,8 @@ export type ActionOperation =
   | { kind: 'modify_object'; objectType: string; selector: SelectorDef; propertyMappings: Record<string, ValueMapping> }
   | { kind: 'delete_object'; objectType: string; selector: SelectorDef }
   | { kind: 'create_link'; linkType: string; leftId: ValueMapping; rightId: ValueMapping }
-  | { kind: 'delete_link'; linkType: string; leftId: ValueMapping; rightId: ValueMapping };
+  | { kind: 'delete_link'; linkType: string; leftId: ValueMapping; rightId: ValueMapping }
+  | { kind: 'invoke_command'; command: string; params: Record<string, ValueMapping> };
 
 export type ActionOperationInput = ActionOperation;
 
@@ -156,6 +170,19 @@ export interface ActionTypeDef {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  targetBindings?: Array<{ objectType: string; parameter?: string }>;
+  allowedChannels?: string[];
+  needsReview?: boolean;
+  template?: ActionTemplateDef;
+  composable?: boolean;
+}
+
+export interface ActionTemplateDef {
+  targetKind: 'object' | 'link';
+  targetName: string;
+  operation: 'create' | 'update' | 'delete' | 'extensions';
+  version: number;
+  schemaDigest: string;
 }
 
 export interface CreateActionTypeInput {

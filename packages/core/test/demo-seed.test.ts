@@ -15,11 +15,15 @@ describe('预览演示播种（四模块闭环）', () => {
       const work = dirname(dbPath);
       const r = seedDemo(core, work);
 
-      // 新闻：2 旧（1 收藏）+ 2 agent + 已完成/待执行任务
+      // 新闻：2 旧（1 收藏）+ 2 agent（其一为 X 本地快照形态）+ 已完成/待执行任务
       expect(r.news).toMatchObject({ legacy: 2, agent: 2, starred: 1 });
       expect(core.news.list({ filter: 'starred', limit: 100 }).every((n) => n.title.includes('演示'))).toBe(true);
       expect(core.news.getTask(r.news.completedTaskId).status).toBe('completed');
       expect(core.news.getTask(r.news.pendingTaskId).status).toBe('pending');
+      const snapItems = core.news.list({ limit: 100 }).filter((n) => n.content_kind === 'html');
+      expect(snapItems).toHaveLength(1);
+      expect(snapItems[0].html_rel).toMatch(/\.html$/);
+      expect(existsSync(join(dirname(dbPath), 'news', snapItems[0].html_rel!))).toBe(true); // 快照文件随临时库落盘
 
       // 知识库：演示 vault 3 篇，wikilink 互联，读取走只读索引
       expect(r.vault.notes).toBe(3);
@@ -48,7 +52,7 @@ describe('预览演示播种（四模块闭环）', () => {
       expect((course as { status?: string }).status).toBe('imported');
       const lesson = core.courses.getLesson(r.course.id, 1);
       const html = core.courses.readLessonHtml(lesson);
-      expect(html).toContain('TodoDesk 上手之旅');
+      expect(html).toContain('Dayfolio 上手之旅');
       const assetFile = join(dirname(dbPath), 'courses', 'tododesk-tour', 'lessons', '0001-quick-tour.html');
       expect(existsSync(assetFile)).toBe(true); // 资产在临时库推导目录，绝不在真实 Application Support
       expect(assetFile.startsWith(tmpdir())).toBe(true);

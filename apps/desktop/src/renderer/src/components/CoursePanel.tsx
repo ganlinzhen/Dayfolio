@@ -218,10 +218,6 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
         <button className="backlink" onClick={backFromOverview}>
           <IconChevronLeft width={14} height={14} /> 返回课程
         </button>
-        <header className="panel-head">
-          <h1>课程总览</h1>
-          <div className="head-meta mono">{selected.title} · 独立内容</div>
-        </header>
         <EmbeddedFrame
           label={`${selected.title}课程总览`}
           className="course-embed"
@@ -243,10 +239,6 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
         <button className="backlink" onClick={backFromLesson}>
           <IconChevronLeft width={14} height={14} /> {directDay != null ? exitLabel : '返回课程总览'}
         </button>
-        <header className="panel-head">
-          <h1>{l.title}</h1>
-          <div className="head-meta mono">第 {l.day} 天 · {l.estimated_minutes} 分钟 · {LESSON_STATUS[l.status]}</div>
-        </header>
         {l.is_sample && <div className="notice">这是样课：阅读并确认后才能请求完整版课程（确认绑定当前内容版本）</div>}
 
         {/* 消毒 HTML 正文：iframe sandbox + CSP 双保险（导入时已剥 script/事件/危险协议并中和外部资源） */}
@@ -435,7 +427,6 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
       </button>
       {missing ? (
         <>
-          <header className="panel-head"><h1>课程</h1></header>
           <div className="notice error">课程不存在或已被删除（计划与学习进度不受影响）。</div>
         </>
       ) : (

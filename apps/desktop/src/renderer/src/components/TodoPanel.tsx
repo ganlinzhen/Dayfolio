@@ -4,6 +4,8 @@ import { api, call } from '../api';
 import EmptyState from './EmptyState';
 import { toast } from './Toast';
 import { IconCalendar, IconPlus, IconSearch, IconX } from './icons';
+import TodoSchedule, { type TodoScheduleValue } from './TodoSchedule';
+import CheckinPanel from './CheckinPanel';
 
 export interface Todo {
   id: number;
@@ -12,6 +14,8 @@ export interface Todo {
   priority: 'high' | 'medium' | 'low';
   status: 'open' | 'done';
   due_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
   tags: string[];
   source: string;
   completed_at: string | null;
@@ -32,7 +36,7 @@ function groupOf(t: Todo): string {
   if (t.status === 'done') return '已完成';
   if (!t.due_date) return '无日期';
   const today = todayLocal();
-  if (t.due_date < today) return '已逾期';
+  if (t.is_overdue) return '已逾期';
   if (t.due_date === today) return '今天';
   if (t.due_date <= addDays(today, 3)) return '未来 3 天';
   return '稍后';
@@ -47,16 +51,17 @@ function addDays(dateStr: string, n: number): string {
 }
 
 export default function TodoPanel() {
+  const [showRecords, setShowRecords] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [status, setStatus] = useState<StatusFilter>('open');
   const [priority, setPriority] = useState('');
   const [search, setSearch] = useState('');
   const [title, setTitle] = useState('');
   const [newPriority, setNewPriority] = useState<'high' | 'medium' | 'low'>('medium');
-  const [dueDate, setDueDate] = useState('');
+  const [schedule, setSchedule] = useState<TodoScheduleValue>({ due: todayLocal(), dateOnly: false, start: '', end: '' });
   const [tags, setTags] = useState('');
   const [error, setError] = useState('');
-  const [editing, setEditing] = useState<{ id: number; title: string; due: string } | null>(null);
+  const [editing, setEditing] = useState<({ id: number; title: string } & TodoScheduleValue) | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -79,6 +84,16 @@ export default function TodoPanel() {
     return () => clearTimeout(t);
   }, [refresh, search]);
 
+  useEffect(() => {
+    const timer = setInterval(() => void refresh(), 60_000);
+    return () => clearInterval(timer);
+  }, [refresh]);
+
+  const scheduleInput = (value: TodoScheduleValue) => {
+    if (!value.dateOnly && (!value.due || !value.start || !value.end)) throw new Error('请选择日期并填写开始时间和结束时间，或切换为「仅日期」');
+    return { due_date: value.due || null, start_time: value.dateOnly ? null : value.start, end_time: value.dateOnly ? null : value.end };
+  };
+
   const add = async () => {
     if (!title.trim()) {
       // 空提交：轻微脉冲提示输入框，而不是无响应
@@ -89,16 +104,17 @@ export default function TodoPanel() {
       return;
     }
     try {
+      const timing = scheduleInput(schedule);
       await call(() =>
         api.todos.add({
           title,
           priority: newPriority,
-          due_date: dueDate || null,
+          ...timing,
           tags: tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
         }),
       );
       setTitle('');
-      setDueDate('');
+      setError('');
       setTags('');
       await refresh();
     } catch (e) {
@@ -125,6 +141,8 @@ export default function TodoPanel() {
               notes: t.notes,
               priority: t.priority,
               due_date: t.due_date,
+              start_time: t.start_time,
+              end_time: t.end_time,
               tags: t.tags,
             }),
           ).then(() => refresh());
@@ -135,12 +153,16 @@ export default function TodoPanel() {
 
   const saveEdit = async () => {
     if (!editing) return;
-    await call(() => api.todos.update({ id: editing.id, title: editing.title, due_date: editing.due || null }));
-    setEditing(null);
-    await refresh();
+    try {
+      const timing = scheduleInput(editing);
+      await call(() => api.todos.update({ id: editing.id, title: editing.title, ...timing }));
+      setEditing(null);
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
 
-  const overdueCount = useMemo(() => todos.filter((t) => t.is_overdue).length, [todos]);
   const groups = useMemo(() => {
     const map = new Map<string, Todo[]>();
     for (const t of todos) {
@@ -150,15 +172,41 @@ export default function TodoPanel() {
     return GROUP_ORDER.filter((g) => map.has(g)).map((g) => [g, map.get(g)!] as const);
   }, [todos]);
 
+  if (showRecords) return <CheckinPanel onBack={() => { setShowRecords(false); void refresh(); }} />;
+
   return (
-    <div className="panel">
-      <header className="panel-head">
-        <h1>待办</h1>
-        <div className="head-meta mono">{todos.filter((t) => t.status === 'open').length} 项未完成</div>
+    <div className="panel work-panel" role="region" aria-label="待办">
+      {/* 筛选 */}
+      <header className="panel-head todo-toolbar" aria-label="待办筛选">
+        <div className="seg">
+          {(['open', 'done', 'all'] as StatusFilter[]).map((s) => (
+            <button key={s} className={`seg-item ${status === s ? 'active' : ''}`} onClick={() => setStatus(s)}>
+              {s === 'open' ? '未完成' : s === 'done' ? '已完成' : '全部'}
+            </button>
+          ))}
+        </div>
+        <select className="filter-select" aria-label="筛选优先级" value={priority} onChange={(e) => setPriority(e.target.value)}>
+          <option value="">全部优先级</option>
+          <option value="high">高优先级</option>
+          <option value="medium">中优先级</option>
+          <option value="low">低优先级</option>
+        </select>
+        <span className="head-meta mono">{todos.length} 项{status === 'open' ? '未完成' : status === 'done' ? '已完成' : '待办'}</span>
+        <span className="spacer" />
+        <div className="searchbox">
+          <IconSearch />
+          <input placeholder="搜索待办" aria-label="搜索待办" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {search && (
+            <button className="icon-btn" aria-label="清除搜索" onClick={() => setSearch('')}>
+              <IconX width={13} height={13} />
+            </button>
+          )}
+        </div>
+        <button className="btn" onClick={() => setShowRecords(true)}>记录</button>
       </header>
 
       {/* 新增：一行式 */}
-      <div className="composer">
+      <div className="composer todo-composer">
         <IconPlus className="composer-icon" />
         <input
           className="composer-input"
@@ -173,7 +221,7 @@ export default function TodoPanel() {
           <option value="medium">中</option>
           <option value="low">低</option>
         </select>
-        <input className="chip-date" type="date" aria-label="截止日期" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        <TodoSchedule value={schedule} onChange={setSchedule} />
         <input
           className="chip-tags"
           placeholder="标签"
@@ -185,44 +233,6 @@ export default function TodoPanel() {
         <button className="btn primary" onClick={() => void add()}>添加待办</button>
       </div>
 
-      {/* 筛选 */}
-      <div className="toolbar">
-        <div className="seg">
-          {(['open', 'done', 'all'] as StatusFilter[]).map((s) => (
-            <button key={s} className={`seg-item ${status === s ? 'active' : ''}`} onClick={() => setStatus(s)}>
-              {s === 'open' ? '未完成' : s === 'done' ? '已完成' : '全部'}
-            </button>
-          ))}
-        </div>
-        <div className="seg">
-          {['', 'high', 'medium', 'low'].map((p) => (
-            <button
-              key={p}
-              className={`seg-item ${priority === p ? 'active' : ''}`}
-              onClick={() => setPriority(p)}
-            >
-              {p === '' ? '全部' : p === 'high' ? '高' : p === 'medium' ? '中' : '低'}
-            </button>
-          ))}
-        </div>
-        <span className="spacer" />
-        <div className="searchbox">
-          <IconSearch />
-          <input placeholder="搜索待办" aria-label="搜索待办" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && (
-            <button className="icon-btn" aria-label="清除搜索" onClick={() => setSearch('')}>
-              <IconX width={13} height={13} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {overdueCount > 0 && (
-        <div className="notice warn">
-          <IconCalendar />
-          {overdueCount} 项待办已逾期，建议优先处理
-        </div>
-      )}
       {error && <div className="notice error">{error}</div>}
 
       <div className="todo-groups">
@@ -285,7 +295,9 @@ export default function TodoPanel() {
                     />
                   ) : (
                     <>
-                      <span className="todo-title" onClick={() => setEditing({ id: t.id, title: t.title, due: t.due_date ?? '' })}>
+                      <span className="todo-title" role="button" tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing({ id: t.id, title: t.title, due: t.due_date ?? '', dateOnly: !t.start_time, start: t.start_time ?? '', end: t.end_time ?? '' }); } }}
+                        onClick={() => setEditing({ id: t.id, title: t.title, due: t.due_date ?? '', dateOnly: !t.start_time, start: t.start_time ?? '', end: t.end_time ?? '' })}>
                         {t.title}
                       </span>
                       <button className="icon-btn subtle" aria-label={`删除待办「${t.title.slice(0, 20)}」`} onClick={() => void remove(t)} title="删除">
@@ -295,13 +307,8 @@ export default function TodoPanel() {
                   )}
                 </div>
                 {editing?.id === t.id ? (
-                  <div className="todo-card-meta">
-                    <input
-                      className="inline-input narrow"
-                      type="date"
-                      value={editing.due}
-                      onChange={(e) => setEditing({ ...editing, due: e.target.value })}
-                    />
+                  <div className="todo-card-meta" onKeyDown={(e) => { if (e.key === 'Enter') void saveEdit(); if (e.key === 'Escape') setEditing(null); }}>
+                    <TodoSchedule editing value={editing} onChange={(value) => setEditing({ ...editing, ...value })} />
                     <button className="btn primary slim" onClick={() => void saveEdit()}>保存</button>
                     <button className="btn slim" onClick={() => setEditing(null)}>取消</button>
                   </div>
@@ -310,13 +317,13 @@ export default function TodoPanel() {
                     <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
                     {t.due_date && (
                       <span className={`todo-meta mono ${t.is_overdue ? 'danger' : t.due_date === todayLocal() ? 'accent' : ''}`}>
-                        {t.due_date}
+                        {t.due_date}{t.start_time ? ` ${t.start_time}–${t.end_time}` : ' · 仅日期'}
                       </span>
                     )}
-                    {t.tags.map((tag) => (
+                    {t.tags.filter((tag) => !/^plan:\d+$/.test(tag)).map((tag) => (
                       <span key={tag} className="tag">{tag}</span>
                     ))}
-                    {SOURCE_LABEL[t.source] && <span className="origin mono">{SOURCE_LABEL[t.source]}</span>}
+                    {SOURCE_LABEL[t.source] && !(t.source === 'plan' && t.tags.includes('学习计划')) && <span className="origin mono">{SOURCE_LABEL[t.source]}</span>}
                   </div>
                 )}
               </div>

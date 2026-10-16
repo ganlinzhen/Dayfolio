@@ -1,10 +1,10 @@
-# TodoDesk
+# Dayfolio
 
-面向个人的 macOS 桌面助手：待办、学习计划、课程、打卡、新闻任务、知识库浏览与 HTML 工具箱。内置 MCP Server，让支持 MCP 的 AI 客户端与桌面应用读写同一份本地数据。
+面向个人的 macOS 桌面助手：待办与完成记录、学习与课程、新闻任务、知识库浏览与 HTML 工具箱。内置 MCP Server，让支持 MCP 的 AI 客户端与桌面应用读写同一份本地数据。
 
-仓库：[ganlinzhen/vibe-ai](https://github.com/ganlinzhen/vibe-ai)。仓库名为 `vibe-ai`，应用名为 **TodoDesk**。
+仓库：[ganlinzhen/Dayfolio](https://github.com/ganlinzhen/Dayfolio)。仓库名与应用名统一为 **Dayfolio**（曾用名 TodoDesk、日序 Dayfolio）。已有数据库目录、`TODODESK_DB` 环境变量和 MCP 接入标识继续沿用，升级无需迁移数据。
 
-![TodoDesk 今日面板，使用隔离演示数据](apps/desktop/build/screenshots/today.png)
+![Dayfolio 今日面板，使用隔离演示数据](apps/desktop/build/screenshots/today.png)
 
 ## 环境要求
 
@@ -15,12 +15,12 @@
 
 ## 功能
 
-- **待办事项**：优先级（高/中/低）、截止日期、标签、备注；过期高亮、筛选排序、行内编辑；来源标记（App 创建 ✍️ / AI 创建 🤖 / 计划生成 📚）
-- **学习计划**：按日期编排"学习/复习/练习/休息"条目，自动生成关联待办，逐条打卡，进度条
+- **待办事项**：优先级（高/中/低）、截止日期、标签、备注；过期高亮、筛选排序、行内编辑；来源标记（App 创建 ✍️ / AI 创建 🤖 / 计划生成 📚）；支持安排日期与 HH:MM 起止时间，特殊情况可仅日期
+- **学习**：按日期编排"学习/复习/练习/休息"条目，自动生成关联待办，逐条打卡，进度条
 - **学习闭环**：对 AI 说「学习线性代数」——agent 按内置规范出**草案**（App 内确认/取消）→ 逐日学习**会话**记录 → **测评证据**（自评可纠正/客观必须带判题依据）→ **掌握度**（与打卡完成率分开，无证据=未知）→ 依据漏做与薄弱**调整**未完成安排（预览→确认）→ 生成 Obsidian **待审卡片**（防重、不覆盖人工编辑）。规范经 MCP `get_study_workflow` / 资源 `tododesk://study/workflow` 与帮助面板同源分发
 - **间隔复习**：学完知识点一键按遗忘曲线（D+1/3/7/21）生成复习计划与待办（`create_review_schedule`）
-- **打卡**：完成待办、完成计划条目、每日打卡均计入；连续天数（streak）、近 7/30 天活跃统计
-- **菜单栏常驻**：Tray 显示今日该做数量（逾期加 `!` 前缀提醒）；菜单含今日概览、每日打卡、打开主窗口；菜单「快速捕获…」呼出速记窗（回车入库，`!` 前缀设高优先级）
+- **待办记录**：从待办头部「记录」查看完成待办、学习条目的记录时间（精确到秒），以及连续天数、近 7/30 天活跃统计；不再单设打卡菜单与分组。
+- **菜单栏常驻**：Tray 显示今日该做数量（逾期加 `!` 前缀提醒）；菜单含今日概览、打开主窗口；菜单「快速捕获…」呼出速记窗（回车入库，`!` 前缀设高优先级）
 - **每日新闻（agent-only）**：阅读优先三栏工作台（任务导航/紧凑列表/详情）；**App 不抓 RSS、不配置新闻源或凭证、无任何定时抓取**。任务可由用户在面板「新建任务」发起（主题/规则/上限/时间窗，与 MCP 同一 core 硬校验）或让 AI 助手创建；执行由助手经 MCP：认领 → 自行搜索核实 → 提交带原始来源链接与摘要的条目；每任务累计最多 10 条新入库（跨批次不重置），按事件去重；默认看近 24 小时、可切历史；旧新闻与收藏全部保留；离线时任务保持待执行（App 不自动唤醒助手）
 - **帮助中心**：侧边栏底部「帮助」查看各模块使用说明；内容由独立子项目 `apps/help/` 维护，构建时同步进渲染层
 - **MCP 接入**：AI 可完成上述全部操作、跑通学习闭环、执行新闻任务（搜索核实后提交）、管理本体（对象/链接/动作类型）与工具箱（把 HTML 小工具装进 App）
@@ -28,20 +28,23 @@
 ## 目录结构
 
 ```
-tododesk/
-├── packages/core/        # 共享核心层：SQLite 数据模型 + 待办/计划/打卡服务（App 与 MCP 复用）
+Dayfolio/
+├── packages/core/        # App 与 MCP 共用的业务逻辑与数据
+├── packages/agent-kit/   # 通用、教学、赛事技能的唯一源码，以及宿主模板、构建和更新脚本
 ├── apps/desktop/         # Electron 桌面端（React + Vite 渲染层，esbuild 主进程）
 ├── apps/mcp/             # MCP Server（stdio），构建产物 dist/mcp-server.cjs
 ├── apps/help/            # 帮助中心子项目：docs/ 一个模块一篇使用说明，npm run help:sync 同步进 App
-├── apps/plugin/          # 教学技能、双宿主配置与内置 MCP 构建产物
+├── apps/plugin/          # 自动生成的旧插件兼容产物，禁止手改
+├── dist/agent-kit/       # 自动生成的统一能力包
+├── .agents/skills/       # 指向统一源码的开发接入链接
 └── scripts/              # 干净环境验收
 ```
 
 ## 快速开始
 
 ```bash
-git clone https://github.com/ganlinzhen/vibe-ai.git
-cd vibe-ai
+git clone https://github.com/ganlinzhen/Dayfolio.git
+cd Dayfolio
 nvm use                   # 使用 nvm 时执行；其他安装方式需自行确认 Node 版本
 npm ci
 npm run build:desktop     # 重建原生模块 + 同步帮助 + 构建渲染层、主进程与预加载
@@ -58,7 +61,7 @@ npm start                 # 启动 App
 npm run package:desktop
 ```
 
-产物为 `apps/desktop/release/TodoDesk.app`。脚本采用 ad-hoc 签名，**未做 Developer ID 签名与 Apple 公证**；该产物用于本地构建验收，不代表已提供面向所有 Mac 的正式发行包。打包不会自动安装或替换现有 App。已安装用户更新前应退出应用并备份数据库、课程和工具资产；不要绕过系统签名警告。
+产物为 `apps/desktop/release/Dayfolio.app`。脚本采用 ad-hoc 签名，**未做 Developer ID 签名与 Apple 公证**；该产物用于本地构建验收，不代表已提供面向所有 Mac 的正式发行包。打包不会自动安装或替换现有 App。已安装用户更新前应退出应用并备份数据库、课程和工具资产；不要绕过系统签名警告。
 
 
 数据库位置：`~/Library/Application Support/tododesk/tododesk.db`（可用环境变量 `TODODESK_DB` 覆盖，App 与 MCP 必须指向同一文件）。
@@ -87,7 +90,7 @@ npm run verify:clean      # macOS：从当前待交付源码创建干净副本�
     "tododesk": {
       "type": "stdio",
       "command": "node",
-      "args": ["/path/to/tododesk/apps/mcp/dist/mcp-server.cjs"]
+      "args": ["/path/to/Dayfolio/apps/mcp/dist/mcp-server.cjs"]
     }
   }
 }
@@ -97,7 +100,19 @@ npm run verify:clean      # macOS：从当前待交付源码创建干净副本�
 
 将 `args` 替换为构建产物的实际绝对路径。如果客户端找不到受支持版本的 Node，将 `command` 改为 Node 可执行文件的绝对路径。源码安装不会自动注册 MCP。
 
-教学插件位于 `apps/plugin/`。分发前执行 `npm run plugin:build`、`npm run plugin:verify`；保留包内 `mcp.json`、`.mcp.json` 与 `.zcode-plugin/plugin.json`。宿主需支持对应插件格式，具体安装入口以宿主说明为准。
+统一 AI 能力包在 `packages/agent-kit/` 维护。`skills/tododesk` 负责通用操作，`tododesk-teach` 负责教学，`tododesk-sports` 负责赛事页面生成与原位更新；三个技能共用 `tododesk` MCP。赛事复用现有 HTML 工具箱，不增加体育后台。技能参数依赖登记在 `manifest.json`，工具名称和说明从 MCP 实际注册生成。
+
+```bash
+npm run agent:build       # 完整产物：dist/agent-kit/
+npm run agent:verify      # 摘要、依赖、源码新鲜度和异地隔离读写
+npm run agent:install -- --target /自选目录/Dayfolio-Agent --dry-run
+npm run agent:install -- --target /自选目录/Dayfolio-Agent
+npm run agent:doctor -- --target /自选目录/Dayfolio-Agent
+```
+
+能力包随正式 App 一起发布，MCP 面板可导出或更新副本。导出、安装不改客户端配置；按宿主方式加载完整包并重连后才在客户端生效。若指定已有 JSON MCP 配置，诊断可增加 `--config /配置路径` 检查可能重复的接入；不探测真实库连接。
+
+`apps/plugin/` 与原 `plugin:*` 命令保留为自动生成的兼容入口，旧插件身份仍为 `tododesk-teach`；新包身份为 `dayfolio`，同一客户端选择一种方式。`apps/mcp/dist/mcp-server.cjs`、既有 MCP 工具名与环境变量继续有效。发布统一以根 `package.json` 版本为准，更新技能或工具后重新构建和校验，禁止直接编辑产物。教学上游许可随技能保留。
 
 之后即可对 AI 说，例如：
 
@@ -144,6 +159,6 @@ Electron + React 19 + TypeScript + Vite（渲染层）/ esbuild（主进程）+ 
 
 ## 许可与数据
 
-源码按 [MIT](LICENSE) 许可发布。教学技能保留了上游来源与许可，见 `apps/plugin/skills/tododesk-teach/LICENSE`；第三方依赖遵循各自许可证。
+源码按 [MIT](LICENSE) 许可发布。教学技能保留了上游来源与许可，见 `packages/agent-kit/skills/tododesk-teach/LICENSE`；第三方依赖遵循各自许可证。
 
 待办、课程、工具资产与知识库索引保存在本机。MCP 客户端可读取或修改业务数据，接入前应了解所用客户端的数据处理方式。新闻由 AI 客户端联网搜索后提交；源码不包含个人数据库、课程素材或 API 凭证。

@@ -8,6 +8,7 @@ export interface PropertyDef {
   isPrimaryKey?: boolean;
   origin: 'builtin' | 'user';
   description?: string;
+  readable?: boolean;
 }
 
 export interface ObjectTypeDef {
@@ -22,6 +23,9 @@ export interface ObjectTypeDef {
   properties: PropertyDef[];
   status: string;
   sortOrder: number;
+  writeMode?: string;
+  extensionWritable?: boolean;
+  visibility?: string;
 }
 
 export interface LinkTypeDef {
@@ -44,6 +48,8 @@ export interface LinkTypeDef {
 }
 
 export interface ActionParamDef {
+  jsonSchema?: unknown;
+  objectType?: string;
   name: string;
   dataType: 'string' | 'integer' | 'float' | 'boolean' | 'date' | 'json';
   required: boolean;
@@ -54,10 +60,13 @@ export interface ActionParamDef {
 export type ValueMapping =
   | { source: { parameter: string } }
   | { literal: unknown }
-  | { fn: 'now' | 'uuid' };
+  | { fn: 'now' | 'uuid' }
+  | { result: { step: number; path: string[] } };
 
 export interface ActionOperation {
-  kind: 'create_object' | 'modify_object' | 'delete_object' | 'create_link' | 'delete_link';
+  kind: 'create_object' | 'modify_object' | 'delete_object' | 'create_link' | 'delete_link' | 'invoke_command';
+  command?: string;
+  params?: Record<string, ValueMapping>;
   objectType?: string;
   linkType?: string;
   selector?: { property: string; value: ValueMapping };
@@ -67,6 +76,11 @@ export interface ActionOperation {
 }
 
 export interface ActionTypeDef {
+  composable?: boolean;
+  template?: { targetKind: 'object' | 'link'; targetName: string; operation: 'create' | 'update' | 'delete' | 'extensions'; version: number; schemaDigest: string };
+  targetBindings?: Array<{objectType:string;parameter?:string}>;
+  allowedChannels?: string[];
+  needsReview?: boolean;
   apiName: string;
   title: string;
   description: string;
@@ -82,6 +96,17 @@ export interface LinkRef {
   targetType: string;
   targetId: unknown;
   targetTitle: string | null;
+  targetExists?: boolean;
+}
+
+export function actionsForType(apiName: string, actions: ActionTypeDef[], links: LinkTypeDef[]): ActionTypeDef[] {
+  return actions.filter((action) => action.targetBindings?.some(binding => binding.objectType === apiName) || (action.isBuiltin
+    ? action.targetBindings?.some(binding=>binding.objectType===apiName)
+    : action.operations.some((op) => {
+      if (op.objectType === apiName) return true;
+      const link = links.find((l) => l.apiName === op.linkType);
+      return link && (link.leftType === apiName || link.rightType === apiName || link.linkTable === apiName);
+    })));
 }
 
 export const CARDINALITY_LABEL: Record<string, string> = {
@@ -96,6 +121,7 @@ export const OP_LABEL: Record<string, string> = {
   delete_object: '删除对象',
   create_link: '建立链接',
   delete_link: '解除链接',
+  invoke_command: '调用业务命令',
 };
 
 export const DATA_TYPE_LABEL: Record<string, string> = {
@@ -117,6 +143,10 @@ export function fmtBytes(n: number): string {
 export function fmtValue(v: unknown): string {
   if (v === null || v === undefined) return '—';
   if (typeof v === 'boolean') return v ? '是' : '否';
+  if (typeof v === 'object') {
+    const json = JSON.stringify(v);
+    return json.length > 42 ? `${json.slice(0, 42)}…` : json;
+  }
   const s = String(v);
   if (s.startsWith('[') || s.startsWith('{')) {
     try {

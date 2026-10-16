@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { openNodeSqliteDb } from '../src/adapters/node-sqlite';
+import { MIGRATIONS } from '../src/migrations';
 import { createCore } from '../src/index';
 import { addDays, todayStr } from '../src/utils/date';
 
@@ -77,7 +78,7 @@ describe('真实 v8 快照 → v9 升级（自包含副本上迁移；未找到�
       try {
         const raw = new DatabaseSync(copy);
         try {
-          expect(Number((raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version)).toBe(11);
+          expect(Number((raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version)).toBe(MIGRATIONS.length);
           expect(raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
           expect(raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
           const colsAfter = draftColumns(raw);

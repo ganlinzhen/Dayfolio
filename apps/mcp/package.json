@@ -6,7 +6,7 @@
   "engines": {
     "node": "^22.13.0 || ^24.0.0"
   },
-  "description": "TodoDesk MCP Server（stdio），供 zcode 等 AI 客户端读写待办/学习计划/打卡",
+  "description": "Dayfolio MCP Server（stdio），供 zcode 等 AI 客户端读写待办/学习计划/打卡",
   "scripts": {
     "build": "node ../../node_modules/esbuild/bin/esbuild src/server.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/mcp-server.cjs --external:node:* --loader:.md=text"
   },

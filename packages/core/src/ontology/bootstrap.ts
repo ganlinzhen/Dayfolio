@@ -1,5 +1,5 @@
-// 内置本体定义（权威源，随代码分发）：7 个系统对象类型 + 1 个虚拟类型 day、
-// 6 条链接类型、5 个内置动作。启动时由 registry 同步进元数据表（代码为准，幂等 upsert）。
+// 内置本体定义（权威源，随代码分发）：11 个系统对象类型 + 1 个虚拟类型 day、
+// 8 条链接类型、6 个内置动作。启动时由 registry 同步进元数据表（代码为准，幂等 upsert）。
 // 属性清单必须与 db.ts 的 SCHEMA 逐列一致——registry 的双向校验会强制这一点。
 import type { ActionTypeDef, LinkTypeDef, ObjectTypeDef } from './types';
 
@@ -31,6 +31,8 @@ export const BOOT_OBJECT_TYPES: BootObject[] = [
       { apiName: 'priority', dataType: 'enum', nullable: false, enumValues: ['high', 'medium', 'low'], origin: 'builtin' },
       { apiName: 'status', dataType: 'enum', nullable: false, enumValues: ['open', 'done'], origin: 'builtin' },
       { apiName: 'due_date', dataType: D, nullable: true, indexed: true, origin: 'builtin' },
+      { apiName: 'start_time', dataType: S, nullable: true, origin: 'builtin' },
+      { apiName: 'end_time', dataType: S, nullable: true, origin: 'builtin' },
       { apiName: 'tags', dataType: J, nullable: false, origin: 'builtin' },
       { apiName: 'source', dataType: 'enum', nullable: false, enumValues: ['app', 'mcp', 'plan'], origin: 'builtin' },
       { apiName: 'created_at', dataType: D, nullable: false, origin: 'builtin' },
@@ -40,7 +42,7 @@ export const BOOT_OBJECT_TYPES: BootObject[] = [
   },
   {
     apiName: 'study_plan',
-    title: '学习计划',
+    title: '学习',
     description: '阶段性学习计划，展开为按天的计划条目',
     tableName: 'study_plans',
     isVirtual: false,
@@ -90,7 +92,7 @@ export const BOOT_OBJECT_TYPES: BootObject[] = [
   },
   {
     apiName: 'checkin',
-    title: '打卡',
+    title: '待办完成记录',
     description: '对待办/计划条目/某一天的幂等打卡记录（引用为多态）',
     tableName: 'checkins',
     isVirtual: false,
@@ -133,6 +135,8 @@ export const BOOT_OBJECT_TYPES: BootObject[] = [
       { apiName: 'is_starred', dataType: I, nullable: false, origin: 'builtin', description: '收藏状态（用户操作持久化）' },
       { apiName: 'task_id', dataType: I, nullable: true, origin: 'builtin', description: '产生本条的新闻任务（历史数据为空）' },
       { apiName: 'source_name', dataType: S, nullable: true, origin: 'builtin', description: 'agent 提交的来源站点名（历史数据为空）' },
+      { apiName: 'content_kind', dataType: 'enum', nullable: false, enumValues: ['url', 'html'], origin: 'builtin', description: '内容形态：url=内嵌来源网页；html=本地快照（X 等无法内嵌的来源）' },
+      { apiName: 'html_rel', dataType: S, nullable: true, origin: 'builtin', description: '本地快照相对路径（dirname(db)/news 下；仅 html 形态非空）' },
     ],
   },
   {
@@ -419,6 +423,19 @@ export const BOOT_LINK_TYPES: BootLink[] = [
 ];
 
 export const BOOT_ACTION_TYPES: BootAction[] = [
+  {
+    apiName: 'delete_study_plan',
+    title: '删除学习计划',
+    description: '删除学习计划、条目及条目打卡，默认连删本计划独占的自动生成待办及其打卡；不可恢复，请先与用户确认。delete_todos=false 时保留待办。',
+    isBuiltin: true,
+    status: 'active',
+    sortOrder: 60,
+    parameters: [
+      { name: 'id', dataType: 'integer', required: true, description: '学习计划 id' },
+      { name: 'delete_todos', dataType: 'boolean', required: false, defaultValue: true, description: '是否同时删除计划生成待办（默认 true；false 保留待办）' },
+    ],
+    operations: [],
+  },
   {
     apiName: 'add_todo',
     title: '新增待办',

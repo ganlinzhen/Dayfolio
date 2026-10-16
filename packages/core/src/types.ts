@@ -1,4 +1,4 @@
-// TodoDesk 核心数据类型定义（App 与 MCP 共用）
+// Dayfolio 核心数据类型定义（App 与 MCP 共用）
 
 /** 待办优先级：high 最高 */
 export type Priority = 'high' | 'medium' | 'low';
@@ -22,6 +22,9 @@ export interface Todo {
   status: TodoStatus;
   /** 截止日期，格式 YYYY-MM-DD，可为空 */
   due_date: string | null;
+  /** 当天起止时间 HH:MM；均为空表示仅日期 */
+  start_time: string | null;
+  end_time: string | null;
   tags: string[];
   /** 来源：app（界面创建）| mcp（AI 创建）| plan（由学习计划生成） */
   source: string;
@@ -80,6 +83,8 @@ export interface NewTodoInput {
   notes?: string;
   priority?: Priority;
   due_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   tags?: string[];
   source?: string;
 }
@@ -89,6 +94,8 @@ export interface UpdateTodoInput {
   notes?: string | null;
   priority?: Priority;
   due_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   tags?: string[];
   status?: TodoStatus;
 }
@@ -154,6 +161,60 @@ export interface TodayOverview {
   };
   /** 一句话人读摘要（AI 汇报 / App 首页副标题） */
   summary_text: string;
+  /** 与今天相交的日程（含跨天与全天），按开始时间排序 */
+  calendar_events: CalendarEvent[];
+}
+
+// ---------- 日历 ----------
+
+/** 日程色板（渲染层与校验共用；默认 blue） */
+export const CALENDAR_COLORS = ['blue', 'green', 'violet', 'amber', 'rose', 'slate'] as const;
+export type CalendarColor = (typeof CALENDAR_COLORS)[number];
+
+/** 日程（个人本地日历；start_time 为空即全天） */
+export interface CalendarEvent {
+  id: number;
+  title: string;
+  /** 开始日 YYYY-MM-DD */
+  date: string;
+  /** 结束日（含当天），null = 单日 */
+  end_date: string | null;
+  /** HH:MM，null = 全天（此时 end_time 亦须为 null） */
+  start_time: string | null;
+  end_time: string | null;
+  note: string;
+  color: CalendarColor;
+  source: 'app' | 'mcp';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewCalendarEventInput {
+  title: string;
+  date: string;
+  end_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  note?: string;
+  color?: CalendarColor;
+  source?: 'app' | 'mcp';
+}
+
+export type CalendarEventPatch = Partial<NewCalendarEventInput>;
+
+/** 月视图/区间聚合：日程 + 每日到期待办与学习条目（App 一次拉全） */
+export interface CalendarAgendaDay {
+  todos: Array<Pick<Todo, 'id' | 'title' | 'priority' | 'status' | 'start_time' | 'end_time'>>;
+  plan_items: Array<{ id: number; content: string; item_type: PlanItemType; status: PlanItemStatus; plan_title: string }>;
+  /** 当日是否有「每日打卡」（ref_type='day'） */
+  checked_in: boolean;
+}
+
+export interface CalendarRangeAgenda {
+  from: string;
+  to: string;
+  events: CalendarEvent[];
+  days: Record<string, CalendarAgendaDay>;
 }
 
 // ---------- 工具箱 ----------
@@ -186,6 +247,7 @@ export interface NewToolCategoryInput {
 }
 
 export interface NewToolInput {
+  files?: Array<{name:string;contentBase64:string}>;
   title: string;
   icon?: string;
   category_id?: number | null;
@@ -193,6 +255,7 @@ export interface NewToolInput {
 }
 
 export interface UpdateToolInput {
+  files?: Array<{name:string;contentBase64:string}>;
   title?: string;
   icon?: string;
   category_id?: number | null;
@@ -224,6 +287,10 @@ export interface NewsItem {
   task_id: number | null;
   /** agent 提交的来源站点名（如「TechCrunch」；历史数据为 null） */
   source_name: string | null;
+  /** 内容形态：'url'=详情页直接内嵌来源网页（默认）；'html'=用本地 HTML 快照展示 */
+  content_kind: 'url' | 'html';
+  /** 本地快照相对路径（相对 dirname(db)/news；仅 content_kind='html' 时非空） */
+  html_rel: string | null;
 }
 
 // ---------- 新闻任务（agent 经 MCP 认领执行；App 只读展示） ----------
@@ -270,6 +337,9 @@ export interface NewsSubmissionItem {
   source_name?: string;
   /** 来源页面上的真实发布时间（ISO，必填；不接受未来时间/超出任务时间窗） */
   published_at: string;
+  /** 本地 HTML 快照（可选）：X/Twitter 等无法内嵌展示的来源，把核实到的原文整理成
+   *  自包含 HTML；core 消毒后写入 dirname(db)/news，详情页改用快照展示 */
+  html?: string;
 }
 
 /** 用户手动删除一条新闻的结果（不可恢复；重复请求幂等返回 deleted:false） */
@@ -282,6 +352,8 @@ export interface NewsDeleteResult {
   media_refs_cleared: number;
   /** 保留的去重指纹条数（链接/事件各至多 1，均为哈希，不含明文） */
   fingerprints_kept: number;
+  /** 随行删除的本地 HTML 快照文件数（仅 content_kind='html' 的条目会有） */
+  html_removed: number;
 }
 
 /** claim_news_task 的返回（claim_token 是提交/完成/释放的凭证） */
@@ -300,7 +372,7 @@ export interface NewsSubmitResult {
 
 // ---------- 学习闭环（v1） ----------
 
-/** 学习计划草案里的知识点（由 agent 分解提供，TodoDesk 只做透明排程，不生成内容） */
+/** 学习计划草案里的知识点（由 agent 分解提供，Dayfolio 只做透明排程，不生成内容） */
 export interface StudyKnowledgePoint {
   /** 稳定标识（小写 slug，如 matrix-multiply），卡片与会话用它关联 */
   key: string;
@@ -828,7 +900,7 @@ export interface VaultConceptLink {
   id: number;
   vault_id: number;
   note_id: number;
-  /** TodoDesk 学习概念稳定标识（plan_items.knowledge_key 同一命名空间） */
+  /** Dayfolio 学习概念稳定标识（plan_items.knowledge_key 同一命名空间） */
   knowledge_key: string;
   created_at: string;
 }

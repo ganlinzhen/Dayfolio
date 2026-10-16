@@ -1,5 +1,9 @@
 // 渲染进程访问 preload API 的类型声明与封装
 /// <reference types="vite/client" />
+import type { AggregateResult, QueryResult, QueryRow, QueryService } from '../../../../../packages/core/src/ontology/query';
+import type { ActionService } from '../../../../../packages/core/src/ontology/action';
+import type { ActionRunService } from '../../../../../packages/core/src/services/action-run';
+import type { AgentKitStatus } from '../../../../../packages/agent-kit/types';
 
 export interface ApiResult<T> {
   ok: boolean;
@@ -8,6 +12,10 @@ export interface ApiResult<T> {
 }
 
 interface TododeskApi {
+  agent: {
+    status: () => Promise<ApiResult<AgentKitStatus>>;
+    export: () => Promise<ApiResult<{ version: string; target: string } | null>>;
+  };
   todos: {
     list: (p?: unknown) => Promise<ApiResult<unknown[]>>;
     add: (p: unknown) => Promise<ApiResult<unknown>>;
@@ -22,7 +30,7 @@ interface TododeskApi {
     get: (p: { id: number }) => Promise<ApiResult<unknown>>;
     updateItemStatus: (p: { id: number; status: string }) => Promise<ApiResult<unknown>>;
     update: (p: unknown) => Promise<ApiResult<unknown>>;
-    delete: (p: { id: number }) => Promise<ApiResult<boolean>>;
+    delete: (p: { id: number; delete_todos?: boolean }) => Promise<ApiResult<boolean>>;
   };
   checkins: {
     checkin: (p: unknown) => Promise<ApiResult<unknown>>;
@@ -31,6 +39,13 @@ interface TododeskApi {
   };
   today: {
     get: (p?: { date?: string }) => Promise<ApiResult<unknown>>;
+  };
+  calendar: {
+    list: (p?: { from?: string; to?: string; search?: string; limit?: number }) => Promise<ApiResult<unknown[]>>;
+    rangeAgenda: (p: { from: string; to: string }) => Promise<ApiResult<unknown>>;
+    add: (p: { title: string; date: string; end_date?: string | null; start_time?: string | null; end_time?: string | null; note?: string; color?: string; source?: string }) => Promise<ApiResult<unknown>>;
+    update: (p: { id: number } & Record<string, unknown>) => Promise<ApiResult<unknown>>;
+    delete: (p: { id: number }) => Promise<ApiResult<boolean>>;
   };
   study: {
     listDrafts: (p?: { status?: 'draft' | 'confirmed' | 'cancelled' }) => Promise<ApiResult<unknown[]>>;
@@ -128,10 +143,21 @@ interface TododeskApi {
     exportPackage: (p: { content_id: number; export_dir: string }) => Promise<ApiResult<unknown>>;
   };
   data: {
+    queryObjects: (p: unknown) => Promise<ApiResult<QueryResult>>;
+    aggregateObjects: (p: unknown) => Promise<ApiResult<AggregateResult>>;
+    queryRelated: (p: unknown) => Promise<ApiResult<QueryResult>>;
+    readObject: (p: unknown) => Promise<ApiResult<QueryRow | null>>;
+    queryContract: (p: { apiName: string }) => Promise<ApiResult<ReturnType<QueryService['describe']>>>;
+    previewAction: (p: { apiName: string; params?: Record<string, unknown> }) => Promise<ApiResult<ReturnType<ActionService['preview']>>>;
+    listActionExecutions: (p?: Parameters<ActionRunService['list']>[0]) => Promise<ApiResult<ReturnType<ActionRunService['list']>>>;
     getOverview: () => Promise<ApiResult<unknown>>;
     listTypes: () => Promise<ApiResult<unknown>>;
     listObjects: (p: { apiName: string; search?: string; limit?: number; offset?: number }) => Promise<ApiResult<unknown>>;
     getObject: (p: { apiName: string; id: string | number }) => Promise<ApiResult<unknown>>;
+    createLink: (p:{linkType:string;leftId:string|number;rightId:string|number;properties?:Record<string,unknown>})=>Promise<ApiResult<unknown>>;
+    deleteLink: (p:{linkType:string;leftId:string|number;rightId:string|number})=>Promise<ApiResult<unknown>>;
+    listLinks: (p: {apiName:string;id:string|number;linkType:string;side:'left'|'right';limit?:number;offset?:number}) => Promise<ApiResult<unknown>>;
+    updateObject: (p: {apiName:string;id:string|number;values:Record<string,unknown>;options?:unknown}) => Promise<ApiResult<unknown>>;
     createObjectType: (p: unknown) => Promise<ApiResult<unknown>>;
     updateObjectType: (p: { apiName: string; patch: unknown }) => Promise<ApiResult<unknown>>;
     deleteObjectType: (p: { apiName: string }) => Promise<ApiResult<boolean>>;
@@ -140,7 +166,7 @@ interface TododeskApi {
     createActionType: (p: unknown) => Promise<ApiResult<unknown>>;
     updateActionType: (p: { apiName: string; patch: unknown }) => Promise<ApiResult<unknown>>;
     deleteActionType: (p: { apiName: string }) => Promise<ApiResult<boolean>>;
-    invokeAction: (p: { apiName: string; params?: unknown }) => Promise<ApiResult<unknown>>;
+    invokeAction: (p: { apiName: string; params?: unknown; options?: unknown }) => Promise<ApiResult<unknown>>;
     backup: () => Promise<ApiResult<string>>;
     exportJson: () => Promise<ApiResult<string>>;
     healthCheck: () => Promise<ApiResult<unknown>>;

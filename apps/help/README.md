@@ -1,4 +1,4 @@
-# @tododesk/help —— TodoDesk 帮助中心
+# @tododesk/help —— Dayfolio 帮助中心
 
 App「帮助」面板（侧边栏底部 → 帮助）展示的全部内容来自本目录。这是一个**独立维护的文档子项目**：`docs/` 下一个 markdown 文件对应一个模块的使用说明，构建时同步进桌面端渲染层。
 
@@ -9,8 +9,7 @@ apps/help/
 ├── docs/                 # 模块使用说明（文件名前缀决定目录顺序）
 │   ├── 01-today.md       # 今日
 │   ├── 02-todos.md       # 待办
-│   ├── 03-plans.md       # 学习计划
-│   ├── 04-checkins.md    # 打卡
+│   ├── 03-plans.md       # 学习
 │   ├── 05-news.md        # 新闻
 │   ├── 06-toolbox.md     # 工具箱
 │   ├── 07-tray.md        # 菜单栏与快速捕获

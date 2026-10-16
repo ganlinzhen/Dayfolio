@@ -1,0 +1,5 @@
+{
+  "name": "dayfolio",
+  "version": "{{version}}",
+  "description": "Dayfolio 统一能力包：通用操作、教学和赛事页面技能，共用 tododesk MCP。"
+}

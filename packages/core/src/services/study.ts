@@ -3,7 +3,7 @@
 // 未完成项调整建议（纯预览→显式应用）、Obsidian 待审卡片（预览→导出防重）。
 //
 // 设计原则（与 apps/help/docs/09-study-loop.md 规范同源，改动须两处同步）：
-// 1. TodoDesk 只做透明规则（拓扑排序 + 每日预算装箱），学习内容由 agent 分解提供，
+// 1. Dayfolio 只做透明规则（拓扑排序 + 每日预算装箱），学习内容由 agent 分解提供，
 //    缺失信息记录进 assumptions，绝不编造知识点或评分；
 // 2. 不调用运行时模型 API；objective 测评必须携带真实判题依据，否则拒绝入库；
 // 3. 预览类操作（草案、调整建议、卡片）不产生计划/待办/打卡/文件等副作用；
@@ -532,13 +532,9 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
     return mapDraft(row);
   };
 
-  /** 补偿回滚：删除本次生成的计划与由它生成的待办（plans.remove 只解除关联，待办须连删） */
+  /** 补偿回滚：使用计划删除的同一事务清理计划与生成待办。 */
   const rollbackPlanWithTodos = (planId: number): void => {
-    const todoIds = (db.prepare('SELECT todo_id FROM plan_items WHERE plan_id = ?').all(planId) as Array<{ todo_id: number | null }>)
-      .map((r) => r.todo_id)
-      .filter((t): t is number => t != null);
     deps.plans.remove(planId);
-    for (const tid of todoIds) deps.todos.remove(tid);
   };
 
   /**
@@ -766,7 +762,7 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
    *   完全相同的重复提交不产生历史；
    * - 计划归属：优先显式 plan_id；其次沿用已有关联；带 session_id 时自动采用会话所属计划
    *   （掌握度按计划隔离，见 getMastery）；会话/条目/计划的归属不一致会被拒绝；
-   * - objective 来源必须提供 evidence（真实判题依据）与判题结果，否则拒绝——TodoDesk 不代判、不伪造；
+   * - objective 来源必须提供 evidence（真实判题依据）与判题结果，否则拒绝——Dayfolio 不代判、不伪造；
    * - ai_suggestion 仅作为参考记录，不计入掌握度证据（get_mastery 会说明）。
    */
   const recordAssessment = (input: StudyAssessmentInput): StudyAssessment => {
@@ -1291,7 +1287,7 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
     const q = (v: string) => JSON.stringify(v); // 双引号 YAML 标量，自动转义引号/反斜杠/换行
     const fm = [
       '---',
-      `source: ${q('TodoDesk 学习会话')}`,
+      `source: ${q('Dayfolio 学习会话')}`,
       `session_id: ${q(session.id)}`,
       `knowledge_key: ${q(session.knowledge_key)}`,
       `plan: ${planTitle ? q(planTitle) : 'null'}`,
@@ -1318,7 +1314,7 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
       session.material_source || '（未记录）',
       '',
       '> [!warning] 待审卡片',
-      '> 由 TodoDesk 学习会话生成（会话 ' + session.id + '）：内容为学习者当时的自述与自评，**未经核实**，不代表主人观点，也不代表已掌握。请人工审阅后再整理。',
+      '> 由 Dayfolio 学习会话生成（会话 ' + session.id + '）：内容为学习者当时的自述与自评，**未经核实**，不代表主人观点，也不代表已掌握。请人工审阅后再整理。',
       '',
     ].join('\n');
     return `${fm}\n\n${body}`;

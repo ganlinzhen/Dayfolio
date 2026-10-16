@@ -78,7 +78,7 @@ const mkStage = () => {
 /** 用户在 App 的确认路径：先阅读（自动置已读）再确认——core 侧同样强制已读门槛 */
 const readAndConfirm = (core: ReturnType<typeof mkCore>['core'], courseId: number) => {
   core.courses.markLessonRead(courseId, 1);
-  return core.courses.confirmSample(courseId);
+  return core.commands.human.confirmCourseSample(courseId);
 };
 
 describe('manifest 校验与 HTML 消毒', () => {
@@ -392,7 +392,7 @@ describe('课程导入与阅读', () => {
     expect(confirmed.status).toBe('sample_confirmed');
     expect(confirmed.sample_content_hash).toBeTruthy();
     // 幂等确认
-    expect(ctx.core.courses.confirmSample(r1.course.id).sample_confirmed_at).toBe(confirmed.sample_confirmed_at);
+    expect(ctx.core.commands.human.confirmCourseSample(r1.course.id).sample_confirmed_at).toBe(confirmed.sample_confirmed_at);
 
     const s2 = mkStage();
     mkPkg(s2, { html: '<h1>Day 1 v2</h1><p>内容变了</p>' });
@@ -544,10 +544,10 @@ describe('课程导入与阅读', () => {
     const s1 = mkStage();
     mkPkg(s1);
     const r1 = ctx.core.courses.importCourse(s1);
-    expect(() => ctx.core.courses.confirmSample(r1.course.id)).toThrow('样课尚未阅读');
+    expect(() => ctx.core.commands.human.confirmCourseSample(r1.course.id)).toThrow('样课尚未阅读');
     expect(ctx.core.courses.getCourse(r1.course.id).sample_confirmed_at).toBeNull();
     ctx.core.courses.markLessonRead(r1.course.id, 1);
-    expect(ctx.core.courses.confirmSample(r1.course.id).status).toBe('sample_confirmed');
+    expect(ctx.core.commands.human.confirmCourseSample(r1.course.id).status).toBe('sample_confirmed');
   });
 
   it('complete 核计划天数：五天计划只导两天不得 complete，补齐 1..5 天后通过', () => {
@@ -898,7 +898,7 @@ describe('样课重导合并的 symlink 越界与失败回滚加固', () => {
     mkPkg(s1);
     const r1 = ctx.courses.importCourse(s1);
     ctx.courses.markLessonRead(r1.course.id, 1);
-    ctx.courses.confirmSample(r1.course.id);
+    ctx.commands.human.confirmCourseSample(r1.course.id);
     const req = ctx.courses.createGenerationRequest(r1.course.id, 'app');
     ctx.courses.claimRequest(req.id, 'agent-a');
     const full = mkStage();

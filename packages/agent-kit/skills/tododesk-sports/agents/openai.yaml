@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dayfolio 赛事页面"
+  short_description: "动态梳理赛事需求，生成可追踪来源的赛程页面，并更新已有工具的数据"
+  default_prompt: "使用 $tododesk-sports 为我生成赛事页面，或更新已有赛事工具的数据。"

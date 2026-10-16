@@ -7,6 +7,12 @@ import { openDb } from './db';
 import { registerIpc } from './ipc';
 import { createTrayAndQuickCapture } from './tray';
 import { registerToolFileProtocol, migrateLegacyToolsDir, TOOL_SCHEME } from './tools-store';
+import { NEWS_SCHEME, registerNewsFileProtocol } from './news-store';
+
+// 改名只影响展示：先保存原 userData 路径，继续使用已有设置、备份与旧工具资产。
+const legacyUserData = app.getPath('userData');
+app.setName('Dayfolio');
+app.setPath('userData', legacyUserData);
 
 // 测试/隔离支持：显式指定 userData 目录时立即改写（必须先于任何 userData 使用，
 // 尤其是 migrateLegacyToolsDir——否则 TODODESK_DB 指向临时库时会把真实 userData/tools 搬走）
@@ -20,6 +26,7 @@ const core = createCore(openDb());
 // 自定义协议需在 app ready 前声明特权（standard 才能带 host/path，secure 才能跑 JS）
 protocol.registerSchemesAsPrivileged([
   { scheme: TOOL_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: NEWS_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
 let mainWindow: BrowserWindow | null = null;
@@ -41,7 +48,7 @@ function createWindow() {
     height: 740,
     minWidth: 880,
     minHeight: 600,
-    title: 'TodoDesk',
+    title: 'Dayfolio',
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -94,6 +101,7 @@ app.whenReady().then(() => {
   migrateLegacyToolsDir();
   registerIpc(core);
   registerToolFileProtocol();
+  registerNewsFileProtocol();
   createWindow();
   createTrayAndQuickCapture(core, openMainWindow);
   app.on('activate', () => {

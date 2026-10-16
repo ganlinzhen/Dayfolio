@@ -179,7 +179,7 @@ describe('vault 阅读与链接', () => {
 });
 
 describe('概念关联（knowledge_key ↔ 卡片）', () => {
-  it('关联/查询/去重/解除，只写 TodoDesk 库', () => {
+  it('关联/查询/去重/解除，只写 Dayfolio 库', () => {
     const [v] = core.vaults.list();
     const link = core.vaults.linkConcept({
       vault_id: v.id,

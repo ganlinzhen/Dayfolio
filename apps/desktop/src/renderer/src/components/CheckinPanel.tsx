@@ -1,4 +1,5 @@
-// 打卡面板：连续天数、近 28 天热力点、每日打卡（Codex 风格）
+// 打卡面板：连续天数、近 28 天热力点与打卡记录（Codex 风格）
+// 2026-10-14 起手动「每日打卡」入口移除：记录由完成待办/学习条目打卡自动产生
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, call } from '../api';
 import EmptyState from './EmptyState';
@@ -8,6 +9,7 @@ interface CheckinRecord {
   id: number;
   ref_type: 'todo' | 'plan_item' | 'day';
   date: string;
+  created_at: string;
   note: string;
   description: string;
 }
@@ -21,10 +23,9 @@ interface Stats {
 
 const REF_LABEL: Record<string, string> = { day: '每日', todo: '待办', plan_item: '计划' };
 
-export default function CheckinPanel() {
+export default function CheckinPanel({ onBack }: { onBack: () => void }) {
   const [records, setRecords] = useState<CheckinRecord[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [note, setNote] = useState('');
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
@@ -45,15 +46,6 @@ export default function CheckinPanel() {
     void refresh();
   }, [refresh]);
 
-  const dayCheckin = async () => {
-    await call(() => api.checkins.checkin({ ref_type: 'day', note }));
-    setNote('');
-    await refresh();
-  };
-
-  const today = new Date().toLocaleDateString('sv-SE');
-  const checkedToday = records.some((r) => r.date === today && r.ref_type === 'day');
-
   // 近 28 天热力点（旧→新）
   const heatmap = useMemo(() => {
     const days = new Set(records.map((r) => r.date));
@@ -66,26 +58,23 @@ export default function CheckinPanel() {
   }, [records]);
 
   return (
-    <div className="panel">
+    <div className="panel work-panel" role="region" aria-label="打卡记录">
       <header className="panel-head">
-        <h1>打卡</h1>
+        <button className="btn" onClick={onBack}>返回待办</button>
+        <span className="panel-context">打卡记录</span>
+        <span className="spacer" />
         <div className="head-meta mono">累计 {stats?.total_checkins ?? 0} 次</div>
       </header>
 
       <div className="checkin-hero">
-        <div className="streak-num serif">{stats?.streak ?? 0}</div>
-        <div className="streak-label">连续打卡天数</div>
-        <div className="heat-row">
-          {heatmap.map((c) => (
-            <span key={c.date} className={`heat-dot ${c.active ? 'on' : ''}`} title={c.date} />
-          ))}
-        </div>
-        <div className="sub mono">近 7 天活跃 {stats?.active_days_last_7 ?? 0} 天，近 30 天 {stats?.active_days_last_30 ?? 0} 天</div>
-        <div className="day-checkin">
-          <input placeholder="今日备注（可选）" aria-label="今日打卡备注" value={note} onChange={(e) => setNote(e.target.value)} />
-          <button className={`btn ${checkedToday ? '' : 'primary'}`} disabled={checkedToday} onClick={() => void dayCheckin()}>
-            {checkedToday ? '今日已打卡' : '每日打卡'}
-          </button>
+        <div className="checkin-activity">
+          <div className="checkin-streak"><span className="streak-label">连续打卡</span><strong className="streak-num">{stats?.streak ?? 0}</strong><span className="streak-label">天</span></div>
+          <div className="heat-row">
+            {heatmap.map((c) => (
+              <span key={c.date} className={`heat-dot ${c.active ? 'on' : ''}`} title={c.date} />
+            ))}
+          </div>
+          <div className="sub mono">近 7 天活跃 {stats?.active_days_last_7 ?? 0} 天，近 30 天 {stats?.active_days_last_30 ?? 0} 天</div>
         </div>
       </div>
 
@@ -97,7 +86,7 @@ export default function CheckinPanel() {
           <EmptyState
             icon={<IconFlame width={18} height={18} />}
             title="还没有打卡记录"
-            hint="完成待办、打卡学习条目，或在上方点「每日打卡」，记录都会出现在这里。"
+            hint="完成待办、打卡学习条目，记录都会自动出现在这里。"
           />
         )}
         {records.map((r) => (
@@ -108,7 +97,8 @@ export default function CheckinPanel() {
               <IconCheck className="subtle-icon" width={13} height={13} />
             </div>
             <div className="todo-card-meta">
-              <span className="todo-meta mono">{r.date}</span>
+              <time className="todo-meta mono" dateTime={r.created_at}>{r.created_at.replace('T', ' ').slice(0, 19)}</time>
+              {r.date !== r.created_at.slice(0, 10) && <span className="sub">补记 {r.date}</span>}
               {r.note && <span className="sub">{r.note}</span>}
             </div>
           </div>

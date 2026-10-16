@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// TodoDesk 隔离预览（一次性沙盒，供用户手动启动体验；绝不触碰真实数据）：
+// Dayfolio 隔离预览（一次性沙盒，供用户手动启动体验；绝不触碰真实数据）：
 //   - 严格临时三件套 HOME / TODODESK_DB / TODODESK_USER_DATA，vault / 课程包 staging 也在同一临时目录内，
 //     课程/工具资产根随 dirname(TODODESK_DB) 推导；启动前以 realpath + 段级包含做硬校验
 //     （防同级前缀绕过），命中真实 HOME、Application Support、真实 knowledge-base 或真实课程资产路径即拒绝；
 //   - 演示数据（四模块闭环，全部标注「演示」，只落临时库）：新闻（agent 任务闭环）· 知识库演示 vault（只读索引）·
-//     自媒体一母多版+人工审核+发布占位+指标 · 内置「TodoDesk 上手之旅」演示样课（自包含，不依赖外部资产）；
+//     自媒体一母多版+人工审核+发布占位+指标 · 内置「Dayfolio 上手之旅」演示样课（自包含，不依赖外部资产）；
 //     演示内不确认样课（确认入口留给用户体验）；
 //   - 使用**已构建**的 Electron 产物（out/main + out/renderer），不运行 npm run dev、不打开生产 App；
 //   - 退出码：隔离/前置断言失败 = 2；构建或播种失败 = 3；未捕获异常 = 1；Electron 真实退出码透传
@@ -121,14 +121,14 @@ const electronBin = join(repo, 'node_modules', '.bin', 'electron');
 if (!existsSync(electronBin)) failFast('未找到 electron 可执行文件');
 electronApp = spawn(electronBin, ['.'], { cwd: join(repo, 'apps/desktop'), stdio: ['ignore', 'inherit', 'inherit'], env: isolatedEnv });
 
-console.log('━━━━━━━━ TodoDesk 隔离预览（四模块演示沙盒） ━━━━━━━━');
+console.log('━━━━━━━━ Dayfolio 隔离预览（四模块演示沙盒） ━━━━━━━━');
 console.log('  临时目录 ：' + work + '（库/家目录/演示 vault/课程资产全在其中）');
-console.log('  样课来源 ：内置「TodoDesk 上手之旅」演示课程（自包含，不依赖任何外部资产）');
+console.log('  样课来源 ：内置「Dayfolio 上手之旅」演示课程（自包含，不依赖任何外部资产）');
 console.log('  演示内容 ：');
 console.log('    · 新闻：旧闻 2 条（含 1 收藏）· 已完成任务（2 条 agent 新闻）· 待执行任务（可在面板亲手「新建任务」）');
 console.log('    · 知识库：「演示知识库」vault 已注册并扫描（3 篇笔记，wikilink 互联；只读索引，不写真实 Obsidian）');
 console.log('    · 自媒体：选题→母稿→双平台版本；小红书版已审核通过并排期+手动发布占位+指标；公众号版停在「待人工审核」等你亲自通过/拒绝');
-console.log('    · 课程：内置演示样课已导入，绑定「【演示】TodoDesk 五天上手计划」，样课未确认——确认入口留给你体验');
+console.log('    · 课程：内置演示样课已导入，绑定「【演示】Dayfolio 五天上手计划」，样课未确认——确认入口留给你体验');
 console.log('  看什么   ：左侧导航「新闻 / 知识库 / 自媒体」；课程入口在「学习计划」页对应计划的「关联课程」区');
 console.log('  退出     ：关闭窗口后应用仍驻留菜单栏托盘（macOS）——请从托盘菜单「退出」，');
 console.log('            或在本终端按 Ctrl+C；退出后临时目录自动清理' + (keep ? '（KEEP=1：保留，需手动删除）' : '') + '。');

@@ -1,7 +1,7 @@
 // 知识库面板：Obsidian vault 只读联动（注册 → 扫描 → 搜索/浏览 → 阅读 → 概念关联）。
 // 布局为「列表页 ↔ 阅读页」两级导航（同课程讲义模式）：列表全宽展示，点开整页进入阅读，
 // 返回按钮回列表并高亮刚才读过的那篇；阅读页内点链接/被引用直接切换目标卡片。
-// 红线：本面板只读 vault 文件（索引与关联写在 TodoDesk 自己的库）；正文经安全渲染后
+// 红线：本面板只读 vault 文件（索引与关联写在 Dayfolio 自己的库）；正文经安全渲染后
 // 在 sandbox iframe 中展示（不加载附件图片、不执行任何脚本、不可导航）。
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, call } from '../api';
@@ -49,12 +49,13 @@ interface NoteDetail {
 
 const KIND_LABEL: Record<string, string> = { moc: 'MOC', card: '正式卡', draft: '待审', raw: '原料', other: '其他' };
 const LEVEL_LABEL: Record<string, string> = { dao: '道', fa: '法', shu: '术', qi: '器' };
+const STATUS_LABEL: Record<string, string> = { active: '有效', draft: '草稿', archived: '归档' };
 const KB_CSP = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">';
 
 const fmtTime = (iso: string | null) => {
   if (!iso) return '从未';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('zh-CN', { hour12: false });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 export default function KnowledgePanel() {
@@ -160,7 +161,7 @@ export default function KnowledgePanel() {
 
   const removeVault = async () => {
     if (!activeVault) return;
-    const ok = window.confirm(`移除知识库「${activeVault.name}」？只删除 TodoDesk 内的索引与关联，不会动 vault 里的任何文件。`);
+    const ok = window.confirm(`移除知识库「${activeVault.name}」？只删除 Dayfolio 内的索引与关联，不会动 vault 里的任何文件。`);
     if (!ok) return;
     try {
       await call(() => api.vault.remove({ id: activeVault.id }));
@@ -204,14 +205,13 @@ export default function KnowledgePanel() {
 
   if (vaults.length === 0) {
     return (
-      <div className="panel">
+      <div className="panel work-panel" role="region" aria-label="知识库">
         <header className="panel-head">
-          <h1>知识库</h1>
           <div className="head-meta mono">只读联动</div>
         </header>
         <EmptyState
           title="尚未注册知识库"
-          hint="注册一个 Obsidian vault 目录（如 ~/Desktop/knowledge-base）。TodoDesk 只做只读索引：浏览、搜索、阅读卡片与关联学习概念；绝不写入或修改 vault 内任何文件，也不会触发 Git 提交。"
+          hint="注册一个 Obsidian vault 目录（如 ~/Desktop/knowledge-base）。Dayfolio 只做只读索引：浏览、搜索、阅读卡片与关联学习概念；绝不写入或修改 vault 内任何文件，也不会触发 Git 提交。"
           action={<button className="btn primary" onClick={register}>注册知识库目录</button>}
         />
       </div>
@@ -223,7 +223,7 @@ export default function KnowledgePanel() {
     detail && selected && detail.note.rel_path === selected && detail.note.vault_id === vaultId ? detail : null;
   if (selected) {
     return (
-      <div className="panel">
+      <div className="panel work-panel" role="region" aria-label="知识库">
         <button className="backlink" onClick={backToList}>
           <IconChevronLeft width={14} height={14} /> 返回笔记列表
         </button>
@@ -236,7 +236,7 @@ export default function KnowledgePanel() {
                 {openDetail.note.rel_path} · {Math.ceil(openDetail.note.size / 1024)}KB ·{' '}
                 {KIND_LABEL[openDetail.note.kind]}
                 {openDetail.note.level ? ` · ${LEVEL_LABEL[openDetail.note.level]}` : ''}
-                {openDetail.note.status ? ` · ${openDetail.note.status}` : ''}
+                {openDetail.note.status ? ` · ${STATUS_LABEL[openDetail.note.status] ?? openDetail.note.status}` : ''}
               </div>
               <div className="kb-detail-actions">
                 <button
@@ -352,15 +352,8 @@ export default function KnowledgePanel() {
 
   // ---------- 列表视图 ----------
   return (
-    <div className="panel">
-      <header className="panel-head">
-        <h1>知识库</h1>
-        <div className="head-meta mono">
-          {notes.length} 篇 · 上次扫描 {fmtTime(activeVault?.last_scan_at ?? null)}
-        </div>
-      </header>
-
-      <div className="toolbar kb-toolbar">
+    <div className="panel work-panel" role="region" aria-label="知识库">
+      <header className="panel-head kb-toolbar" aria-label="知识库管理">
         <select
           className="kb-vault-select"
           value={vaultId ?? undefined}
@@ -376,15 +369,25 @@ export default function KnowledgePanel() {
             <option key={v.id} value={v.id}>{v.name}</option>
           ))}
         </select>
-        <button className="btn slim" onClick={() => activeVault && doScan(activeVault.id)} disabled={busy || !activeVault}>
+        <span className="head-meta">{notes.length} 篇笔记</span>
+        <span className="spacer" />
+        <span className="kb-scan-time">上次扫描 {fmtTime(activeVault?.last_scan_at ?? null)}</span>
+        <button className="btn" onClick={() => activeVault && doScan(activeVault.id)} disabled={busy || !activeVault}>
           <IconRefresh /> 重新扫描
         </button>
-        <button className="btn slim ghost" onClick={register}>注册新库</button>
-        <button className="btn slim ghost" onClick={removeVault} disabled={!activeVault}>移除当前库</button>
-        <span className="kb-root mono" title={activeVault?.root_path}>{activeVault?.root_path}</span>
-      </div>
+        <details className="kb-settings">
+          <summary className="btn ghost">管理知识库</summary>
+          <div className="kb-settings-body">
+            <div className="kb-root mono" title={activeVault?.root_path}>{activeVault?.root_path}</div>
+            <div className="row-gap">
+              <button className="btn slim" onClick={register}>注册新库</button>
+              <button className="btn slim danger" onClick={removeVault} disabled={!activeVault}>移除当前库</button>
+            </div>
+          </div>
+        </details>
+      </header>
 
-      <div className="toolbar">
+      <div className="toolbar kb-filters">
         <div className="searchbox">
           <IconSearch />
           <input
@@ -401,13 +404,10 @@ export default function KnowledgePanel() {
             </button>
           ))}
         </div>
-        <div className="seg">
-          {['all', 'dao', 'fa', 'shu', 'qi'].map((l) => (
-            <button key={l} className={`seg-item ${level === l ? 'active' : ''}`} onClick={() => setLevel(l)}>
-              {l === 'all' ? '不限层' : LEVEL_LABEL[l]}
-            </button>
-          ))}
-        </div>
+        <select className="filter-select" aria-label="筛选知识层级" value={level} onChange={(e) => setLevel(e.target.value)}>
+          <option value="all">全部层级</option>
+          {['dao', 'fa', 'shu', 'qi'].map((l) => <option key={l} value={l}>{LEVEL_LABEL[l]}</option>)}
+        </select>
       </div>
 
       <div className="kb-list">
@@ -423,7 +423,7 @@ export default function KnowledgePanel() {
               {n.missing && <em className="tag missing-tag">缺失</em>}
               {KIND_LABEL[n.kind]}
               {n.level ? ` · ${LEVEL_LABEL[n.level]}` : ''}
-              {n.status ? ` · ${n.status}` : ''}
+              {n.status ? ` · ${STATUS_LABEL[n.status] ?? n.status}` : ''}
             </span>
             <span className="kb-note-path mono">{n.rel_path}</span>
           </button>

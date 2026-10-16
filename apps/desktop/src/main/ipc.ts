@@ -9,6 +9,7 @@ import {
   type ToolItem,
 } from '../../../../packages/core/src/index';
 import { registerDataIpc } from './data-ipc';
+import { registerAgentIpc } from './agent-ipc';
 import { toolsRoot } from './tools-store';
 
 // 统一 IPC 信封：{ok, data|error}。async/await 包装——处理器返回 Promise 时先等待再装入 data，
@@ -24,6 +25,7 @@ const handle = (channel: string, fn: (payload: unknown) => unknown) => {
 };
 
 export function registerIpc(core: TodoDeskCore): void {
+  registerAgentIpc();
   // 数据面板 / 本体管理（对象·链接·动作三类型）
   registerDataIpc(core);
 
@@ -53,7 +55,8 @@ export function registerIpc(core: TodoDeskCore): void {
     return core.plans.update(id, patch as never);
   });
   handle('plans:delete', (p) => {
-    core.plans.remove((p as { id: number }).id);
+    const { id, delete_todos } = p as { id: number; delete_todos?: boolean };
+    core.plans.remove(id, { delete_todos });
     return true;
   });
 
@@ -62,6 +65,19 @@ export function registerIpc(core: TodoDeskCore): void {
   handle('checkins:list', (p) => core.checkins.listDetailed((p as never) ?? {}));
   handle('checkins:stats', () => core.checkins.stats());
   handle('today:get', (p) => core.today.getToday((p as { date?: string })?.date));
+
+  // 日历（今日页月视图）：日程 CRUD + 区间聚合（待办/学习/打卡叠加）
+  handle('calendar:list', (p) => core.calendar.list((p as never) ?? {}));
+  handle('calendar:rangeAgenda', (p) => core.calendar.rangeAgenda(p as never));
+  handle('calendar:add', (p) => core.calendar.add(p as never));
+  handle('calendar:update', (p) => {
+    const { id, ...patch } = p as { id: number };
+    return core.calendar.update(id, patch as never);
+  });
+  handle('calendar:delete', (p) => {
+    core.calendar.remove((p as { id: number }).id);
+    return true;
+  });
 
   // 学习闭环（agent 经 MCP 写入，App 侧展示 + 必要的确认/导出控件；无手工建计划表单）
   handle('study:listDrafts', (p) => core.study.listDrafts((p as { status?: never })?.status));
@@ -147,7 +163,7 @@ export function registerIpc(core: TodoDeskCore): void {
   handle('courses:submitQuiz', (p) =>
     core.courses.submitQuiz((p as { course_id: number }).course_id, (p as { day: number }).day, (p as { answers: never }).answers),
   );
-  handle('courses:confirmSample', (p) => core.courses.confirmSample((p as { course_id: number }).course_id));
+  handle('courses:confirmSample', (p) => core.commands.human.confirmCourseSample((p as { course_id: number }).course_id));
   handle('courses:createRequest', (p) => core.courses.createGenerationRequest((p as { course_id: number }).course_id, 'app'));
   handle('courses:listRequests', (p) => core.courses.listRequests((p as never) ?? {}));
 
@@ -156,11 +172,6 @@ export function registerIpc(core: TodoDeskCore): void {
 
   // 工具箱：分类与工具的 CRUD。新增/更新工具时把上传文件写入数据库旁的 tools/<id>/
   //（与 MCP Server 同一实现、同一目录，agent 添加的工具 App 里直接可见）
-  const handleToolFiles = (tool: ToolItem, files: Array<{ name: string; contentBase64: string }>): ToolItem => {
-    saveToolFilesTo(toolsRoot(), tool.id, files);
-    return tool;
-  };
-
   handle('tools:listCategories', () => core.tools.listCategories());
   handle('tools:addCategory', (p) => core.tools.addCategory(p as never));
   handle('tools:renameCategory', (p) =>
@@ -191,8 +202,9 @@ export function registerIpc(core: TodoDeskCore): void {
       icon,
       category_id: category_id ?? null,
       entry_file: sanitizeToolPath(entry.name),
+      files:list,
     });
-    return handleToolFiles(tool, list);
+    return tool;
   });
   handle('tools:update', (p) => {
     const { id, title, icon, category_id, files } = p as {
@@ -211,15 +223,15 @@ export function registerIpc(core: TodoDeskCore): void {
       const entry = list.find((f) => /\.html?$/i.test(f.name));
       if (!entry) throw new Error('文件中缺少 HTML 入口');
       patch.entry_file = sanitizeToolPath(entry.name);
-      const updated = core.tools.updateTool(id, patch as never);
-      return handleToolFiles(updated, list);
+      patch.files=list;
+      return core.tools.updateTool(id, patch as never);
     }
     return core.tools.updateTool(id, patch as never);
   });
   handle('tools:delete', (p) => {
     const id = (p as { id: number }).id;
     core.tools.deleteTool(id);
-    deleteToolFilesAt(toolsRoot(), id);
+
     return true;
   });
 
@@ -289,7 +301,7 @@ export function registerIpc(core: TodoDeskCore): void {
   // 审核动作（submit/approve/reject/revoke）：approve/reject 是用户在 App 内的亲自动作
   handle('media:reviewVersion', (p) => {
     const { id, action, note } = p as { id: number; action: 'submit' | 'approve' | 'reject' | 'revoke'; note?: string };
-    return core.media.reviewVersion(id, action, note);
+    return core.commands.human.reviewMediaVersion(id, action, note);
   });
   handle('media:addMaterial', (p) => core.media.addMaterial(p as never));
   handle('media:listMaterials', (p) => core.media.listMaterials((p as never) ?? {}));

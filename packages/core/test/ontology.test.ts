@@ -16,17 +16,18 @@ const core = () => {
 afterEach(() => ctx?.cleanup());
 
 describe('bootstrap 与校验', () => {
-  it('内置 12 对象类型 + 8 链接 + 5 内置动作同步进元数据表', () => {
+  it('内置业务对象、关系与共用命令同步进元数据表', () => {
     const c = core();
     const objects = c.ontology.listObjectTypes();
     expect(objects.map((o) => o.apiName)).toEqual(
       expect.arrayContaining(['todo', 'study_plan', 'plan_item', 'checkin', 'news_item', 'tool', 'tool_category', 'day']),
     );
-    expect(objects).toHaveLength(12);
+    expect(objects).toHaveLength(30);
+    expect(objects.find(o => o.apiName === 'action_execution')?.writeMode).toBe('read_only');
     expect(objects.filter((o) => o.isVirtual)).toHaveLength(1);
-    expect(c.ontology.listLinkTypes()).toHaveLength(8);
+    expect(c.ontology.listLinkTypes()).toHaveLength(29);
     const actions = c.ontology.listActionTypes();
-    expect(actions.filter((a) => a.isBuiltin)).toHaveLength(5);
+    expect(actions.filter((a) => a.isBuiltin).length).toBeGreaterThan(50);
   });
 
   it('启动校验：定义与物理表结构一致时不抛错；漂移时抛错', () => {
@@ -64,7 +65,7 @@ describe('bootstrap 与校验', () => {
     const db2 = openNodeSqliteDb(path);
     // dbPath 必传：老库升级路径同样不得让资产根回退到真实应用数据目录
     const c2 = createCore(db2, { dbPath: path });
-    expect(c2.ontology.listObjectTypes()).toHaveLength(12);
+    expect(c2.ontology.listObjectTypes()).toHaveLength(30);
     expect(c2.todos.list()).toHaveLength(1);
     db2.close();
     rmSync(dir, { recursive: true, force: true });
@@ -72,6 +73,20 @@ describe('bootstrap 与校验', () => {
 });
 
 describe('自定义对象类型', () => {
+  it('搜索实例时，可空文本或日期字段不会遮蔽其他字段的匹配', () => {
+    const c = core();
+    const todo = c.todos.add({ title: '阅读搜索验收' });
+    expect(todo.due_date).toBeNull();
+    expect(c.objects.list('todo', { search: '搜索验收' }).rows.map((row) => row.id)).toEqual([todo.id]);
+    c.ontology.createObjectType({
+      apiName: 'search_note', title: '搜索笔记',
+      properties: [{ apiName: 'title', dataType: 'string' }, { apiName: 'notes', dataType: 'string' }],
+    });
+    const row = c.objects.insert('search_note', { title: '可空字段验收', notes: null });
+    expect(c.objects.list('search_note', { search: '可空字段' }).rows.map((r) => r.id)).toEqual([row.id]);
+    expect(c.objects.list('search_note', { search: '不存在' }).total).toBe(0);
+  });
+
   it('建类型→动态建表→仓储写入→按属性查询', () => {
     const c = core();
     c.ontology.createObjectType({
@@ -156,7 +171,7 @@ describe('自定义对象类型', () => {
 describe('多对多链接与动作 DSL', () => {
   const setup = (c: ReturnType<typeof mkCore>['core']) => {
     c.ontology.createObjectType({ apiName: 'student', title: '学生', properties: [{ apiName: 'name', dataType: 'string', nullable: false }] });
-    c.ontology.createObjectType({ apiName: 'course', title: '课程', properties: [{ apiName: 'name', dataType: 'string', nullable: false }] });
+    c.ontology.createObjectType({ apiName: 'custom_course', title: '课程', properties: [{ apiName: 'name', dataType: 'string', nullable: false }] });
     c.ontology.createObjectType({
       apiName: 'enrollment',
       title: '选课',
@@ -169,7 +184,7 @@ describe('多对多链接与动作 DSL', () => {
       apiName: 'student__course',
       title: '学生的课程',
       leftType: 'student',
-      rightType: 'course',
+      rightType: 'custom_course',
       cardinality: 'many_to_many',
       linkTable: 'enrollment',
       backingLeftProperty: 'student_id',
@@ -181,8 +196,8 @@ describe('多对多链接与动作 DSL', () => {
     const c = core();
     setup(c);
     const s = c.objects.insert('student', { name: '小明' });
-    const c1 = c.objects.insert('course', { name: '数学' });
-    const c2 = c.objects.insert('course', { name: '物理' });
+    const c1 = c.objects.insert('custom_course', { name: '数学' });
+    const c2 = c.objects.insert('custom_course', { name: '物理' });
     c.ontology.createActionType({
       apiName: 'enroll',
       title: '选课',

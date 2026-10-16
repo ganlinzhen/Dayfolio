@@ -1,8 +1,10 @@
-// 今日仪表盘：逾期/今日到期/今日学习/打卡状态一屏看全（Codex 风格）
+// 今日页：日历置顶（周/月视图）+ 逾期/今日到期/今日学习行动列表（Codex 风格）
+// 2026-10-14 起头部日期条、统计条与手动「每日打卡」入口移除，打开即是日历
 import { useCallback, useEffect, useState } from 'react';
 import { api, call } from '../api';
+import CalendarSection from './CalendarSection';
 import EmptyState from './EmptyState';
-import { IconCalendar, IconItemType } from './icons';
+import { IconItemType } from './icons';
 import type { Todo } from './TodoPanel';
 
 interface PlanItemToday {
@@ -18,11 +20,7 @@ interface Overview {
   date: string;
   overdue_todos: Todo[];
   due_today_todos: Todo[];
-  completed_today_todos: Todo[];
   today_plan_items: PlanItemToday[];
-  streak: number;
-  summary_text: string;
-  summary: { todo_done_count: number; plan_item_done_count: number; manual_checkin_count: number };
 }
 
 const TYPE_LABEL: Record<string, string> = { learn: '学习', review: '复习', practice: '练习', rest: '休息' };
@@ -53,14 +51,10 @@ export default function TodayPanel() {
     await call(() => api.plans.updateItemStatus({ id, status: 'done' }));
     await refresh();
   };
-  const dayCheckin = async () => {
-    await call(() => api.checkins.checkin({ ref_type: 'day' }));
-    await refresh();
-  };
 
   if (!ov)
     return (
-      <div className="panel">
+      <div className="panel work-panel" role="region" aria-label="今日">
         {error ? (
           <EmptyState
             title="今日概览加载失败"
@@ -77,46 +71,13 @@ export default function TodayPanel() {
       </div>
     );
 
-  const dayChecked = ov.summary.manual_checkin_count > 0;
   const planPending = ov.today_plan_items.filter((i) => i.status === 'pending');
 
   return (
-    <div className="panel">
-      <header className="panel-head">
-        <h1>今日</h1>
-        <div className="head-meta mono">{ov.date}</div>
-      </header>
-      <p className="sub">{ov.summary_text}</p>
+    <div className="panel work-panel today-panel" role="region" aria-label="今日">
+      {/* 日历置顶：周视图默认，工具栏含今天/翻页/周月切换/新建日程 */}
+      <CalendarSection today={ov.date} />
 
-      {/* 概览数字 */}
-      <div className="stat-row">
-        <div className="stat">
-          <div className="stat-num serif">{ov.summary.todo_done_count}</div>
-          <div className="stat-label">今日完成待办</div>
-        </div>
-        <div className="stat">
-          <div className="stat-num serif">
-            {ov.summary.plan_item_done_count}/{ov.today_plan_items.length}
-          </div>
-          <div className="stat-label">今日学习打卡</div>
-        </div>
-        <div className="stat">
-          <div className="stat-num serif">{ov.streak}</div>
-          <div className="stat-label">连续打卡天数</div>
-        </div>
-        <div className="stat">
-          <button className={`btn ${dayChecked ? '' : 'primary'}`} disabled={dayChecked} onClick={() => void dayCheckin()}>
-            {dayChecked ? '今日已打卡' : '每日打卡'}
-          </button>
-        </div>
-      </div>
-
-      {ov.overdue_todos.length > 0 && (
-        <div className="notice warn">
-          <IconCalendar />
-          {ov.overdue_todos.length} 项待办已逾期
-        </div>
-      )}
       {error && <div className="notice error">{error}</div>}
 
       {ov.overdue_todos.length > 0 && (
@@ -134,12 +95,13 @@ export default function TodayPanel() {
                 </div>
                 <div className="todo-card-meta">
                   <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
+              {t.start_time && <span className="todo-meta mono">{t.start_time}–{t.end_time}</span>}
                   {t.due_date && (
                     <span className="todo-meta mono danger">
-                      {t.due_date}{overdueDays > 0 ? ` · 逾期 ${overdueDays} 天` : ''}
+                      {t.due_date}{t.start_time ? ` ${t.start_time}–${t.end_time}` : ''}{overdueDays > 0 ? ` · 逾期 ${overdueDays} 天` : ''}
                     </span>
                   )}
-                  {t.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}
+                  {t.tags.filter((tag) => !/^plan:\d+$/.test(tag)).map((tag) => <span key={tag} className="tag">{tag}</span>)}
                 </div>
               </div>
             );
@@ -160,7 +122,8 @@ export default function TodayPanel() {
             </div>
             <div className="todo-card-meta">
               <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
-              {t.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}
+              {t.start_time && <span className="todo-meta mono">{t.start_time}–{t.end_time}</span>}
+              {t.tags.filter((tag) => !/^plan:\d+$/.test(tag)).map((tag) => <span key={tag} className="tag">{tag}</span>)}
             </div>
           </div>
         ))}

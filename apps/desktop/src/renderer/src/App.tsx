@@ -1,9 +1,8 @@
 // 应用外壳：极简侧导航（Codex 风格：暖白底、hairline 分隔、衬线标题、线性图标）
 import { useEffect, useMemo, useState } from 'react';
-import CheckinPanel from './components/CheckinPanel';
 import DataPanel from './components/DataPanel';
 import HelpPanel from './components/HelpPanel';
-import { IconBook, IconCalendar, IconCheck, IconDatabase, IconFlame, IconHelp, IconList, IconMegaphone, IconNews, IconPlug, IconToolbox, IconVault } from './components/icons';
+import { IconBook, IconCalendar, IconCheck, IconDatabase, IconHelp, IconList, IconMegaphone, IconNews, IconPlug, IconToolbox, IconVault } from './components/icons';
 import McpPanel from './components/McpPanel';
 import MediaPanel from './components/MediaPanel';
 import NewsPanel from './components/NewsPanel';
@@ -14,7 +13,7 @@ import TodoPanel from './components/TodoPanel';
 import ToolsPanel from './components/ToolsPanel';
 import { ToastHost } from './components/Toast';
 
-type Tab = 'today' | 'todos' | 'plans' | 'checkins' | 'news' | 'knowledge' | 'media' | 'tools' | 'data' | 'mcp' | 'help';
+type Tab = 'today' | 'todos' | 'plans' | 'news' | 'knowledge' | 'media' | 'tools' | 'data' | 'mcp' | 'help';
 
 /** 发版记录弹层：解析构建时注入的 CHANGELOG（## 版本 / ### 分类 / - 条目） */
 function ChangelogModal({ onClose }: { onClose: () => void }) {
@@ -77,10 +76,9 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
 const TABS: Array<{ key: Tab; label: string; Icon: typeof IconList }> = [
   { key: 'today', label: '今日', Icon: IconCalendar },
   { key: 'todos', label: '待办', Icon: IconList },
-  { key: 'checkins', label: '打卡', Icon: IconFlame },
-  { key: 'plans', label: '学习计划', Icon: IconBook },
-  { key: 'news', label: '新闻', Icon: IconNews },
+  { key: 'plans', label: '学习', Icon: IconBook },
   { key: 'knowledge', label: '知识库', Icon: IconVault },
+  { key: 'news', label: '新闻', Icon: IconNews },
   { key: 'media', label: '自媒体', Icon: IconMegaphone },
   { key: 'tools', label: '工具箱', Icon: IconToolbox },
 ];
@@ -100,7 +98,7 @@ export default function App() {
 
   // 窗口标题跟随当前面板，便于 Mission Control 辨认
   useEffect(() => {
-    document.title = `TodoDesk — ${TAB_LABEL(tab)}`;
+    document.title = `Dayfolio — ${TAB_LABEL(tab)}`;
   }, [tab]);
 
   return (
@@ -110,7 +108,7 @@ export default function App() {
           <span className="brand-mark">
             <IconCheck width={13} height={13} strokeWidth={2.4} />
           </span>
-          <span className="brand-name">TodoDesk</span>
+          <span className="brand-name">Dayfolio</span>
         </div>
         <nav className="nav">
           {TABS.map(({ key, label, Icon }) => (
@@ -150,11 +148,10 @@ export default function App() {
           ))}
         </div>
       </aside>
-      <main className="content">
+      <main key={tab} className="content">
         {tab === 'today' && <TodayPanel />}
         {tab === 'todos' && <TodoPanel />}
         {tab === 'plans' && <PlanPanel />}
-        {tab === 'checkins' && <CheckinPanel />}
         {tab === 'news' && <NewsPanel />}
         {tab === 'knowledge' && <KnowledgePanel />}
         {tab === 'media' && <MediaPanel />}

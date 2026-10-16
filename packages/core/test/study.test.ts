@@ -239,7 +239,7 @@ describe('测评证据：来源显式、客观必须带判题依据、纠正历�
       source: 'ai_suggestion',
       score: 95,
       feedback: 'AI 建议：结论正确但缺例子',
-      evidence: 'AI 客户端给出，非 TodoDesk 生成',
+      evidence: 'AI 客户端给出，非 Dayfolio 生成',
     });
     const report = core.study.getMastery({ knowledge_keys: ['k'] });
     expect(report.entries[0].mastery).toBe('unknown'); // AI 建议不算证据

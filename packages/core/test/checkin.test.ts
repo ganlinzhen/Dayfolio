@@ -8,11 +8,13 @@ describe('打卡服务', () => {
     const { core, cleanup } = mkCore();
     try {
       const today = todayStr();
-      core.checkins.checkin({ ref_type: 'day', note: '第一天' });
+      const first = core.checkins.checkin({ ref_type: 'day', note: '第一天' });
       core.checkins.checkin({ ref_type: 'day', note: '再来一次' });
       const dayCheckins = core.checkins.list({ ref_type: 'day' });
       expect(dayCheckins).toHaveLength(1);
       expect(dayCheckins[0].note).toBe('再来一次');
+      expect(first.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(dayCheckins[0].created_at).toBe(first.created_at);
     } finally {
       cleanup();
     }

@@ -3,6 +3,7 @@
 import { inTx, type DbAdapter } from './db';
 import { ONTOLOGY_META_DDL } from './ontology/registry';
 import { newsDedupKey } from './utils/news-dedup';
+import { randomBytes } from 'node:crypto';
 
 interface Migration {
   version: number;
@@ -301,7 +302,7 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_vault_notes_vault ON vault_notes(vault_id);
       CREATE INDEX IF NOT EXISTS idx_vault_notes_kind ON vault_notes(vault_id, kind);
 
-      -- 学习概念 ↔ 知识卡片 手动关联（只写 TodoDesk 库，绝不改 vault 文件）
+      -- 学习概念 ↔ 知识卡片 手动关联（只写 Dayfolio 库，绝不改 vault 文件）
       CREATE TABLE IF NOT EXISTS vault_concept_links (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         vault_id INTEGER NOT NULL,
@@ -524,6 +525,106 @@ export const MIGRATIONS: Migration[] = [
           SELECT COUNT(*) FROM news WHERE news.task_id = news_tasks.id
         )`);
       }
+    },
+  },
+  {
+    version: 12,
+    name: 'news_content_kind',
+    up: (db) => {
+      // 内容形态（2026-10-13）：'url'=详情页内嵌来源网页（历史行为，默认）；
+      // 'html'=本地 HTML 快照（X/Twitter 等无法内嵌的来源，agent 提交 html 字段，
+      // core 消毒后写入 dirname(db)/news/<uuid>.html，相对路径存 html_rel）。
+      // 纯增量：历史行不动，默认 'url' 行为不变。
+      const newsCols = db.prepare('PRAGMA table_info(news)').all().map((c) => String((c as { name: string }).name));
+      if (!newsCols.includes('content_kind')) db.exec("ALTER TABLE news ADD COLUMN content_kind TEXT NOT NULL DEFAULT 'url'");
+      if (!newsCols.includes('html_rel')) db.exec('ALTER TABLE news ADD COLUMN html_rel TEXT');
+    },
+  },
+  { version: 13, name: 'ontology_relations', up: (db) => {
+    const cols=db.prepare('PRAGMA table_info(ont_link_types)').all();
+    if (!cols.some(c=>c.name==='config')) db.exec("ALTER TABLE ont_link_types ADD COLUMN config TEXT NOT NULL DEFAULT '{}'");
+  } },
+  {
+    version: 14,
+    name: 'calendar_events',
+    up: (db) =>
+      db.exec(`
+      -- 个人本地日程（2026-10-14，今日页日历）：start_time 为空即全天；
+      -- end_date 为空即单日；不建 CHECK 约束，合法性由服务层校验（保持迁移弹性）。
+      CREATE TABLE IF NOT EXISTS calendar_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        date TEXT NOT NULL,
+        end_date TEXT,
+        start_time TEXT,
+        end_time TEXT,
+        note TEXT NOT NULL DEFAULT '',
+        color TEXT NOT NULL DEFAULT 'blue',
+        source TEXT NOT NULL DEFAULT 'app',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(date);
+      `),
+  },
+  {
+    version: 15,
+    name: 'todo_time_range',
+    up: (db) => {
+      const columns = db.prepare('PRAGMA table_info(todos)').all().map(c => String(c.name));
+      if (!columns.includes('start_time')) db.exec('ALTER TABLE todos ADD COLUMN start_time TEXT');
+      if (!columns.includes('end_time')) db.exec('ALTER TABLE todos ADD COLUMN end_time TEXT');
+    },
+  },
+  {
+    version: 16,
+    name: 'ontology_action_templates',
+    up: db => db.exec(`
+      CREATE TABLE IF NOT EXISTS ont_action_templates (
+        action_name TEXT PRIMARY KEY REFERENCES ont_action_types(api_name) ON DELETE CASCADE,
+        target_kind TEXT NOT NULL,
+        target_name TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        template_version INTEGER NOT NULL DEFAULT 1,
+        schema_digest TEXT NOT NULL,
+        UNIQUE(target_kind, target_name, operation)
+      );
+      CREATE TABLE IF NOT EXISTS ont_template_preferences (
+        object_type TEXT PRIMARY KEY REFERENCES ont_object_types(api_name) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL DEFAULT 1
+      );
+    `),
+  },
+  {
+    version: 17,
+    name: 'ontology_action_executions',
+    up: db => db.exec(`
+      CREATE TABLE IF NOT EXISTS ont_action_executions (
+        id TEXT PRIMARY KEY,
+        action_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        request_key TEXT,
+        scope TEXT NOT NULL DEFAULT 'local-user',
+        params_hash TEXT NOT NULL,
+        definition_hash TEXT NOT NULL,
+        result_json TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        attempts INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        UNIQUE(scope,request_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_action_runs_name_time ON ont_action_executions(action_name,created_at);
+    `),
+  },
+  {
+    version: 18,
+    name: 'ontology_query_cursor_key',
+    up: db => {
+      db.exec('CREATE TABLE IF NOT EXISTS ont_query_config(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
+      db.prepare("INSERT OR IGNORE INTO ont_query_config(key,value) VALUES('cursor_key',?)").run(randomBytes(32).toString('hex'));
     },
   },
 ];

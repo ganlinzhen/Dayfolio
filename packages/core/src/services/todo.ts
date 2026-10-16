@@ -2,9 +2,19 @@
 import type { DbAdapter } from '../db';
 import { inTx, mapTodo } from '../db';
 import type { NewTodoInput, Todo, TodoFilters, UpdateTodoInput, Priority } from '../types';
-import { nowIso, todayStr } from '../utils/date';
+import { ensureValidDateStr, nowIso, todayStr } from '../utils/date';
 
 const PRIORITIES: Priority[] = ['high', 'medium', 'low'];
+
+function validateSchedule(date: string | null, start: string | null, end: string | null) {
+  if (date !== null) ensureValidDateStr(date);
+  if (start === null && end === null) return;
+  if (!date) throw new Error('设置起止时间时必须选择日期');
+  if (!start || !end) throw new Error('请同时填写开始时间和结束时间');
+  const time = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (!time.test(start) || !time.test(end)) throw new Error('起止时间格式应为 HH:MM');
+  if (end <= start) throw new Error('结束时间必须晚于开始时间');
+}
 
 export interface TodoServiceDeps {
   /** 完成待办时回调（用于联动打卡），recordCheckin=false 时跳过 */
@@ -14,6 +24,7 @@ export interface TodoServiceDeps {
 
 export function createTodoService(db: DbAdapter, deps: TodoServiceDeps = {}) {
   const add = (input: NewTodoInput): Todo => {
+    validateSchedule(input.due_date ?? null, input.start_time ?? null, input.end_time ?? null);
     if (!input.title || !input.title.trim()) throw new Error('待办标题不能为空');
     const priority = input.priority ?? 'medium';
     if (!PRIORITIES.includes(priority)) {
@@ -22,14 +33,16 @@ export function createTodoService(db: DbAdapter, deps: TodoServiceDeps = {}) {
     const now = nowIso();
     const r = db
       .prepare(
-        `INSERT INTO todos (title, notes, priority, status, due_date, tags, source, created_at, updated_at)
-         VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?)`,
+        `INSERT INTO todos (title, notes, priority, status, due_date, start_time, end_time, tags, source, created_at, updated_at)
+         VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.title.trim(),
         input.notes ?? '',
         priority,
         input.due_date ?? null,
+        input.start_time ?? null,
+        input.end_time ?? null,
         JSON.stringify(input.tags ?? []),
         input.source ?? 'app',
         now,
@@ -57,8 +70,8 @@ export function createTodoService(db: DbAdapter, deps: TodoServiceDeps = {}) {
       params.push(filters.priority);
     }
     if (filters.overdue) {
-      where.push("status = 'open' AND due_date IS NOT NULL AND due_date < ?");
-      params.push(todayStr());
+      where.push("status = 'open' AND due_date IS NOT NULL AND ((end_time IS NULL AND due_date < ?) OR (end_time IS NOT NULL AND due_date || 'T' || end_time <= ?))");
+      params.push(todayStr(), nowIso().slice(0, 16));
     }
     if (filters.search) {
       where.push('(title LIKE ? OR notes LIKE ?)');
@@ -75,7 +88,7 @@ export function createTodoService(db: DbAdapter, deps: TodoServiceDeps = {}) {
       ORDER BY
         CASE status WHEN 'open' THEN 0 ELSE 1 END,
         CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
-        (due_date IS NULL), due_date ASC, id ASC
+        (due_date IS NULL), due_date ASC, start_time ASC, id ASC
       LIMIT ${Math.floor(limit)}`;
     return db.prepare(sql).all(...params).map(mapTodo);
   };
@@ -90,6 +103,10 @@ export function createTodoService(db: DbAdapter, deps: TodoServiceDeps = {}) {
 
   const update = (id: number, patch: UpdateTodoInput): Todo => {
     const existing = get(id);
+    // 清除日期时同时清除时段，避免留下无法显示的时间。
+    const start = patch.start_time !== undefined ? patch.start_time : patch.due_date === null ? null : existing.start_time;
+    const end = patch.end_time !== undefined ? patch.end_time : patch.due_date === null ? null : existing.end_time;
+    validateSchedule(patch.due_date !== undefined ? patch.due_date : existing.due_date, start, end);
     const sets: string[] = [];
     const params: unknown[] = [];
     if (patch.title !== undefined) {
@@ -115,6 +132,10 @@ export function createTodoService(db: DbAdapter, deps: TodoServiceDeps = {}) {
     if (patch.tags !== undefined) {
       sets.push('tags = ?');
       params.push(JSON.stringify(patch.tags));
+    }
+    if (patch.start_time !== undefined || patch.end_time !== undefined || patch.due_date === null) {
+      sets.push('start_time = ?', 'end_time = ?');
+      params.push(start, end);
     }
     if (patch.status !== undefined && patch.status !== existing.status) {
       sets.push('status = ?');

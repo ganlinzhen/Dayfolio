@@ -348,7 +348,7 @@ export default function PlanPanel() {
   };
 
   const remove = async (id: number) => {
-    if (!confirm('删除该计划？条目与条目打卡将删除，生成的待办保留。')) return;
+    if (!confirm('删除该计划？计划、条目、本计划独占的自动生成待办及相关打卡将一并删除，不可恢复。')) return;
     await call(() => api.plans.delete({ id }));
     setDetail(null);
     await refresh();
@@ -500,7 +500,7 @@ export default function PlanPanel() {
       <CoursePanel
         key={`course-${courseView.courseId}-d${courseView.day ?? 0}`}
         target={{ courseId: courseView.courseId, day: courseView.day }}
-        exitLabel={courseView.from === 'detail' ? '返回计划详情' : homeTab === 'courses' ? '返回课程' : '返回学习计划'}
+        exitLabel={courseView.from === 'detail' ? '返回计划详情' : homeTab === 'courses' ? '返回课程' : '返回学习'}
         onExit={exitCourse}
       />
     );
@@ -525,7 +525,6 @@ export default function PlanPanel() {
               <IconChevronLeft width={14} height={14} /> 返回计划详情
             </button>
             <header className="panel-head">
-              <h1>计划条目</h1>
               <div className="head-meta mono">{statusLabel}</div>
             </header>
             <p className="sub">所属计划：{detail.title}</p>
@@ -592,7 +591,7 @@ export default function PlanPanel() {
     const dayOfDate = new Map(sortedDates.map((d, i) => [d, i + 1]));
     const lessonOfDate = new Map(sortedDates.map((d) => [d, boundLessons.find((l) => l.day === dayOfDate.get(d)) ?? null]));
     return (
-      <div className="panel">
+      <div className="panel" role="region" aria-label="学习">
         <button className="backlink" onClick={() => { restoreKeyRef.current = 'list'; setDetail(null); }}>
           <IconChevronLeft width={14} height={14} /> 全部计划
         </button>
@@ -808,17 +807,16 @@ export default function PlanPanel() {
   const datelessCount = drafts.filter((d) => d.start_date == null).length;
   const datedCount = drafts.length - datelessCount;
   return (
-    <div className="panel">
+    <div className="panel" role="region" aria-label="学习">
       <header className="panel-head study-home-head">
-        <h1>学习计划</h1>
+        <div className="seg study-home-tabs" role="group" aria-label="学习首页视图">
+          <button type="button" className={`seg-item ${homeTab === 'plans' ? 'active' : ''}`} aria-pressed={homeTab === 'plans'} onClick={() => switchHomeTab('plans')}>计划</button>
+          <button type="button" className={`seg-item ${homeTab === 'courses' ? 'active' : ''}`} aria-pressed={homeTab === 'courses'} onClick={() => switchHomeTab('courses')}>课程</button>
+        </div>
         <div className="head-meta mono">
           {homeTab === 'plans' ? (
             <>{plans.length} 个计划{datedCount > 0 ? ` · ${datedCount} 个待确认草案` : ''}{datelessCount > 0 ? ` · ${datelessCount} 个未排期专题` : ''}</>
           ) : `${courses.length} 门课程`}
-        </div>
-        <div className="seg study-home-tabs" role="group" aria-label="学习首页视图">
-          <button type="button" className={`seg-item ${homeTab === 'plans' ? 'active' : ''}`} aria-pressed={homeTab === 'plans'} onClick={() => switchHomeTab('plans')}>计划</button>
-          <button type="button" className={`seg-item ${homeTab === 'courses' ? 'active' : ''}`} aria-pressed={homeTab === 'courses'} onClick={() => switchHomeTab('courses')}>课程</button>
         </div>
       </header>
       {homeTab === 'plans' ? <>

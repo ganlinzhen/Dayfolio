@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 从当前待交付文件建立干净副本；不修改 Git 索引，不连接真实数据库，不安装到正式路径。
 import { spawn, execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, openSync, closeSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync, openSync, closeSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -12,7 +12,7 @@ const [major, minor] = process.versions.node.split('.').map(Number);
 if (!((major === 22 && minor >= 13) || major === 24)) throw new Error('请使用 Node 22.13+ 或 24.x');
 if (process.platform !== 'darwin') throw new Error('完整桌面验收需要 macOS');
 const work = mkdtempSync(join(tmpdir(), 'tododesk-clean-'));
-const repo = join(work, 'vibe-ai');
+const repo = join(work, 'dayfolio');
 const logs = join(work, 'logs');
 const home = join(work, 'home');
 for (const p of [repo, logs, home]) mkdirSync(p, { recursive: true });
@@ -70,7 +70,19 @@ try {
   // 包含尚未提交的新文件，保持用户索引原样；已删除的跟踪文件不进入副本。
   const listed = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: source, encoding: 'utf8' });
   const files = [...new Set(listed.split('\0').filter(Boolean))].sort();
+  const aliases = ['tododesk', 'tododesk-teach', 'tododesk-sports'].map(name => `.agents/skills/${name}`).filter(rel => {
+    try { return lstatSync(join(source, rel)).isSymbolicLink(); } catch { return false; }
+  });
+  report.sourceLinks = {};
+  for (const rel of aliases) {
+    const name = rel.split('/').at(-1);
+    if (realpathSync(join(source, rel)) !== realpathSync(join(source, 'packages/agent-kit/skills', name))) throw new Error(`非法技能链接：${rel}`);
+    const link = readlinkSync(join(source, rel));
+    if (isAbsolute(link)) throw new Error(`技能链接必须可迁移：${rel}`);
+    mkdirSync(dirname(join(repo, rel)), { recursive: true }); symlinkSync(link, join(repo, rel)); report.sourceLinks[rel] = link;
+  }
   for (const rel of files) {
+    if (aliases.some(alias => rel === alias || rel.startsWith(alias + '/'))) continue;
     if (isAbsolute(rel) || rel.split('/').includes('..')) throw new Error(`非法源码路径：${rel}`);
     if (/(^|\/)(node_modules|\.git|dist|out|release|backups)(\/|$)/.test(rel) || /(^|\/)(\.env(?:\..+)?|credentials\.json|secrets\.json)$/.test(rel) && !rel.endsWith('.env.example') || /\.(?:db|sqlite3?|pem|key)(?:-wal|-shm|\.bak)?$/.test(rel) || rel === '.mcp.json') {
       throw new Error(`待交付文件包含个人数据、凭证或旧构建目录：${rel}`);
@@ -99,17 +111,21 @@ try {
   await npm('帮助同步', ['run', 'help:sync']);
   const help = 'apps/desktop/src/renderer/src/generated/helpContent.ts';
   if (sha256(join(repo, help)) !== report.sourceFiles[help]) throw new Error('帮助生成文件未同步，请先运行 npm run help:sync');
-  // 此处不先重拷 bundle：必须证明待发布包自身新鲜，否则本机重建会掩盖遗漏。
+  // 分发副本由统一源码生成，禁止把旧副本当成第二份维护来源。
+  await npm('统一能力包与兼容插件构建', ['run', 'plugin:build']);
   await npm('插件安装验收', ['run', 'plugin:verify']);
   await npm('桌面构建', ['run', 'build:desktop']);
   await run('隔离界面验收', process.execPath, ['apps/desktop/scripts/ui-smoke-demo.mjs'], { env: { ...env, TODODESK_SMOKE_SCREENSHOT: join(logs, 'today.png') } });
   await npm('桌面打包', ['run', 'package:desktop']);
-  const app = join(repo, 'apps/desktop/release/TodoDesk.app');
+  const app = join(repo, 'apps/desktop/release/Dayfolio.app');
   await run('安装包签名验证', '/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', app]);
   const version = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', join(app, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
   if (version !== report.version) throw new Error(`安装包版本不一致：${version}`);
   for (const [rel, digest] of Object.entries(report.sourceFiles)) {
     if (!existsSync(join(source, rel)) || sha256(join(source, rel)) !== digest) throw new Error(`验收期间原工作区发生变化，须重新验收：${rel}`);
+  }
+  for (const [rel, link] of Object.entries(report.sourceLinks)) {
+    if (readlinkSync(join(source, rel)) !== link) throw new Error(`验收期间技能链接变化：${rel}`);
   }
   report.artifact = app;
   report.passed = true;

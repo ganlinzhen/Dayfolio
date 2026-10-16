@@ -1,8 +1,8 @@
 {
   "name": "tododesk-desktop",
   "private": true,
-  "version": "0.4.1",
-  "description": "TodoDesk Mac 桌面端（Electron）",
+  "version": "0.20.0",
+  "description": "Dayfolio Mac 桌面端（Electron）",
   "main": "out/main/index.js",
   "scripts": {
     "build": "node scripts/build.mjs",

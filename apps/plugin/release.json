@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "dayfolio",
+  "version": "0.20.0",
+  "files": {
+    ".mcp.json": "2e4b45ea6d5a1a25214d15dbca55e3096f63544287fb194ba216ccc4730da811",
+    ".zcode-plugin/plugin.json": "fc0582bd1a7a468ab17b95294f1d3d3109ca6162915daba8142bce0355467752",
+    "build-inputs.json": "3a72ac894d4f276e24c78619f7fe7fe2a95e6523afcf1530ed5f98dcbd331cfe",
+    "catalog.json": "5ab6be7cf1f2f86a3bcbabafeb3a6a03a59673046288e0b4deae2fc115f24d45",
+    "manifest.json": "25efa0ff6c2775990175db922bba661143d60b6022a869b61bd3cc30cf7873f8",
+    "mcp/mcp-server.cjs": "aa8f7771ceb42ba31a9278fd8e662f82d5930ad92f2d2f4df2a0fcd80c7a7a14",
+    "mcp.json": "d4ed4ff59d339fa0212118a69cb970f33fd914c2b64402291f24d186ee1d45f4",
+    "plugin.json": "3c2213315a5a3ff38f7a3af00fda598dde682cb5bffe6fa124dc21ca9563fa86",
+    "runtime/call.mjs": "6f10d35ffe92742652ad2224b43d7f9a97b22bf3d2b63420413f161d1d5892c6",
+    "scripts/install-verify.mjs": "7be7806d23fd19b9cc0e9b2b45fb8c6c2a9ad6ea47e3aa4d9d019be431163c28",
+    "scripts/package.mjs": "5d6ed185ddaa36aa22c522fa9081b9b21cd4c41c2b05dd1f8264c2192058bc6f",
+    "scripts/validate-package.mjs": "7be7806d23fd19b9cc0e9b2b45fb8c6c2a9ad6ea47e3aa4d9d019be431163c28",
+    "scripts/verify-sports-skill.mjs": "fa939fee8b1d4b87cb43de54412b530d0ae8b05380c5a0423497f5d114055b16",
+    "scripts/verify.mjs": "ee132302a3384252fd25e32e7f662b32a216067ecb41cb656cb59589b601dac9",
+    "skills/tododesk/SKILL.md": "11bc3c08ef26b899647ca0ab326a0bf9977c0387746acfcbca537c1cef5d8992",
+    "skills/tododesk/references/news.md": "588615b0aa1d27d4c2ea5c99e4fcd4c201f4ff3b90b50d79439c1081aeb2b864",
+    "skills/tododesk/scripts/tododesk.mjs": "9172d91bcd202ddc7dbb4f8dacfde826047bbe1b03688a0528bc67b581154e30",
+    "skills/tododesk-sports/SKILL.md": "0965b71bddd596ef113147e3dd040cf07f4774a8999528c250a9a4b97e30bfba",
+    "skills/tododesk-sports/agents/openai.yaml": "e89a1c0689f75966ce5e39031234a9d7b916a5de8ea2d87ef8ba79e2e01b8a41",
+    "skills/tododesk-sports/references/data-and-update.md": "3f9d1835dab38bdfc6b98341ba94b4ce55a38fc4d60fd3d7201c82174dbe5822",
+    "skills/tododesk-sports/references/discovery-and-page.md": "83e6b35d2fd5962d59278ff71a5b193ee9dd9cfb05a315f8db31d1b624e19b52",
+    "skills/tododesk-sports/references/event-model.md": "acd6f94d25ad5b28dbb6ad16f5009c308e7c65367ad961ca8bd23cabb6743bd3",
+    "skills/tododesk-sports/references/page-contract.md": "4df04b49fd90dde0b5a6dfb656b8a6876171de1c4a06544fbb59e2405d43b998",
+    "skills/tododesk-sports/scripts/validate-page.mjs": "fa1dc0b0f8c5e2303ea9272d24aa1ab1bd8473415231cab7c20275960202938d",
+    "skills/tododesk-teach/LICENSE": "0c7a3278aecbcce75a2179f94216f35c57f35bc2ddb777e6b812b36c74821cd6",
+    "skills/tododesk-teach/SKILL.md": "4f14844126aa7bfdd66673a1af0c9f50269793f747d2aadc3d27170ff59b9405"
+  }
+}

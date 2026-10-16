@@ -1,6 +1,6 @@
 // 帮助面板：左侧模块目录 + 右侧使用说明
 // 内容不是硬编码：来自 apps/help 子项目（构建前由 npm run help:sync 生成 helpContent.ts）
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, call } from '../api';
 import { HELP_DOCS, HELP_SYNCED_AT } from '../generated/helpContent';
 
@@ -169,20 +169,20 @@ function parseBlocks(md: string): ReactNode[] {
 export default function HelpPanel() {
   const [activeId, setActiveId] = useState(HELP_DOCS[0]?.id ?? '');
   const active = HELP_DOCS.find((d) => d.id === activeId) ?? HELP_DOCS[0];
+  const articleRef = useRef<HTMLElement>(null);
   const blocks = useMemo(() => (active ? parseBlocks(active.markdown) : []), [active]);
 
-  // 切换文档后让内容区回到顶部（滚动容器在 .content 上）
+  // 切换章节只重置正文，目录保持原有滚动位置。
   useEffect(() => {
-    document.querySelector('.content')?.scrollTo({ top: 0 });
+    articleRef.current?.scrollTo({ top: 0 });
   }, [activeId]);
 
   const syncedAt = new Date(HELP_SYNCED_AT).toLocaleDateString('sv-SE');
   if (!active) return null;
 
   return (
-    <div className="panel help-panel">
+    <div className="panel help-panel" role="region" aria-label="帮助">
       <header className="panel-head">
-        <h1>帮助</h1>
         <div className="head-meta mono">
           {HELP_DOCS.length} 个模块 · 更新于 {syncedAt}
         </div>
@@ -203,7 +203,7 @@ export default function HelpPanel() {
             </button>
           ))}
         </nav>
-        <article className="help-article">
+        <article ref={articleRef} className="help-article" tabIndex={0} aria-label={`${active.title}帮助正文`}>
           <h2 className="help-doc-title serif">{active.title}</h2>
           <div className="help-md">{blocks}</div>
         </article>

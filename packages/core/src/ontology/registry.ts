@@ -4,9 +4,16 @@
 import { inTx, type DbAdapter } from '../db';
 import { nowIso } from '../utils/date';
 import { BOOT_ACTION_TYPES, BOOT_LINK_TYPES, BOOT_OBJECT_TYPES } from './bootstrap';
+import { BUSINESS_OBJECTS, BUSINESS_LINKS } from './catalog';
+import { COMMAND_DEFS, COMPOSABLE_COMMANDS, commandMetadata } from './commands';
+import { syncRelationConstraints, dropRelationConstraints } from './relations';
+import { objectPolicy, assertObjectWrite, OntologyError } from './policy';
+import { syncActionTemplates } from './templates';
+import { validateActionSchema } from './input-validation';
 import { addObjectColumn, createCustomObjectTable, customTableName, dropObjectColumn, dropObjectTable } from './ddl';
 import type {
   ActionOperation,
+  ActionTemplateDef,
   ActionTypeDef,
   CreateActionTypeInput,
   CreateLinkTypeInput,
@@ -17,6 +24,7 @@ import type {
   PropertyDef,
   UpdateActionTypeInput,
   UpdateObjectTypeInput,
+  ValueMapping,
 } from './types';
 
 const API_NAME_RE = /^[a-z][a-z0-9_]{0,40}$/;
@@ -82,6 +90,7 @@ function parseJson<T>(raw: unknown, fallback: T): T {
 
 function rowToObject(row: Record<string, unknown>): ObjectTypeDef {
   return {
+    ...objectPolicy(String(row.api_name), Number(row.is_system) === 1, Number(row.is_virtual) === 1),
     apiName: String(row.api_name),
     title: String(row.title),
     description: String(row.description ?? ''),
@@ -107,8 +116,10 @@ function rowToLink(row: Record<string, unknown>): LinkTypeDef {
     cardinality: row.cardinality as LinkTypeDef['cardinality'],
     leftLinkName: (row.left_link_name as string | null) ?? null,
     rightLinkName: (row.right_link_name as string | null) ?? null,
+    referenceKind: Number(row.is_system) === 1 ? (['study_plan__study_session','study_session__study_assessment'].includes(String(row.api_name)) ? 'historical' : String(row.api_name) === 'day__checkin' ? 'derived' : 'strong') : 'strong',
+    ...parseJson<Record<string, unknown>>(row.config, {}),
     fkColumn: (row.fk_column as string | null) ?? undefined,
-    onDelete: (row.on_delete as LinkTypeDef['onDelete'] | null) ?? undefined,
+    onDelete: row.cardinality==='many_to_many' ? 'cascade' : ['study_plan__study_session','study_session__study_assessment','day__checkin'].includes(String(row.api_name)) || parseJson<{referenceKind?:string}>(row.config,{}).referenceKind==='historical' ? 'none' : (row.on_delete as LinkTypeDef['onDelete'] | null) ?? undefined,
     discriminatorColumn: (row.discriminator_column as string | null) ?? undefined,
     discriminatorValue: (row.discriminator_value as string | null) ?? undefined,
     refColumn: (row.ref_column as string | null) ?? undefined,
@@ -127,6 +138,9 @@ function rowToAction(row: Record<string, unknown>): ActionTypeDef {
     title: String(row.title),
     description: String(row.description ?? ''),
     isBuiltin: Number(row.is_builtin) === 1,
+    composable: COMPOSABLE_COMMANDS.has(String(row.api_name)),
+    targetBindings: COMMAND_DEFS.find(d=>d.apiName===row.api_name)?.targetBindings,
+    allowedChannels: COMMAND_DEFS.find(d=>d.apiName===row.api_name)?.human ? ['app-human'] : ['app','mcp','core'],
     status: row.status === 'disabled' ? 'disabled' : 'active',
     parameters: parseJson<ActionTypeDef['parameters']>(row.parameters, []),
     operations: parseJson<ActionTypeDef['operations']>(row.operations, []),
@@ -168,9 +182,9 @@ export function createOntologyService(db: DbAdapter) {
   /** 建元数据表并把代码里的 bootstrap 定义幂等同步进去（系统行以代码为准，不动自定义行） */
   const init = (): void => {
     db.exec(ONTOLOGY_META_DDL);
-    syncBootstrap();
-    validateAll();
+    inTx(db,()=>{ syncBootstrap(); validateAll(); syncRelationConstraints(db,listObjectTypes(),listLinkTypes()); syncTemplates(); });
   };
+  const syncTemplates = () => syncActionTemplates(db, listObjectTypes(), listLinkTypes());
 
   const syncBootstrap = (): void => {
     const now = nowIso();
@@ -182,10 +196,13 @@ export function createOntologyService(db: DbAdapter) {
           is_virtual=excluded.is_virtual, is_system=1, primary_key=excluded.primary_key, title_property=excluded.title_property,
           properties=excluded.properties, status=excluded.status, sort_order=excluded.sort_order, updated_at=excluded.updated_at
       `);
-      for (const t of BOOT_OBJECT_TYPES) {
+      for (const t of [...BOOT_OBJECT_TYPES, ...BUSINESS_OBJECTS]) {
         // 保留用户在系统类型上追加过的属性（origin=user 行不随代码覆盖）
+        const conflict = db.prepare('SELECT is_system FROM ont_object_types WHERE api_name = ?').get(t.apiName);
+        if (conflict && !Number(conflict.is_system)) throw new Error(`对象类型名称冲突：${t.apiName} 已被用户使用，升级未覆盖其定义`);
         const existing = db.prepare('SELECT properties FROM ont_object_types WHERE api_name = ?').get(t.apiName);
         const userProps = existing ? parseJson<PropertyDef[]>(existing.properties, []).filter((p) => p.origin === 'user') : [];
+        for(const p of userProps)if(t.properties.some(b=>b.apiName===p.apiName))throw new Error(`系统字段升级冲突：${t.apiName}.${p.apiName} 已被用户属性占用`);
         const props = [...t.properties, ...userProps];
         upsertObject.run({
           api_name: t.apiName,
@@ -213,7 +230,7 @@ export function createOntologyService(db: DbAdapter) {
           backing_left_property=excluded.backing_left_property, backing_right_property=excluded.backing_right_property,
           is_system=1, sort_order=excluded.sort_order
       `);
-      for (const l of BOOT_LINK_TYPES) {
+      for (const l of [...BOOT_LINK_TYPES, ...BUSINESS_LINKS]) {
         upsertLink.run({
           api_name: l.apiName,
           title: l.title,
@@ -234,13 +251,16 @@ export function createOntologyService(db: DbAdapter) {
           created_at: now,
         });
       }
+      for (const l of BUSINESS_LINKS) db.prepare('UPDATE ont_link_types SET config=? WHERE api_name=?').run(JSON.stringify({referenceKind:l.referenceKind,backingTableName:l.backingTableName}),l.apiName);
       const upsertAction = db.prepare(`
         INSERT INTO ont_action_types (api_name,title,description,is_builtin,status,parameters,operations,sort_order,created_at,updated_at)
         VALUES (@api_name,@title,@description,1,@status,@parameters,@operations,@sort_order,@created_at,@updated_at)
         ON CONFLICT(api_name) DO UPDATE SET title=excluded.title, description=excluded.description, is_builtin=1,
           parameters=excluded.parameters, operations=excluded.operations, sort_order=excluded.sort_order, updated_at=excluded.updated_at
       `);
-      for (const a of BOOT_ACTION_TYPES) {
+      for (const a of COMMAND_DEFS.map(commandMetadata)) {
+        const conflict = db.prepare('SELECT is_builtin FROM ont_action_types WHERE api_name=?').get(a.apiName);
+        if (conflict && !Number(conflict.is_builtin)) throw new Error(`动作名称冲突：${a.apiName}`);
         // builtin 动作的启停（status）是用户态设置：插入时用默认值，冲突更新时不动 status
         upsertAction.run({
           api_name: a.apiName,
@@ -277,12 +297,17 @@ export function createOntologyService(db: DbAdapter) {
     db.prepare('SELECT * FROM ont_link_types ORDER BY sort_order, api_name').all().map(rowToLink);
 
   const listActionTypes = (): ActionTypeDef[] =>
-    db.prepare('SELECT * FROM ont_action_types ORDER BY sort_order, api_name').all().map(rowToAction);
+    db.prepare('SELECT * FROM ont_action_types ORDER BY sort_order, api_name').all().map(row=>decorateAction(rowToAction(row)));
 
   const getActionType = (apiName: string): ActionTypeDef => {
     const row = db.prepare('SELECT * FROM ont_action_types WHERE api_name = ?').get(apiName);
     if (!row) throw new Error(`动作类型 ${apiName} 不存在`);
-    return rowToAction(row);
+    return decorateAction(rowToAction(row));
+  };
+  const getTemplateAction = (kind: ActionTemplateDef['targetKind'], name: string, operation: ActionTemplateDef['operation']): ActionTypeDef => {
+    const row = db.prepare('SELECT action_name FROM ont_action_templates WHERE target_kind=? AND target_name=? AND operation=?').get(kind, name, operation);
+    if (!row) throw new OntologyError('WRITE_REQUIRES_ACTION', '未启用对应基础动作，请使用已定义的业务或自定义动作');
+    return getActionType(String(row.action_name));
   };
 
   // ---------- 校验（运行时元数据校验） ----------
@@ -301,7 +326,7 @@ export function createOntologyService(db: DbAdapter) {
       if (missing.length > 0) throw new Error(`表 ${t.tableName} 存在未纳入定义的列：${missing.join(', ')}（请在 bootstrap 中补齐）`);
     }
     validateLinks(listObjectTypes(), listLinkTypes());
-    validateActions(listObjectTypes(), listLinkTypes(), listActionTypes());
+    validateActions(listObjectTypes(), listLinkTypes(), listActionTypes().filter(a=>!a.needsReview));
   };
 
   const validateAll = (): void => validateAgainstSchema();
@@ -327,7 +352,7 @@ export function createOntologyService(db: DbAdapter) {
         const refProp = right.properties.find((p) => p.apiName === l.refColumn);
         if (!refProp) throw new Error(`链接 ${l.apiName} 缺少引用属性 ${l.refColumn}`);
       }
-      if (l.cardinality === 'many_to_many') {
+      if (l.cardinality === 'many_to_many' && !l.backingTableName) {
         const backing = byName.get(l.linkTable ?? '');
         if (!backing || !backing.tableName) throw new Error(`链接 ${l.apiName} 的中间表类型 ${l.linkTable} 不存在`);
         const lp = backing.properties.find((p) => p.apiName === l.backingLeftProperty);
@@ -349,25 +374,11 @@ export function createOntologyService(db: DbAdapter) {
         if (!PROP_NAME_RE.test(p.name)) throw new Error(`动作 ${a.apiName} 的参数名 ${p.name} 不合法`);
       }
       if (new Set(paramNames).size !== paramNames.length) throw new Error(`动作 ${a.apiName} 的参数名重复`);
-      for (const op of a.operations) {
-        validateOperation(a.apiName, op, paramNames, byName, linkByName);
+      if (a.operations.length > 50) throw new Error('动作最多 50 个步骤');
+      for (const [index, op] of a.operations.entries()) {
+        validateOperation(a.apiName, op, paramNames, byName, linkByName, index);
       }
     }
-  };
-
-  const refParams = (m: unknown): string[] => {
-    const out: string[] = [];
-    const walk = (v: unknown) => {
-      if (v && typeof v === 'object') {
-        if ('source' in (v as Record<string, unknown>)) {
-          const src = (v as { source?: { parameter?: string } }).source;
-          if (src?.parameter) out.push(src.parameter);
-        }
-        for (const child of Object.values(v as Record<string, unknown>)) walk(child);
-      }
-    };
-    walk(m);
-    return out;
   };
 
   const validateOperation = (
@@ -376,11 +387,35 @@ export function createOntologyService(db: DbAdapter) {
     paramNames: string[],
     byName: Map<string, ObjectTypeDef>,
     linkByName: Map<string, LinkTypeDef>,
+    step: number,
   ): void => {
-    const used = refParams(op);
-    for (const p of used) {
-      if (!paramNames.includes(p)) throw new Error(`动作 ${actionApiName} 的规则引用了未声明的参数 ${p}`);
-    }
+    if (!['create_object', 'modify_object', 'delete_object', 'create_link', 'delete_link', 'invoke_command'].includes(op.kind)) throw new Error('不支持的动作操作');
+    const validateMapping = (mapping: ValueMapping): void => {
+      if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping) || Object.keys(mapping).length !== 1) throw new Error('值映射须且只能声明一种来源');
+      if ('source' in mapping) {
+        if (!mapping.source || Object.keys(mapping.source).some(key => key !== 'parameter') || !paramNames.includes(mapping.source.parameter)) throw new Error('值映射引用了未声明的参数');
+      } else if ('fn' in mapping) {
+        if (!['now', 'uuid'].includes(mapping.fn)) throw new Error('不支持的内建函数');
+      } else if ('result' in mapping) {
+        const ref = mapping.result;
+        if (!ref || Object.keys(ref).some(key => !['step', 'path'].includes(key)) || !Number.isSafeInteger(ref.step) || ref.step < 0 || ref.step >= step || !Array.isArray(ref.path) || !ref.path.length || ref.path.length > 8 || ref.path.some(key => typeof key !== 'string' || !/^[a-zA-Z0-9_]+$/.test(key) || ['__proto__', 'prototype', 'constructor'].includes(key))) throw new Error('步骤结果只能引用之前步骤的有界安全路径');
+      } else if (!('literal' in mapping)) throw new Error('值映射来源无效');
+    };
+    if (op.kind === 'invoke_command') {
+      const command = COMMAND_DEFS.find(d => d.apiName === op.command);
+      if (!command || !COMPOSABLE_COMMANDS.has(op.command) || command.human) throw new Error('ACTION_NOT_COMPOSABLE：该命令不允许进入数据库组合动作');
+      if (!op.params || typeof op.params !== 'object' || Array.isArray(op.params)) throw new Error('命令参数须为映射对象');
+      for (const [name, mapping] of Object.entries(op.params)) {
+        if (!command.parameters.some(p => p.name === name)) throw new Error(`命令未知参数 ${name}`);
+        validateMapping(mapping);
+      }
+      for (const p of command.parameters) if (p.required && !Object.hasOwn(op.params, p.name)) throw new Error(`命令缺少必填参数 ${p.name}`);
+    } else if (op.kind === 'create_object' || op.kind === 'modify_object') {
+      if (!op.propertyMappings || typeof op.propertyMappings !== 'object') throw new Error('属性映射须为对象');
+      Object.values(op.propertyMappings).forEach(validateMapping);
+      if (op.kind === 'modify_object') validateMapping(op.selector.value);
+    } else if (op.kind === 'delete_object') validateMapping(op.selector.value);
+    else { validateMapping(op.leftId); validateMapping(op.rightId); }
     if (op.kind === 'create_object' || op.kind === 'modify_object') {
       const t = byName.get(op.objectType);
       if (!t || !t.tableName) throw new Error(`动作 ${actionApiName} 引用了不存在的对象类型 ${op.objectType}`);
@@ -398,7 +433,7 @@ export function createOntologyService(db: DbAdapter) {
       if (!t.properties.some((p) => p.apiName === op.selector.property)) {
         throw new Error(`动作 ${actionApiName} 的筛选属性 ${op.objectType}.${op.selector.property} 不存在`);
       }
-    } else {
+    } else if (op.kind !== 'invoke_command') {
       const l = linkByName.get(op.linkType);
       if (!l) throw new Error(`动作 ${actionApiName} 引用了不存在的链接类型 ${op.linkType}`);
       if (!l.fkColumn && !l.linkTable) throw new Error(`动作 ${actionApiName} 的链接 ${op.linkType} 是多态链接，请改用 create_object`);
@@ -442,12 +477,19 @@ export function createOntologyService(db: DbAdapter) {
         INSERT INTO ont_object_types (api_name,title,description,table_name,is_virtual,is_system,primary_key,title_property,properties,status,sort_order,created_at,updated_at)
         VALUES (?,?,?,?,0,0,'id',?,?,'active',100,?,?)
       `).run(apiName, title, input.description?.trim() ?? '', tableName, titleProperty, JSON.stringify(props), now, now);
+      if (input.generateActions !== undefined && typeof input.generateActions !== 'boolean') throw new Error('generateActions 须为布尔值');
+      db.prepare('INSERT INTO ont_template_preferences(object_type,enabled) VALUES(?,?)').run(apiName, input.generateActions === false ? 0 : 1);
+      syncTemplates();
     });
     return getObjectType(apiName);
   };
 
   const updateObjectType = (apiName: string, patch: UpdateObjectTypeInput): ObjectTypeDef => {
+    return inTx(db, () => updateObjectTypeInTx(apiName, patch));
+  };
+  const updateObjectTypeInTx = (apiName: string, patch: UpdateObjectTypeInput): ObjectTypeDef => {
     const def = getObjectType(apiName);
+    if (objectPolicy(apiName,def.isSystem,def.isVirtual).writeMode === 'read_only' && patch.addProperties?.length) throw new Error('只读对象不允许追加扩展字段');
     const next = { ...def };
     if (patch.title !== undefined) {
       const t = patch.title.trim();
@@ -492,6 +534,7 @@ export function createOntologyService(db: DbAdapter) {
       apiName,
     );
     validateAgainstSchema();
+    syncTemplates();
     return getObjectType(apiName);
   };
 
@@ -503,7 +546,7 @@ export function createOntologyService(db: DbAdapter) {
     }
     for (const a of listActionTypes()) {
       for (const op of a.operations) {
-        if ('objectType' in op && op.objectType === apiName && 'propertyMappings' in op && Object.keys(op.propertyMappings ?? {}).includes(propName)) {
+        if ('objectType' in op && op.objectType === apiName && (('propertyMappings' in op && Object.keys(op.propertyMappings ?? {}).includes(propName)) || ('selector' in op && op.selector.property === propName))) {
           throw new Error(`属性 ${propName} 被动作 ${a.apiName} 引用，先删动作`);
         }
       }
@@ -520,6 +563,7 @@ export function createOntologyService(db: DbAdapter) {
     );
     if (refActions.length > 0) throw new Error(`仍有动作引用该类型：${refActions.map((a) => a.apiName).join('、')}，请先删除`);
     inTx(db, () => {
+      db.prepare("DELETE FROM ont_action_types WHERE api_name IN (SELECT action_name FROM ont_action_templates WHERE target_kind='object' AND target_name=?)").run(apiName);
       dropObjectTable(db, def.tableName!);
       db.prepare('DELETE FROM ont_object_types WHERE api_name = ?').run(apiName);
     });
@@ -527,7 +571,8 @@ export function createOntologyService(db: DbAdapter) {
 
   // ---------- 链接类型管理 ----------
 
-  const createLinkType = (input: CreateLinkTypeInput): LinkTypeDef => {
+  const createLinkType = (input: CreateLinkTypeInput): LinkTypeDef => inTx(db,()=>createLinkTypeInTx(input));
+  const createLinkTypeInTx = (input: CreateLinkTypeInput): LinkTypeDef => {
     const apiName = assertApiName(input.apiName, '链接 apiName');
     if (db.prepare('SELECT 1 FROM ont_link_types WHERE api_name = ?').get(apiName)) throw new Error(`链接 ${apiName} 已存在`);
     const left = getObjectType(input.leftType);
@@ -563,9 +608,19 @@ export function createOntologyService(db: DbAdapter) {
       if (fkProp.dataType !== leftPk.dataType) throw new Error('外键属性类型须与左侧主键一致');
     }
 
+    if (input.cardinality === 'many_to_many') {
+      const backing=getObjectType(linkTable!);
+      if (backing.isSystem) throw new Error('中间表必须为自定义对象类型');
+    } else {
+      const prop=right.properties.find(p=>p.apiName===fkColumn)!;
+      if(right.isSystem && prop.origin!=='user') throw new Error('系统内置关联字段须通过业务动作维护');
+      if(input.onDelete==='set_null' && !prop.nullable) throw new Error('置空策略要求可空字段');
+    }
+    if(input.onDelete==='cascade')throw new Error('自定义关系不支持级联删除实体');
+    if(listLinkTypes().some(l=> (l.rightType===right.apiName&&l.fkColumn===fkColumn&&!!fkColumn)||(!!linkTable&&l.linkTable===linkTable)))throw new Error('承载字段或中间表已被其他关系使用');
     db.prepare(`
       INSERT INTO ont_link_types (api_name,title,left_type,right_type,cardinality,left_link_name,right_link_name,fk_column,on_delete,discriminator_column,discriminator_value,link_table,backing_left_property,backing_right_property,is_system,sort_order,created_at)
-      VALUES (?,?,?,?,?,?,?,?,'set_null',NULL,NULL,?,?,?,0,100,?)
+      VALUES (?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?,0,100,?)
     `).run(
       apiName,
       String(input.title ?? '').trim() || apiName,
@@ -575,22 +630,28 @@ export function createOntologyService(db: DbAdapter) {
       input.leftLinkName?.trim() || null,
       input.rightLinkName?.trim() || null,
       fkColumn ?? null,
+      input.cardinality==='many_to_many'?'cascade':input.onDelete ?? 'restrict',
       linkTable ?? null,
       backingLeftProperty ?? null,
       backingRightProperty ?? null,
       nowIso(),
     );
     validateAgainstSchema();
+    syncRelationConstraints(db,listObjectTypes(),listLinkTypes(),apiName);
+    syncTemplates();
     const all = listLinkTypes();
     return all.find((l) => l.apiName === apiName)!;
   };
 
-  const deleteLinkType = (apiName: string): void => {
+  const deleteLinkType = (apiName: string): void => inTx(db,()=>deleteLinkTypeInTx(apiName));
+  const deleteLinkTypeInTx = (apiName: string): void => {
     const row = db.prepare('SELECT * FROM ont_link_types WHERE api_name = ?').get(apiName);
     if (!row) throw new Error(`链接 ${apiName} 不存在`);
     if (Number(row.is_system) === 1) throw new Error(`系统链接 ${apiName} 不可删除`);
     const refActions = listActionTypes().filter((a) => a.operations.some((op) => 'linkType' in op && op.linkType === apiName));
     if (refActions.length > 0) throw new Error(`仍有动作引用该链接：${refActions.map((a) => a.apiName).join('、')}，请先删除`);
+    dropRelationConstraints(db,apiName);
+    db.prepare("DELETE FROM ont_action_types WHERE api_name IN (SELECT action_name FROM ont_action_templates WHERE target_kind='link' AND target_name=?)").run(apiName);
     db.prepare('DELETE FROM ont_link_types WHERE api_name = ?').run(apiName);
   };
 
@@ -606,7 +667,9 @@ export function createOntologyService(db: DbAdapter) {
       if (!PROP_NAME_RE.test(name)) throw new Error(`第 ${i + 1} 个参数名不合法`);
       const dataTypes = ['string', 'integer', 'float', 'boolean', 'date', 'json'];
       if (!dataTypes.includes(p.dataType ?? '')) throw new Error(`参数 ${name} 的类型不合法`);
-      return { name, dataType: p.dataType as never, required: p.required ?? false, defaultValue: p.defaultValue, description: p.description };
+      if (p.jsonSchema !== undefined) validateActionSchema(p.jsonSchema);
+      if (p.objectType && getObjectType(p.objectType).isVirtual) throw new Error('对象参数不能引用虚拟类型');
+      return { name, dataType: p.dataType as never, required: p.required ?? false, defaultValue: p.defaultValue, description: p.description, jsonSchema: p.jsonSchema, objectType: p.objectType };
     });
     const operations = input.operations ?? [];
     const now = nowIso();
@@ -624,6 +687,7 @@ export function createOntologyService(db: DbAdapter) {
     };
     // 先整体校验再落库，失败不留半条记录
     validateActions(listObjectTypes(), listLinkTypes(), [def]);
+    assertActionWritable(def);
     db.prepare(`
       INSERT INTO ont_action_types (api_name,title,description,is_builtin,status,parameters,operations,sort_order,created_at,updated_at)
       VALUES (?,?,?,0,'active',?,?,100,?,?)
@@ -650,9 +714,37 @@ export function createOntologyService(db: DbAdapter) {
     return getActionType(apiName);
   };
 
+  const decorateAction = (def:ActionTypeDef): ActionTypeDef => {
+    const template = db.prepare('SELECT * FROM ont_action_templates WHERE action_name=?').get(def.apiName);
+    if (template) {
+      def.template = { targetKind: template.target_kind as ActionTemplateDef['targetKind'], targetName: String(template.target_name), operation: template.operation as ActionTemplateDef['operation'], version: Number(template.template_version), schemaDigest: String(template.schema_digest) };
+      def.targetBindings = def.template.targetKind === 'object' ? [{ objectType: def.template.targetName, ...(def.template.operation === 'create' ? {} : { parameter: 'id' }) }]
+        : def.parameters.filter(p => p.objectType).map(p => ({ objectType: p.objectType!, parameter: p.name }));
+    } else if (!def.isBuiltin) {
+      // 纯业务命令组合也应出现在目标对象的动作列表中。
+      def.targetBindings = def.operations.flatMap(op => op.kind === 'invoke_command'
+        ? COMMAND_DEFS.find(command => command.apiName === op.command)?.targetBindings.map(binding => {
+          const mapping = binding.parameter ? op.params[binding.parameter] : undefined;
+          return { objectType: binding.objectType, ...((mapping && 'source' in mapping) ? { parameter: mapping.source.parameter } : {}) };
+        }) ?? [] : []);
+    }
+    if(!def.isBuiltin)try {validateActions(listObjectTypes(),listLinkTypes(),[def]);assertActionWritable(def);}catch{def.needsReview=true;}
+    return def;
+  };
+
+  const assertActionWritable = (def: ActionTypeDef): void => {
+    for (const op of def.operations) {
+      if ('objectType' in op) {
+        const t=getObjectType(op.objectType);
+        if(op.kind==='modify_object')for(const l of listLinkTypes()){const cols=l.rightType===t.apiName&&l.fkColumn?[l.fkColumn]:l.linkTable===t.apiName?[l.backingLeftProperty!,l.backingRightProperty!]:[];if(cols.some(col=>Object.hasOwn(op.propertyMappings,col)))throw new OntologyError('LINK_REQUIRES_OPERATION','关联字段请使用关系操作');}
+        assertObjectWrite(t,op.kind === 'create_object' ? 'create' : op.kind === 'delete_object' ? 'delete' : 'update','propertyMappings' in op ? op.propertyMappings : {});
+      }
+    }
+  };
+
   const deleteActionType = (apiName: string): void => {
     const def = getActionType(apiName);
-    if (def.isBuiltin) throw new Error(`内置动作 ${apiName} 不可删除，可停用`);
+    if (def.isBuiltin || def.template) throw new Error(`内置或基础动作 ${apiName} 不可删除，可停用；删除其类型时自动清理基础动作`);
     db.prepare('DELETE FROM ont_action_types WHERE api_name = ?').run(apiName);
   };
 
@@ -665,6 +757,8 @@ export function createOntologyService(db: DbAdapter) {
     listLinkTypes,
     listActionTypes,
     getActionType,
+    getTemplateAction,
+    assertActionWritable,
     validateAgainstSchema,
     createObjectType,
     updateObjectType,

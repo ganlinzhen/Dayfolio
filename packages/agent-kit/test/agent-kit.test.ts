@@ -1,0 +1,108 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { buildAgentKit, digest, installAgentKit, verifyAgentKit, verifySourceFreshness } from '../scripts/package.mjs';
+
+let work: string;
+let root: string;
+const write = (path: string, content: string) => { mkdirSync(resolve(path, '..'), { recursive: true }); writeFileSync(path, content); };
+const make = () => buildAgentKit({ root, outDir: join(work, 'candidate') });
+beforeEach(() => {
+  work = mkdtempSync(join(tmpdir(), 'dayfolio-kit-test-')); root = join(work, 'repo');
+  cpSync(new URL('../hosts', import.meta.url), join(root, 'packages/agent-kit/hosts'), { recursive: true });
+  for (const script of ['package.mjs', 'verify.mjs']) {
+    const to = join(root, 'packages/agent-kit/scripts', script); mkdirSync(resolve(to, '..'), { recursive: true }); cpSync(new URL('../scripts/' + script, import.meta.url), to);
+  }
+  write(join(root, 'package.json'), JSON.stringify({ version: '0.20.0' }));
+  write(join(root, 'packages/agent-kit/manifest.json'), JSON.stringify({ schemaVersion: 1, name: 'dayfolio', serverId: 'tododesk', skills: [{ id: 'tododesk', requires: { tools: ['get_today'] } }] }));
+  write(join(root, 'packages/agent-kit/skills/tododesk/SKILL.md'), '---\nname: tododesk\ndescription: 读取今日任务\n---\n使用 get_today。');
+  write(join(root, 'packages/agent-kit/runtime/call.mjs'), '// 隔离构建夹具\n');
+  write(join(root, 'apps/mcp/dist/mcp-server.cjs'), '// 隔离构建夹具\n');
+  write(join(root, 'apps/mcp/dist/agent-catalog.json'), JSON.stringify({ version: '0.20.0', serverId: 'tododesk', tools: [{ name: 'get_today' }] }));
+  write(join(root, 'apps/mcp/dist/build-inputs.json'), JSON.stringify({ 'package.json': digest(join(root, 'package.json')) }));
+});
+afterEach(() => rmSync(work, { recursive: true, force: true }));
+
+describe('统一能力包的构建与更新', () => {
+  it('在任意路径安装完整包，保留既有配置，支持更新与恢复上一版', () => {
+    const source = make(), target = join(work, '异地安装/Dayfolio-Agent');
+    const config = join(work, 'client.json'); write(config, '{"mcpServers":{"other":{}}}');
+    const before = readFileSync(config, 'utf8');
+    expect(installAgentKit(source, target, { dryRun: true }).version).toBe('0.20.0');
+    expect(existsSync(target)).toBe(false);
+    installAgentKit(source, target); expect(verifyAgentKit(target).version).toBe('0.20.0');
+    write(join(root, 'package.json'), JSON.stringify({ version: '0.21.0' }));
+    write(join(root, 'apps/mcp/dist/agent-catalog.json'), JSON.stringify({ version: '0.21.0', serverId: 'tododesk', tools: [{ name: 'get_today' }] }));
+    make(); installAgentKit(source, target);
+    expect(verifyAgentKit(target).version).toBe('0.21.0');
+    installAgentKit(source, target, { rollback: true });
+    expect(verifyAgentKit(target).version).toBe('0.20.0');
+    expect(readFileSync(config, 'utf8')).toBe(before);
+  });
+
+  it('拒绝覆盖人工修改过的能力包，并保留修改', () => {
+    const source = make(), target = join(work, 'installed'); installAgentKit(source, target);
+    const skill = join(target, 'skills/tododesk/SKILL.md'); writeFileSync(skill, '我的改写');
+    expect(() => installAgentKit(source, target)).toThrow('摘要');
+    expect(readFileSync(skill, 'utf8')).toBe('我的改写');
+  });
+
+  it('拒绝接管不属于 Dayfolio 的目录', () => {
+    const source = make(), target = join(work, 'foreign'); mkdirSync(target); write(join(target, 'note.txt'), '用户文件');
+    expect(() => installAgentKit(source, target)).toThrow();
+    expect(readFileSync(join(target, 'note.txt'), 'utf8')).toBe('用户文件');
+  });
+
+  it('拒绝缺失文件、未知文件和破损的更新候选，已安装版本仍然可用', () => {
+    const source = make(), target = join(work, 'installed'); installAgentKit(source, target);
+    write(join(source, 'unknown.txt'), '混入文件'); expect(() => verifyAgentKit(source)).toThrow('文件');
+    expect(() => installAgentKit(source, target)).toThrow();
+    expect(verifyAgentKit(target).version).toBe('0.20.0');
+    rmSync(join(source, 'unknown.txt')); rmSync(join(source, 'mcp/mcp-server.cjs'));
+    expect(() => verifyAgentKit(source)).toThrow('文件');
+  });
+
+  it('构建失败时保留上次产物，校验技能工具依赖及相对引用', () => {
+    const source = make();
+    write(join(root, 'apps/mcp/dist/agent-catalog.json'), JSON.stringify({ version: '0.20.0', serverId: 'tododesk', tools: [] }));
+    expect(() => make()).toThrow('依赖'); expect(verifyAgentKit(source).version).toBe('0.20.0');
+    write(join(root, 'apps/mcp/dist/agent-catalog.json'), JSON.stringify({ version: '0.20.0', serverId: 'tododesk', tools: [{ name: 'get_today' }] }));
+    write(join(root, 'packages/agent-kit/skills/tododesk/SKILL.md'), '---\nname: tododesk\ndescription: 读取今日任务\n---\n[参考](references/missing.md)');
+    expect(() => make()).toThrow('引用'); expect(verifyAgentKit(source).version).toBe('0.20.0');
+  });
+
+  it('拒绝源技能和安装目录中的符号链接', () => {
+    const source = make();
+    symlinkSync(source, join(work, 'alias'));
+    expect(() => installAgentKit(source, join(work, 'alias'))).toThrow('符号链接');
+    symlinkSync(join(work, '外部文件'), join(root, 'packages/agent-kit/skills/tododesk/external'));
+    expect(() => make()).toThrow('符号链接');
+  });
+
+  it('并行更新锁阻止第二个安装者，既有包保持可读', () => {
+    const source = make(), target = join(work, 'installed'); installAgentKit(source, target);
+    mkdirSync(target + '.update-lock');
+    expect(() => installAgentKit(source, target)).toThrow('更新锁');
+    expect(verifyAgentKit(target).version).toBe('0.20.0');
+  });
+
+  it('非法技能目录在复制之前被拒绝，不写出构建目录', () => {
+    write(join(root, 'packages/agent-kit/manifest.json'), JSON.stringify({ schemaVersion: 1, name: 'dayfolio', serverId: 'tododesk', skills: [{ id: '../../../escape', requires: { tools: [] } }] }));
+    expect(() => make()).toThrow('非法技能');
+    expect(existsSync(join(work, 'escape'))).toBe(false);
+  });
+
+  it('源码或宿主模板更新后，旧产物不能通过新鲜度验收', () => {
+    const source = make();
+    expect(() => verifySourceFreshness(source, root)).not.toThrow();
+    const template = join(root, 'packages/agent-kit/hosts/codex/mcp.json');
+    const before = readFileSync(template, 'utf8');
+    writeFileSync(template, before.replace('"node"', '"custom-node"'));
+    expect(() => verifySourceFreshness(source, root)).toThrow('宿主模板');
+    writeFileSync(template, before);
+    write(join(root, 'package.json'), JSON.stringify({ version: '0.20.0', description: '构建输入已变化' }));
+    expect(() => verifySourceFreshness(source, root)).toThrow('构建后变更');
+    expect(verifyAgentKit(source).version).toBe('0.20.0');
+  });
+});

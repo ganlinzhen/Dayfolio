@@ -138,18 +138,16 @@ export default function MediaPanel() {
   };
 
   return (
-    <div className="panel">
-      <header className="panel-head">
-        <h1>自媒体</h1>
-        <div className="head-meta mono">选题 → 内容 → 审核 → 排期 → 手动发布 → 回填指标</div>
+    <div className="panel" role="region" aria-label="自媒体">
+      <header className="panel-head" aria-label="自媒体视图">
+        <div className="seg media-subnav" role="group" aria-label="自媒体视图">
+          {VIEWS.map((v) => (
+            <button key={v.key} className={`seg-item ${view === v.key ? 'active' : ''}`} onClick={() => setView(v.key)} title={v.hint}>
+              {v.label}
+            </button>
+          ))}
+        </div>
       </header>
-      <div className="seg media-subnav">
-        {VIEWS.map((v) => (
-          <button key={v.key} className={`seg-item ${view === v.key ? 'active' : ''}`} onClick={() => setView(v.key)} title={v.hint}>
-            {v.label}
-          </button>
-        ))}
-      </div>
       {view === 'overview' && <OverviewView openContent={openContent} />}
       {view === 'topics' && <TopicsView go={setView} />}
       {view === 'contents' && <ContentsView initialOpenId={jumpContentId} />}
@@ -227,7 +225,7 @@ function OverviewView({ openContent }: { openContent: (id: number) => void }) {
       </section>
 
       <div className="notice">
-        全程人工闭环：TodoDesk 不登录任何平台、不自动发布。排期只是本地计划；你在各平台手动发布后回填状态与链接，指标手动录入「复盘」。
+        全程人工闭环：Dayfolio 不登录任何平台、不自动发布。排期只是本地计划；你在各平台手动发布后回填状态与链接，指标手动录入「复盘」。
       </div>
     </>
   );
@@ -612,7 +610,7 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
     <>
       <button className="backlink" onClick={back}>← 返回内容列表</button>
       <header className="panel-head">
-        <h1 className="media-h1">{c.title}</h1>
+        <h1>{c.title}</h1>
         <div className="head-meta mono">
           <StatusBadge s={c.status} />
           {d.topic && <span className="tag">选题：{d.topic.title}</span>}

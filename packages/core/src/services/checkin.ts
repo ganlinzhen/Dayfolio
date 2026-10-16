@@ -2,7 +2,7 @@
 import type { DbAdapter } from '../db';
 import { mapCheckin } from '../db';
 import type { Checkin, CheckinRefType } from '../types';
-import { addDays, nowIso, todayStr } from '../utils/date';
+import { addDays, nowIso, todayStr, ensureValidDateStr } from '../utils/date';
 
 export function createCheckinService(db: DbAdapter) {
   /** 打卡（幂等）：同引用同一天只记一条，重复打卡会刷新备注 */
@@ -14,6 +14,12 @@ export function createCheckinService(db: DbAdapter) {
   }): Checkin => {
     const refId = input.ref_id ?? 0;
     const date = input.date ?? todayStr();
+    ensureValidDateStr(date);
+    if(!['todo','plan_item','day'].includes(input.ref_type))throw new Error('打卡引用类型无效');
+    if(input.ref_type !== 'day') {
+      const table=input.ref_type==='todo'?'todos':'plan_items';
+      if(!Number.isSafeInteger(refId) || !db.prepare(`SELECT 1 FROM ${table} WHERE id=?`).get(refId))throw new Error('REFERENCE_NOT_FOUND：打卡目标不存在');
+    }
     db.prepare(
       `INSERT INTO checkins (ref_type, ref_id, date, note, created_at)
        VALUES (?, ?, ?, ?, ?)
@@ -50,7 +56,7 @@ export function createCheckinService(db: DbAdapter) {
     }
     params.push(opts.limit && opts.limit > 0 ? opts.limit : 200);
     return db
-      .prepare(`SELECT * FROM checkins WHERE ${where.join(' AND ')} ORDER BY date DESC, id DESC LIMIT ?`)
+      .prepare(`SELECT * FROM checkins WHERE ${where.join(' AND ')} ORDER BY created_at DESC, id DESC LIMIT ?`)
       .all(...params)
       .map(mapCheckin);
   };
@@ -97,7 +103,7 @@ export function createCheckinService(db: DbAdapter) {
          LEFT JOIN plan_items pi ON c.ref_type = 'plan_item' AND pi.id = c.ref_id
          LEFT JOIN study_plans sp ON sp.id = pi.plan_id
          WHERE ${where.join(' AND ')}
-         ORDER BY c.date DESC, c.id DESC LIMIT ?`,
+         ORDER BY c.created_at DESC, c.id DESC LIMIT ?`,
       )
       .all(...params)
       .map((r) => ({ ...mapCheckin(r), description: String(r.description) }));

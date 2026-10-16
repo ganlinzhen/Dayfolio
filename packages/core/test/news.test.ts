@@ -1,11 +1,14 @@
 // 新闻服务（agent-only）单测：任务生命周期 / 认领租约 / 提交硬校验 / 去重 / 跨批次预算 /
 // 24h 窗口与历史 / 收藏保护 / 重启边界。
 import { DatabaseSync } from 'node:sqlite';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openNodeSqliteDb } from '../src/adapters/node-sqlite';
-import { beijingDateOf, createCore, newsDedupKey, todayStr } from '../src/index';
+import { beijingDateOf, createCore, newsDedupKey, newsRootForDb, NEWS_HTML_MAX_CHARS, todayStr } from '../src/index';
 import type { NewsSubmissionItem } from '../src/types';
 import { mkCore } from './helpers';
+import { MIGRATIONS } from '../src/migrations';
 
 const H = 3600_000;
 const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
@@ -647,16 +650,147 @@ describe('v10 → v11 迁移：news_deleted_fingerprints + accepted_count 回填
       const core = createCore(db, { dbPath }); // 打开即迁移
       try {
         const ver = db.prepare('PRAGMA user_version').get() as { user_version: number };
-        expect(ver.user_version).toBe(11);
+        expect(ver.user_version).toBe(MIGRATIONS.length);
         expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='news_deleted_fingerprints'").get()).toBeTruthy();
         expect(core.news.getTask(1).accepted_count).toBe(2); // 按存量回填
         expect(core.news.getTask(1).inserted_count).toBe(2);
         expect(core.news.list({ limit: 10 }).filter((n) => n.task_id === 1).length).toBe(2); // 存量零丢失
+        // v12：内容形态列补齐，历史行默认 url / 无快照，行为不变
+        expect(core.news.list({ limit: 10 }).every((n) => n.content_kind === 'url' && n.html_rel === null)).toBe(true);
         expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
         expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
       } finally {
         db.close();
       }
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe('本地 HTML 快照（content_kind=html）：提交 / 消毒 / 读取 / 删除', () => {
+  const snapHtml = `
+    <article>
+      <h3>某公司发布新一代开源模型</h3>
+      <p>作者 @someone · 2026-10-13</p>
+      <p>正文段落：性能提升 40%。</p>
+      <img src="https://pbs.twimg.com/media/abc.jpg" alt="配图">
+      <a href="https://x.com/someone/status/123">原帖链接</a>
+      <script>alert('x')</script>
+      <img src="javascript:alert(1)" onerror="steal()">
+      <a href="data:text/html,boom">危险链接</a>
+    </article>`;
+
+  it('提交带 html：入库 content_kind=html，文件落在 dirname(db)/news，脚本与危险协议被剥离、https 图床保留', () => {
+    const { core, dbPath, cleanup } = mkCore();
+    try {
+      const task = core.news.createTask({ title: 'X 快照任务' });
+      const claim = core.news.claimTask(task.id, 'zcode');
+      const res = core.news.submitItems(task.id, claim.claim_token, [
+        item({ title: 'X 推文快照', source_url: 'https://x.com/someone/status/123', html: snapHtml }),
+        item({ title: '普通网页新闻', source_url: 'https://example.com/plain' }),
+      ]);
+      expect(res.items[0].content_kind).toBe('html');
+      expect(res.items[0].html_rel).toMatch(/^[0-9a-f-]{36}\.html$/);
+      expect(res.items[1].content_kind).toBe('url');
+      expect(res.items[1].html_rel).toBeNull();
+
+      const root = newsRootForDb(dbPath);
+      const abs = join(root, res.items[0].html_rel!);
+      expect(existsSync(abs)).toBe(true);
+      const saved = readFileSync(abs, 'utf8');
+      // 片段被包成完整文档并注入 charset；标题进入 <title>
+      expect(saved).toContain('<!doctype html>');
+      expect(saved).toMatch(/<meta charset="utf-8">/);
+      expect(saved).toContain('X 推文快照');
+      // 消毒：脚本/事件属性/危险协议剥离；https 图床与原帖链接保留
+      expect(saved).not.toContain('<script');
+      expect(saved).not.toContain('onerror');
+      expect(saved).not.toContain('javascript:');
+      expect(saved).not.toContain('data:text/html');
+      expect(saved).toContain('https://pbs.twimg.com/media/abc.jpg');
+      expect(saved).toContain('https://x.com/someone/status/123');
+      // 完整文档（自带 <html>）只补 charset，不重写结构
+      const fullDoc = '<html><head><title>x</title></head><body><p>整页文档</p></body></html>';
+      const res2 = core.news.submitItems(task.id, claim.claim_token, [
+        item({ title: '整页快照', source_url: 'https://x.com/someone/status/456', html: fullDoc }),
+      ]);
+      const saved2 = readFileSync(join(root, res2.items[0].html_rel!), 'utf8');
+      expect(saved2).toContain('<html><head><meta charset="utf-8">');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('非法 html（空串/超长）整批拒绝且不留文件；无 html 字段行为不变', () => {
+    const { core, dbPath, cleanup } = mkCore();
+    try {
+      const task = core.news.createTask({ title: '校验任务' });
+      const claim = core.news.claimTask(task.id, 'zcode');
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [
+        item({ title: '空快照', source_url: 'https://x.com/a/1', html: '   ' }),
+      ])).toThrow(/html 快照不能为空/);
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [
+        item({ title: '超快照', source_url: 'https://x.com/a/2', html: 'x'.repeat(NEWS_HTML_MAX_CHARS + 1) }),
+      ])).toThrow(/html 快照过长/);
+      // 整批原子：合法条目与非法条目同批 → 全部拒绝
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [
+        item({ title: '合法条目', source_url: 'https://example.com/ok' }),
+        item({ title: '非法条目', source_url: 'https://x.com/a/3', html: '' }),
+      ])).toThrow(/不能为空/);
+      expect(core.news.list({ limit: 10 })).toEqual([]);
+      expect(existsSync(newsRootForDb(dbPath))).toBe(false); // 没有任何文件被写出
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('readHtml：快照回读原文；url 条目返回 null；文件缺失 missing=true', () => {
+    const { core, dbPath, cleanup } = mkCore();
+    try {
+      const task = core.news.createTask({ title: '回读任务' });
+      const claim = core.news.claimTask(task.id, 'zcode');
+      const res = core.news.submitItems(task.id, claim.claim_token, [
+        item({ title: 'X 快照', source_url: 'https://x.com/b/1', html: '<p>回读内容</p>' }),
+        item({ title: '普通新闻', source_url: 'https://example.com/nosnap' }),
+      ]);
+      const back = core.news.readHtml(res.items[0].id);
+      expect(back.content_kind).toBe('html');
+      expect(back.missing).toBe(false);
+      expect(back.html).toContain('回读内容');
+
+      const plain = core.news.readHtml(res.items[1].id);
+      expect(plain).toMatchObject({ content_kind: 'url', html: null, missing: false });
+
+      // 文件被外部移走 → missing=true（不抛错，调用方降级）
+      unlinkSync(join(newsRootForDb(dbPath), res.items[0].html_rel!));
+      const gone = core.news.readHtml(res.items[0].id);
+      expect(gone.missing).toBe(true);
+      expect(gone.html).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('删除快照新闻：文件随行清理（html_removed=1），重复删除幂等', () => {
+    const { core, dbPath, cleanup } = mkCore();
+    try {
+      const task = core.news.createTask({ title: '删除任务' });
+      const claim = core.news.claimTask(task.id, 'zcode');
+      const res = core.news.submitItems(task.id, claim.claim_token, [
+        item({ title: '待删快照', source_url: 'https://x.com/c/1', html: '<p>将被删除</p>' }),
+      ]);
+      const abs = join(newsRootForDb(dbPath), res.items[0].html_rel!);
+      expect(existsSync(abs)).toBe(true);
+      const del = core.news.deleteItem(res.items[0].id);
+      expect(del.deleted).toBe(true);
+      expect(del.html_removed).toBe(1);
+      expect(existsSync(abs)).toBe(false);
+      expect(core.news.deleteItem(res.items[0].id)).toMatchObject({ deleted: false, html_removed: 0 });
+      // 同链接防回流（含快照条目）：租约仍持有，用原令牌再提交即触发指纹拒绝
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [
+        item({ title: '同链接再来', source_url: 'https://x.com/c/1', html: '<p>回流</p>' }),
+      ])).toThrow(/已被用户删除/);
     } finally {
       cleanup();
     }

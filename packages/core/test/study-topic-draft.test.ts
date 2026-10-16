@@ -380,7 +380,7 @@ describe('合成 v8 夹具：一般兼容性回归（结构性验证，非真实
 
     // 重新打开 = 正常启动路径：v9 及后续迁移自动执行
     const core: TodoDeskCore = createCore(openNodeSqliteDb(dbPath), { dbPath });
-    expect(Number((core.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version)).toBe(11);
+    expect(Number((core.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version)).toBe(MIGRATIONS.length);
     // v9 断言：三列已可空，course_id 已加
     const cols9 = core.db.prepare('PRAGMA table_info(study_plan_drafts)').all() as Array<{ name: string; notnull: number }>;
     expect(cols9.find((c) => c.name === 'start_date')?.notnull).toBe(0);

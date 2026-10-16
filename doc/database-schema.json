@@ -1,0 +1,7801 @@
+{
+  "核对日期": "2026-10-14",
+  "源码版本": "0.13.0",
+  "迁移版本": 13,
+  "统计": {
+    "本体元数据表": 3,
+    "业务与辅助表": 28,
+    "历史兼容表": 4,
+    "源码表合计": 35,
+    "对象类型": 28,
+    "关系类型": 29,
+    "内置动作": 72,
+    "SQL外键": 17
+  },
+  "源码表结构": [
+    {
+      "name": "card_exports",
+      "sql": "CREATE TABLE card_exports (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        card_key TEXT NOT NULL UNIQUE,\n        file_path TEXT NOT NULL,\n        content_hash TEXT NOT NULL,\n        exported_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "card_key",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "file_path",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "content_hash",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "exported_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_card_exports_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "checkins",
+      "sql": "CREATE TABLE checkins (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  ref_type TEXT NOT NULL,\n  ref_id INTEGER NOT NULL DEFAULT 0,\n  date TEXT NOT NULL,\n  note TEXT NOT NULL DEFAULT '',\n  created_at TEXT NOT NULL,\n  UNIQUE(ref_type, ref_id, date)\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "ref_type",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "ref_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "note",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_checkins_date",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "sqlite_autoindex_checkins_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "course_lessons",
+      "sql": "CREATE TABLE course_lessons (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,\n        day INTEGER NOT NULL,\n        title TEXT NOT NULL,\n        html_rel TEXT NOT NULL,\n        content_hash TEXT NOT NULL,\n        is_sample INTEGER NOT NULL DEFAULT 0,\n        status TEXT NOT NULL DEFAULT 'generated',\n        estimated_minutes INTEGER NOT NULL DEFAULT 45,\n        concepts TEXT NOT NULL DEFAULT '[]',\n        code_refs TEXT NOT NULL DEFAULT '[]',\n        quiz TEXT NOT NULL DEFAULT '[]',\n        quiz_answers TEXT NOT NULL DEFAULT '[]',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL,\n        UNIQUE(course_id, day)\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "course_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "day",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "html_rel",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "content_hash",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "is_sample",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'generated'",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "estimated_minutes",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "45",
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "concepts",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "code_refs",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "quiz",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "quiz_answers",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 14,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "courses",
+          "from": "course_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_course_lessons_course",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "sqlite_autoindex_course_lessons_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "course_overviews",
+      "sql": "CREATE TABLE course_overviews (\n        course_id INTEGER PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE,\n        html_rel TEXT NOT NULL,\n        content_hash TEXT NOT NULL,\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "course_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "html_rel",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "content_hash",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "courses",
+          "from": "course_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "course_requests",
+      "sql": "CREATE TABLE course_requests (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,\n        kind TEXT NOT NULL,\n        status TEXT NOT NULL DEFAULT 'pending',\n        sample_content_hash TEXT NOT NULL,\n        requested_by TEXT NOT NULL DEFAULT 'app',\n        claimed_by TEXT,\n        error TEXT,\n        created_at TEXT NOT NULL,\n        claimed_at TEXT,\n        completed_at TEXT\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "course_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "kind",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'pending'",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "sample_content_hash",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "requested_by",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'app'",
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "claimed_by",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "error",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "claimed_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "completed_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "courses",
+          "from": "course_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_course_requests_status",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "courses",
+      "sql": "CREATE TABLE courses (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        slug TEXT NOT NULL UNIQUE,\n        title TEXT NOT NULL,\n        goal TEXT NOT NULL DEFAULT '',\n        status TEXT NOT NULL DEFAULT 'imported',\n        plan_id INTEGER,\n        sample_content_hash TEXT,\n        sample_confirmed_at TEXT,\n        version TEXT NOT NULL DEFAULT '1.0.0',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "slug",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "goal",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'imported'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "plan_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "sample_content_hash",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "sample_confirmed_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "version",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'1.0.0'",
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_courses_plan",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "sqlite_autoindex_courses_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "media_calendar",
+      "sql": "CREATE TABLE media_calendar (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        content_version_id INTEGER NOT NULL REFERENCES media_content_versions(id) ON DELETE CASCADE,\n        planned_date TEXT NOT NULL,\n        status TEXT NOT NULL DEFAULT 'planned',\n        published_at TEXT,\n        publish_url TEXT,\n        note TEXT NOT NULL DEFAULT '',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "content_version_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "planned_date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'planned'",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "published_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "publish_url",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "note",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "media_content_versions",
+          "from": "content_version_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_media_calendar_status",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_media_calendar_date",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "media_content_materials",
+      "sql": "CREATE TABLE media_content_materials (\n        content_id INTEGER NOT NULL REFERENCES media_contents(id) ON DELETE CASCADE,\n        material_id INTEGER NOT NULL REFERENCES media_materials(id) ON DELETE CASCADE,\n        PRIMARY KEY (content_id, material_id)\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "content_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "material_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 2
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "media_materials",
+          "from": "material_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        },
+        {
+          "id": 1,
+          "seq": 0,
+          "table": "media_contents",
+          "from": "content_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_media_content_materials_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "media_content_versions",
+      "sql": "CREATE TABLE media_content_versions (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        content_id INTEGER NOT NULL REFERENCES media_contents(id) ON DELETE CASCADE,\n        platform TEXT NOT NULL,\n        body TEXT NOT NULL DEFAULT '',\n        status TEXT NOT NULL DEFAULT 'draft',\n        review_note TEXT NOT NULL DEFAULT '',\n        reviewed_at TEXT,\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL,\n        UNIQUE(content_id, platform)\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "content_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "platform",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "body",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'draft'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "review_note",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "reviewed_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "media_contents",
+          "from": "content_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_media_versions_status",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_media_versions_content",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 2,
+          "name": "sqlite_autoindex_media_content_versions_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "media_contents",
+      "sql": "CREATE TABLE media_contents (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        topic_id INTEGER REFERENCES media_topics(id) ON DELETE SET NULL,\n        title TEXT NOT NULL,\n        master_content TEXT NOT NULL DEFAULT '',\n        status TEXT NOT NULL DEFAULT 'drafting',\n        retro_note TEXT NOT NULL DEFAULT '',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "topic_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "master_content",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'drafting'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "retro_note",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "media_topics",
+          "from": "topic_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "SET NULL",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_media_contents_topic",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "media_materials",
+      "sql": "CREATE TABLE media_materials (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        title TEXT NOT NULL,\n        kind TEXT NOT NULL DEFAULT 'text',\n        content TEXT NOT NULL DEFAULT '',\n        source TEXT NOT NULL DEFAULT 'manual',\n        source_news_id INTEGER,\n        source_note TEXT,\n        source_desc TEXT NOT NULL DEFAULT '',\n        tags TEXT NOT NULL DEFAULT '[]',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "kind",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'text'",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "content",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "source",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'manual'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "source_news_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "source_note",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "source_desc",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "tags",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": []
+    },
+    {
+      "name": "media_metrics",
+      "sql": "CREATE TABLE media_metrics (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        calendar_id INTEGER NOT NULL REFERENCES media_calendar(id) ON DELETE CASCADE,\n        date TEXT NOT NULL,\n        views INTEGER,\n        likes INTEGER,\n        comments INTEGER,\n        shares INTEGER,\n        favorites INTEGER,\n        custom TEXT NOT NULL DEFAULT '{}',\n        note TEXT NOT NULL DEFAULT '',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL,\n        UNIQUE(calendar_id, date)\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "calendar_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "views",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "likes",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "comments",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "shares",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "favorites",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "custom",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'{}'",
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "note",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "media_calendar",
+          "from": "calendar_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_media_metrics_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "media_topics",
+      "sql": "CREATE TABLE media_topics (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        title TEXT NOT NULL,\n        angle TEXT NOT NULL DEFAULT '',\n        status TEXT NOT NULL DEFAULT 'idea',\n        source TEXT NOT NULL DEFAULT 'manual',\n        source_news_id INTEGER,\n        source_note TEXT,\n        source_desc TEXT NOT NULL DEFAULT '',\n        tags TEXT NOT NULL DEFAULT '[]',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "angle",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'idea'",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "source",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'manual'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "source_news_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "source_note",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "source_desc",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "tags",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_media_topics_status",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "news",
+      "sql": "CREATE TABLE news (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  source TEXT NOT NULL,\n  title TEXT NOT NULL,\n  url TEXT NOT NULL,\n  summary TEXT NOT NULL DEFAULT '',\n  published_date TEXT NOT NULL,\n  published_at TEXT,\n  fetched_at TEXT NOT NULL,\n  dedup_key TEXT NOT NULL,\n  is_read INTEGER NOT NULL DEFAULT 0,\n  is_starred INTEGER NOT NULL DEFAULT 0,\n  task_id INTEGER,\n  source_name TEXT,\n  content_kind TEXT NOT NULL DEFAULT 'url',\n  html_rel TEXT,\n  UNIQUE(dedup_key)\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "source",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "url",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "summary",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "published_date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "published_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "fetched_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "dedup_key",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "is_read",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "is_starred",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "task_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "source_name",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "content_kind",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'url'",
+          "pk": 0
+        },
+        {
+          "cid": 14,
+          "name": "html_rel",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_news_task",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_news_read",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 2,
+          "name": "idx_news_date",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 3,
+          "name": "sqlite_autoindex_news_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "news_deleted_fingerprints",
+      "sql": "CREATE TABLE news_deleted_fingerprints (\n  fingerprint TEXT PRIMARY KEY,\n  deleted_at TEXT NOT NULL\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "fingerprint",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "deleted_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_news_deleted_fingerprints_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "news_sources",
+      "sql": "CREATE TABLE news_sources (\n  id TEXT PRIMARY KEY,\n  name TEXT NOT NULL,\n  enabled INTEGER NOT NULL DEFAULT 1,\n  url TEXT,\n  last_checked_at TEXT,\n  last_error TEXT\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "name",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "enabled",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "1",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "url",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "last_checked_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "last_error",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_news_sources_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "news_sync_runs",
+      "sql": "CREATE TABLE news_sync_runs (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  scope TEXT NOT NULL,\n  status TEXT NOT NULL DEFAULT 'queued',\n  requested_by TEXT NOT NULL DEFAULT 'app',\n  results TEXT NOT NULL DEFAULT '[]',\n  fetched INTEGER NOT NULL DEFAULT 0,\n  added INTEGER NOT NULL DEFAULT 0,\n  failed_topic_ids TEXT NOT NULL DEFAULT '[]',\n  error TEXT,\n  lease_owner TEXT,\n  lease_expires_at TEXT,\n  created_at TEXT NOT NULL,\n  started_at TEXT,\n  finished_at TEXT\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "scope",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'queued'",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "requested_by",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'app'",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "results",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "fetched",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "added",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "failed_topic_ids",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "error",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "lease_owner",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "lease_expires_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "started_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "finished_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_news_sync_runs_status",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "news_tasks",
+      "sql": "CREATE TABLE news_tasks (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  title TEXT NOT NULL,\n  instructions TEXT NOT NULL DEFAULT '',\n  max_items INTEGER NOT NULL DEFAULT 10,\n  window_hours INTEGER NOT NULL DEFAULT 24,\n  status TEXT NOT NULL DEFAULT 'pending',\n  created_by TEXT NOT NULL DEFAULT 'mcp',\n  claim_token TEXT,\n  claimed_by TEXT,\n  claim_expires_at TEXT,\n  attempts INTEGER NOT NULL DEFAULT 0,\n  accepted_count INTEGER NOT NULL DEFAULT 0,\n  completed_at TEXT,\n  completed_note TEXT,\n  last_error TEXT,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "instructions",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "max_items",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "10",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "window_hours",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "24",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'pending'",
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "created_by",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'mcp'",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "claim_token",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "claimed_by",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "claim_expires_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "attempts",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "accepted_count",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "completed_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "completed_note",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 14,
+          "name": "last_error",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 15,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 16,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_news_tasks_status",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "news_topic_links",
+      "sql": "CREATE TABLE news_topic_links (\n  news_id INTEGER NOT NULL REFERENCES news(id) ON DELETE CASCADE,\n  topic_id INTEGER NOT NULL REFERENCES news_topics(id) ON DELETE CASCADE,\n  PRIMARY KEY (news_id, topic_id)\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "news_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "topic_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 2
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "news_topics",
+          "from": "topic_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        },
+        {
+          "id": 1,
+          "seq": 0,
+          "table": "news",
+          "from": "news_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_news_topic_links_topic",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "sqlite_autoindex_news_topic_links_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "news_topics",
+      "sql": "CREATE TABLE news_topics (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  source_id TEXT NOT NULL REFERENCES news_sources(id),\n  name TEXT NOT NULL,\n  query TEXT NOT NULL,\n  enabled INTEGER NOT NULL DEFAULT 1,\n  last_checked_at TEXT,\n  last_success_at TEXT,\n  last_error TEXT,\n  last_added INTEGER NOT NULL DEFAULT 0,\n  UNIQUE(source_id, name)\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "source_id",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "name",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "query",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "enabled",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "1",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "last_checked_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "last_success_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "last_error",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "last_added",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "news_sources",
+          "from": "source_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_news_topics_source",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "sqlite_autoindex_news_topics_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "ont_action_types",
+      "sql": "CREATE TABLE ont_action_types (\n  api_name TEXT PRIMARY KEY,\n  title TEXT NOT NULL,\n  description TEXT NOT NULL DEFAULT '',\n  is_builtin INTEGER NOT NULL DEFAULT 0,\n  status TEXT NOT NULL DEFAULT 'active',\n  parameters TEXT NOT NULL,\n  operations TEXT NOT NULL,\n  sort_order INTEGER NOT NULL DEFAULT 0,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "api_name",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "description",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "is_builtin",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'active'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "parameters",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "operations",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "sort_order",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_ont_action_types_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "ont_link_types",
+      "sql": "CREATE TABLE ont_link_types (\n  api_name TEXT PRIMARY KEY,\n  title TEXT NOT NULL,\n  left_type TEXT NOT NULL,\n  right_type TEXT NOT NULL,\n  cardinality TEXT NOT NULL,\n  left_link_name TEXT,\n  right_link_name TEXT,\n  fk_column TEXT,\n  on_delete TEXT,\n  discriminator_column TEXT,\n  discriminator_value TEXT,\n  ref_column TEXT,\n  link_table TEXT,\n  backing_left_property TEXT,\n  backing_right_property TEXT,\n  is_system INTEGER NOT NULL DEFAULT 0,\n  sort_order INTEGER NOT NULL DEFAULT 0,\n  created_at TEXT NOT NULL\n, config TEXT NOT NULL DEFAULT '{}')",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "api_name",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "left_type",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "right_type",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "cardinality",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "left_link_name",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "right_link_name",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "fk_column",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "on_delete",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "discriminator_column",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "discriminator_value",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "ref_column",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "link_table",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "backing_left_property",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 14,
+          "name": "backing_right_property",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 15,
+          "name": "is_system",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 16,
+          "name": "sort_order",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 17,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 18,
+          "name": "config",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'{}'",
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_ont_link_types_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "ont_object_types",
+      "sql": "CREATE TABLE ont_object_types (\n  api_name TEXT PRIMARY KEY,\n  title TEXT NOT NULL,\n  description TEXT NOT NULL DEFAULT '',\n  table_name TEXT UNIQUE,\n  is_virtual INTEGER NOT NULL DEFAULT 0,\n  is_system INTEGER NOT NULL DEFAULT 0,\n  primary_key TEXT NOT NULL DEFAULT 'id',\n  title_property TEXT NOT NULL,\n  properties TEXT NOT NULL,\n  status TEXT NOT NULL DEFAULT 'active',\n  sort_order INTEGER NOT NULL DEFAULT 0,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "api_name",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "description",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "table_name",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "is_virtual",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "is_system",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "primary_key",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'id'",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "title_property",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "properties",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'active'",
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "sort_order",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_ont_object_types_2",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "sqlite_autoindex_ont_object_types_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "plan_adjustments",
+      "sql": "CREATE TABLE plan_adjustments (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        plan_id INTEGER NOT NULL,\n        suggestions TEXT NOT NULL DEFAULT '[]',\n        applied_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "plan_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "suggestions",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "applied_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_plan_adjustments_plan",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "plan_items",
+      "sql": "CREATE TABLE plan_items (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  plan_id INTEGER NOT NULL REFERENCES study_plans(id) ON DELETE CASCADE,\n  date TEXT NOT NULL,\n  content TEXT NOT NULL,\n  item_type TEXT NOT NULL DEFAULT 'learn',\n  duration_min INTEGER,\n  status TEXT NOT NULL DEFAULT 'pending',\n  todo_id INTEGER REFERENCES todos(id) ON DELETE SET NULL,\n  sort_order INTEGER NOT NULL DEFAULT 0,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n, knowledge_key TEXT)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "plan_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "content",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "item_type",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'learn'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "duration_min",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'pending'",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "todo_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "sort_order",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "knowledge_key",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "todos",
+          "from": "todo_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "SET NULL",
+          "match": "NONE"
+        },
+        {
+          "id": 1,
+          "seq": 0,
+          "table": "study_plans",
+          "from": "plan_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_plan_items_date",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_plan_items_plan",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "study_assessments",
+      "sql": "CREATE TABLE study_assessments (\n        id TEXT PRIMARY KEY,\n        session_id TEXT,\n        plan_id INTEGER,\n        plan_item_id INTEGER,\n        knowledge_key TEXT NOT NULL,\n        topic TEXT NOT NULL,\n        question TEXT NOT NULL,\n        criteria TEXT NOT NULL DEFAULT '',\n        answer TEXT NOT NULL,\n        source TEXT NOT NULL,\n        score INTEGER,\n        objective_passed INTEGER,\n        feedback TEXT NOT NULL DEFAULT '',\n        evidence TEXT NOT NULL DEFAULT '',\n        corrections TEXT NOT NULL DEFAULT '[]',\n        date TEXT NOT NULL,\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "session_id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "plan_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "plan_item_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "knowledge_key",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "topic",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "question",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "criteria",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "answer",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "source",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "score",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "objective_passed",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "feedback",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "evidence",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 14,
+          "name": "corrections",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 15,
+          "name": "date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 16,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 17,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_study_assessments_session",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_study_assessments_kp",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 2,
+          "name": "sqlite_autoindex_study_assessments_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "study_plan_drafts",
+      "sql": "CREATE TABLE \"study_plan_drafts\" (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        title TEXT NOT NULL,\n        goal TEXT NOT NULL DEFAULT '',\n        material_source TEXT NOT NULL DEFAULT '',\n        daily_minutes INTEGER,\n        start_date TEXT,\n        end_date TEXT,\n        knowledge_points TEXT NOT NULL DEFAULT '[]',\n        items TEXT NOT NULL DEFAULT '[]',\n        assumptions TEXT NOT NULL DEFAULT '[]',\n        status TEXT NOT NULL DEFAULT 'draft',\n        plan_id INTEGER,\n        course_id INTEGER,\n        conflict_checked_at TEXT,\n        notes TEXT NOT NULL DEFAULT '',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL,\n        confirmed_at TEXT,\n        cancelled_at TEXT\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "goal",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "material_source",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "daily_minutes",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "start_date",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "end_date",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "knowledge_points",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "items",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "assumptions",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'draft'",
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "plan_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "course_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "conflict_checked_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 14,
+          "name": "notes",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 15,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 16,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 17,
+          "name": "confirmed_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 18,
+          "name": "cancelled_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_study_drafts_course",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_study_drafts_status",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "study_plans",
+      "sql": "CREATE TABLE study_plans (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  title TEXT NOT NULL,\n  goal TEXT NOT NULL DEFAULT '',\n  start_date TEXT NOT NULL,\n  end_date TEXT NOT NULL,\n  status TEXT NOT NULL DEFAULT 'active',\n  notes TEXT NOT NULL DEFAULT '',\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n, daily_minutes INTEGER)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "goal",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "start_date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "end_date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'active'",
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "notes",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "daily_minutes",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": []
+    },
+    {
+      "name": "study_sessions",
+      "sql": "CREATE TABLE study_sessions (\n        id TEXT PRIMARY KEY,\n        plan_id INTEGER,\n        plan_item_id INTEGER,\n        scope_key TEXT NOT NULL,\n        knowledge_key TEXT NOT NULL,\n        topic TEXT NOT NULL,\n        attempt INTEGER NOT NULL,\n        date TEXT NOT NULL,\n        actual_minutes INTEGER NOT NULL,\n        explanation TEXT NOT NULL DEFAULT '',\n        questions TEXT NOT NULL DEFAULT '',\n        material_source TEXT NOT NULL DEFAULT '',\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL,\n        UNIQUE(scope_key, attempt)\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "plan_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "plan_item_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "scope_key",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "knowledge_key",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "topic",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "attempt",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "date",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "actual_minutes",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "explanation",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "questions",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "material_source",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_study_sessions_kp",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_study_sessions_plan",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 2,
+          "name": "sqlite_autoindex_study_sessions_2",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        },
+        {
+          "seq": 3,
+          "name": "sqlite_autoindex_study_sessions_1",
+          "unique": 1,
+          "origin": "pk",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "todos",
+      "sql": "CREATE TABLE todos (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  title TEXT NOT NULL,\n  notes TEXT NOT NULL DEFAULT '',\n  priority TEXT NOT NULL DEFAULT 'medium',\n  status TEXT NOT NULL DEFAULT 'open',\n  due_date TEXT,\n  tags TEXT NOT NULL DEFAULT '[]',\n  source TEXT NOT NULL DEFAULT 'app',\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL,\n  completed_at TEXT\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "notes",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "priority",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'medium'",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'open'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "due_date",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "tags",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "source",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'app'",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "completed_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_todos_due",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_todos_status",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "tool_categories",
+      "sql": "CREATE TABLE tool_categories (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  name TEXT NOT NULL UNIQUE,\n  sort_order INTEGER NOT NULL DEFAULT 0,\n  created_at TEXT NOT NULL\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "name",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "sort_order",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_tool_categories_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "tools",
+      "sql": "CREATE TABLE tools (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  title TEXT NOT NULL,\n  icon TEXT NOT NULL DEFAULT 'tool',\n  category_id INTEGER REFERENCES tool_categories(id) ON DELETE SET NULL,\n  entry_file TEXT NOT NULL,\n  sort_order INTEGER NOT NULL DEFAULT 0,\n  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n)",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "icon",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'tool'",
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "category_id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "entry_file",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "sort_order",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "tool_categories",
+          "from": "category_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "SET NULL",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_tools_category",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "vault_concept_links",
+      "sql": "CREATE TABLE vault_concept_links (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        vault_id INTEGER NOT NULL,\n        note_id INTEGER NOT NULL REFERENCES vault_notes(id) ON DELETE CASCADE,\n        knowledge_key TEXT NOT NULL,\n        created_at TEXT NOT NULL,\n        UNIQUE(note_id, knowledge_key)\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "vault_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "note_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "knowledge_key",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "vault_notes",
+          "from": "note_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_vault_concept_kp",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "sqlite_autoindex_vault_concept_links_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "vault_notes",
+      "sql": "CREATE TABLE vault_notes (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        vault_id INTEGER NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,\n        rel_path TEXT NOT NULL,\n        title TEXT NOT NULL,\n        kind TEXT NOT NULL DEFAULT 'other',\n        level TEXT,\n        status TEXT,\n        frontmatter TEXT NOT NULL DEFAULT '{}',\n        file_hash TEXT NOT NULL,\n        mtime_ms INTEGER NOT NULL,\n        size INTEGER NOT NULL,\n        missing INTEGER NOT NULL DEFAULT 0,\n        links_cache TEXT NOT NULL DEFAULT '[]',\n        search_text TEXT NOT NULL DEFAULT '',\n        indexed_at TEXT NOT NULL,\n        UNIQUE(vault_id, rel_path)\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "vault_id",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "rel_path",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "title",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "kind",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'other'",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "level",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "frontmatter",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'{}'",
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "file_hash",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "mtime_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "size",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "missing",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "links_cache",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[]'",
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "search_text",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "''",
+          "pk": 0
+        },
+        {
+          "cid": 14,
+          "name": "indexed_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [
+        {
+          "id": 0,
+          "seq": 0,
+          "table": "vaults",
+          "from": "vault_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "CASCADE",
+          "match": "NONE"
+        }
+      ],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "idx_vault_notes_kind",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 1,
+          "name": "idx_vault_notes_vault",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 2,
+          "name": "sqlite_autoindex_vault_notes_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    },
+    {
+      "name": "vaults",
+      "sql": "CREATE TABLE vaults (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        name TEXT NOT NULL,\n        root_path TEXT NOT NULL UNIQUE,\n        include_dirs TEXT NOT NULL DEFAULT '[\"knowledge/moc\",\"knowledge/resources\",\"knowledge/inbox-cards\"]',\n        include_raw INTEGER NOT NULL DEFAULT 0,\n        created_at TEXT NOT NULL,\n        updated_at TEXT NOT NULL,\n        last_scan_at TEXT,\n        last_scan_stats TEXT\n      )",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "id",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 1
+        },
+        {
+          "cid": 1,
+          "name": "name",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 2,
+          "name": "root_path",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 3,
+          "name": "include_dirs",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'[\"knowledge/moc\",\"knowledge/resources\",\"knowledge/inbox-cards\"]'",
+          "pk": 0
+        },
+        {
+          "cid": 4,
+          "name": "include_raw",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
+          "pk": 0
+        },
+        {
+          "cid": 5,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "updated_at",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "last_scan_at",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "last_scan_stats",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_vaults_1",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        }
+      ]
+    }
+  ],
+  "源码对象类型": [
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "todo",
+      "title": "待办",
+      "description": "日常待办事项",
+      "tableName": "todos",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "notes",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "priority",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "open",
+            "done"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "due_date",
+          "dataType": "date",
+          "nullable": true,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "tags",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "app",
+            "mcp",
+            "plan"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "completed_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 10
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "study_plan",
+      "title": "学习计划",
+      "description": "阶段性学习计划，展开为按天的计划条目",
+      "tableName": "study_plans",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "goal",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "start_date",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "end_date",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "active",
+            "done",
+            "archived"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "notes",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "daily_minutes",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin",
+          "description": "每日时间预算（分钟），学习闭环草案确认时写入"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 20
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "plan_item",
+      "title": "计划条目",
+      "description": "学习计划下按天展开的条目",
+      "tableName": "plan_items",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "content",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "plan_id",
+          "dataType": "integer",
+          "nullable": false,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "date",
+          "dataType": "date",
+          "nullable": false,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "content",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "item_type",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "learn",
+            "review",
+            "practice",
+            "rest"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "duration_min",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "pending",
+            "done",
+            "skipped"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "todo_id",
+          "dataType": "integer",
+          "nullable": true,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "knowledge_key",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin",
+          "description": "关联知识点稳定标识（学习闭环用）"
+        },
+        {
+          "apiName": "sort_order",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 30
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "checkin",
+      "title": "打卡",
+      "description": "对待办/计划条目/某一天的幂等打卡记录（引用为多态）",
+      "tableName": "checkins",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "note",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "ref_type",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "todo",
+            "plan_item",
+            "day"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "ref_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "date",
+          "dataType": "date",
+          "nullable": false,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "note",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 40
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "news_item",
+      "title": "新闻",
+      "description": "新闻条目：agent 任务提交（带原始来源链接与摘要）+ 旧版抓取的历史新闻",
+      "tableName": "news",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "agent",
+            "x",
+            "zhihu_daily",
+            "hacker_news"
+          ],
+          "origin": "builtin",
+          "description": "agent=任务提交；其余为旧版抓取的历史来源（rss/* 亦为历史）"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "url",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "summary",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "published_date",
+          "dataType": "date",
+          "nullable": false,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "published_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin",
+          "description": "精确发布时间（ISO；旧数据为空）"
+        },
+        {
+          "apiName": "fetched_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "dedup_key",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin",
+          "description": "去重键：平台 ID / 规范 URL"
+        },
+        {
+          "apiName": "is_read",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "description": "已读状态（用户操作持久化）"
+        },
+        {
+          "apiName": "is_starred",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "description": "收藏状态（用户操作持久化）"
+        },
+        {
+          "apiName": "task_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin",
+          "description": "产生本条的新闻任务（历史数据为空）"
+        },
+        {
+          "apiName": "source_name",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin",
+          "description": "agent 提交的来源站点名（历史数据为空）"
+        },
+        {
+          "apiName": "content_kind",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "url",
+            "html"
+          ],
+          "origin": "builtin",
+          "description": "内容形态：url=内嵌来源网页；html=本地快照（X 等无法内嵌的来源）"
+        },
+        {
+          "apiName": "html_rel",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin",
+          "description": "本地快照相对路径（dirname(db)/news 下；仅 html 形态非空）"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 50
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "tool",
+      "title": "工具",
+      "description": "工具箱里的 HTML 小工具",
+      "tableName": "tools",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "icon",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "category_id",
+          "dataType": "integer",
+          "nullable": true,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "entry_file",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "sort_order",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 60
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "tool_category",
+      "title": "工具分类",
+      "description": "工具箱的分组",
+      "tableName": "tool_categories",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "name",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "name",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "sort_order",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 70
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "study_plan_draft",
+      "title": "学习计划草案",
+      "description": "学习闭环的待确认草案（agent 生成 → 用户预览确认后才成为正式计划）",
+      "tableName": "study_plan_drafts",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "goal",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "material_source",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "daily_minutes",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "start_date",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "end_date",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "knowledge_points",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "items",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "assumptions",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "draft",
+            "confirmed",
+            "cancelled"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "plan_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "course_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "conflict_checked_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "notes",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "confirmed_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "cancelled_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 90
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "study_session",
+      "title": "学习会话",
+      "description": "一次真实学习的独立记录（多次尝试，稳定 ID，重复提交幂等）",
+      "tableName": "study_sessions",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "topic",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "string",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "plan_id",
+          "dataType": "integer",
+          "nullable": true,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "plan_item_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "scope_key",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "knowledge_key",
+          "dataType": "string",
+          "nullable": false,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "topic",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "attempt",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "date",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "actual_minutes",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "explanation",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "questions",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "material_source",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 91
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "study_assessment",
+      "title": "学习测评",
+      "description": "知识点掌握的测评证据（题目/标准/原答案/评分/依据，来源显式，可纠正）",
+      "tableName": "study_assessments",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "question",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "string",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "session_id",
+          "dataType": "string",
+          "nullable": true,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "plan_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "plan_item_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "knowledge_key",
+          "dataType": "string",
+          "nullable": false,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "topic",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "question",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "criteria",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "answer",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source",
+          "dataType": "enum",
+          "nullable": false,
+          "enumValues": [
+            "self",
+            "objective",
+            "ai_suggestion"
+          ],
+          "origin": "builtin"
+        },
+        {
+          "apiName": "score",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "objective_passed",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "feedback",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "evidence",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "corrections",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "date",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 92
+    },
+    {
+      "writeMode": "read_only",
+      "extensionWritable": false,
+      "visibility": "history",
+      "apiName": "news_topic",
+      "title": "新闻话题",
+      "description": "X 数据源的可搜索话题配置（搜索表达式、启用状态与抓取状态）",
+      "tableName": "news_topics",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "name",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source_id",
+          "dataType": "string",
+          "nullable": false,
+          "indexed": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "name",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "query",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin",
+          "description": "X 搜索表达式（复杂表达式放这里，不放对话）"
+        },
+        {
+          "apiName": "enabled",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "last_checked_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin",
+          "description": "最近一次检查（零新增也更新）"
+        },
+        {
+          "apiName": "last_success_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "last_error",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "last_added",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 93
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "news_task",
+      "title": "新闻任务",
+      "description": "新闻任务：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "news_tasks",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "instructions",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "max_items",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "window_hours",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_by",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "claim_token",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin",
+          "readable": false
+        },
+        {
+          "apiName": "claimed_by",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "claim_expires_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "attempts",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "accepted_count",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "completed_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "completed_note",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "last_error",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 200
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "course",
+      "title": "课程",
+      "description": "课程：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "courses",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "slug",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "goal",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "plan_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "sample_content_hash",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "sample_confirmed_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "version",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 201
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "course_lesson",
+      "title": "课程讲义",
+      "description": "课程讲义：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "course_lessons",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "course_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "day",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "html_rel",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "content_hash",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "is_sample",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "estimated_minutes",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "concepts",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "code_refs",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "quiz",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "quiz_answers",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 202
+    },
+    {
+      "writeMode": "read_only",
+      "extensionWritable": false,
+      "visibility": "normal",
+      "apiName": "course_overview",
+      "title": "课程总览",
+      "description": "课程总览：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "course_overviews",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "course_id",
+      "titleProperty": "course_id",
+      "properties": [
+        {
+          "apiName": "course_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "html_rel",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "content_hash",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 203
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "course_request",
+      "title": "课程生成请求",
+      "description": "课程生成请求：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "course_requests",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "kind",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "course_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "kind",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "sample_content_hash",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "requested_by",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "claimed_by",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "error",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "claimed_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "completed_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 204
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "vault",
+      "title": "知识库",
+      "description": "知识库：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "vaults",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "name",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "name",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "root_path",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "include_dirs",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "include_raw",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "last_scan_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "last_scan_stats",
+          "dataType": "json",
+          "nullable": true,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 205
+    },
+    {
+      "writeMode": "read_only",
+      "extensionWritable": false,
+      "visibility": "normal",
+      "apiName": "vault_note",
+      "title": "知识库笔记",
+      "description": "知识库笔记：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "vault_notes",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "vault_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "rel_path",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "kind",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "level",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "frontmatter",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "file_hash",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "mtime_ms",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "size",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "missing",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "links_cache",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "search_text",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "indexed_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 206
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "vault_concept_link",
+      "title": "知识点笔记关联",
+      "description": "知识点笔记关联：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "vault_concept_links",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "knowledge_key",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "vault_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "note_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "knowledge_key",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 207
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "media_topic",
+      "title": "创作选题",
+      "description": "创作选题：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "media_topics",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "angle",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source_news_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source_note",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source_desc",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "tags",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 208
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "media_content",
+      "title": "创作内容",
+      "description": "创作内容：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "media_contents",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "topic_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "master_content",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "retro_note",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 209
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "media_content_version",
+      "title": "平台版本",
+      "description": "平台版本：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "media_content_versions",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "platform",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "content_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "platform",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "body",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "review_note",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "reviewed_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 210
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "media_material",
+      "title": "创作素材",
+      "description": "创作素材：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "media_materials",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "title",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "title",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "kind",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "content",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source_news_id",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source_note",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "source_desc",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "tags",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 211
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "media_calendar_entry",
+      "title": "发布排期",
+      "description": "发布排期：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "media_calendar",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "planned_date",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "content_version_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "planned_date",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "status",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "published_at",
+          "dataType": "date",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "publish_url",
+          "dataType": "string",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "note",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 212
+    },
+    {
+      "writeMode": "managed",
+      "extensionWritable": true,
+      "visibility": "normal",
+      "apiName": "media_metric",
+      "title": "发布指标",
+      "description": "发布指标：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "media_metrics",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "date",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "calendar_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "date",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "views",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "likes",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "comments",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "shares",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "favorites",
+          "dataType": "integer",
+          "nullable": true,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "custom",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "note",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "created_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "updated_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 213
+    },
+    {
+      "writeMode": "read_only",
+      "extensionWritable": false,
+      "visibility": "normal",
+      "apiName": "plan_adjustment",
+      "title": "计划调整记录",
+      "description": "计划调整记录：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "plan_adjustments",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "applied_at",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "plan_id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "suggestions",
+          "dataType": "json",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "applied_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 214
+    },
+    {
+      "writeMode": "read_only",
+      "extensionWritable": false,
+      "visibility": "normal",
+      "apiName": "card_export",
+      "title": "卡片导出记录",
+      "description": "卡片导出记录：沿用现有业务服务读写，系统字段仅通过业务动作维护。",
+      "tableName": "card_exports",
+      "isVirtual": false,
+      "isSystem": true,
+      "primaryKey": "id",
+      "titleProperty": "card_key",
+      "properties": [
+        {
+          "apiName": "id",
+          "dataType": "integer",
+          "nullable": false,
+          "origin": "builtin",
+          "isPrimaryKey": true
+        },
+        {
+          "apiName": "card_key",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "file_path",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "content_hash",
+          "dataType": "string",
+          "nullable": false,
+          "origin": "builtin"
+        },
+        {
+          "apiName": "exported_at",
+          "dataType": "date",
+          "nullable": false,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 215
+    },
+    {
+      "writeMode": "virtual",
+      "extensionWritable": false,
+      "visibility": "normal",
+      "apiName": "day",
+      "title": "天",
+      "description": "虚拟类型：某一天（无物理表，仅作为 day 打卡的引用锚点）",
+      "tableName": null,
+      "isVirtual": true,
+      "isSystem": true,
+      "primaryKey": "date",
+      "titleProperty": "date",
+      "properties": [
+        {
+          "apiName": "date",
+          "dataType": "date",
+          "nullable": false,
+          "isPrimaryKey": true,
+          "origin": "builtin"
+        }
+      ],
+      "status": "active",
+      "sortOrder": 80
+    }
+  ],
+  "源码关系类型": [
+    {
+      "apiName": "study_plan__plan_item",
+      "title": "计划的条目",
+      "leftType": "study_plan",
+      "rightType": "plan_item",
+      "cardinality": "one_to_many",
+      "leftLinkName": "plan_items",
+      "rightLinkName": "study_plan",
+      "referenceKind": "strong",
+      "fkColumn": "plan_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 10,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "todo__plan_item",
+      "title": "待办的计划条目",
+      "leftType": "todo",
+      "rightType": "plan_item",
+      "cardinality": "one_to_many",
+      "leftLinkName": "plan_items",
+      "rightLinkName": "todo",
+      "referenceKind": "strong",
+      "fkColumn": "todo_id",
+      "onDelete": "set_null",
+      "isSystem": true,
+      "sortOrder": 20,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "todo__checkin",
+      "title": "待办的打卡",
+      "leftType": "todo",
+      "rightType": "checkin",
+      "cardinality": "one_to_many",
+      "leftLinkName": "checkins",
+      "rightLinkName": "ref",
+      "referenceKind": "strong",
+      "discriminatorColumn": "ref_type",
+      "discriminatorValue": "todo",
+      "refColumn": "ref_id",
+      "isSystem": true,
+      "sortOrder": 30,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "plan_item__checkin",
+      "title": "计划条目的打卡",
+      "leftType": "plan_item",
+      "rightType": "checkin",
+      "cardinality": "one_to_many",
+      "leftLinkName": "checkins",
+      "rightLinkName": "ref",
+      "referenceKind": "strong",
+      "discriminatorColumn": "ref_type",
+      "discriminatorValue": "plan_item",
+      "refColumn": "ref_id",
+      "isSystem": true,
+      "sortOrder": 40,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "day__checkin",
+      "title": "每日打卡",
+      "leftType": "day",
+      "rightType": "checkin",
+      "cardinality": "one_to_many",
+      "leftLinkName": "checkins",
+      "rightLinkName": "ref",
+      "referenceKind": "derived",
+      "onDelete": "none",
+      "discriminatorColumn": "ref_type",
+      "discriminatorValue": "day",
+      "refColumn": "ref_id",
+      "isSystem": true,
+      "sortOrder": 50,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "tool_category__tool",
+      "title": "分类下的工具",
+      "leftType": "tool_category",
+      "rightType": "tool",
+      "cardinality": "one_to_many",
+      "leftLinkName": "tools",
+      "rightLinkName": "category",
+      "referenceKind": "strong",
+      "fkColumn": "category_id",
+      "onDelete": "set_null",
+      "isSystem": true,
+      "sortOrder": 60,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "study_plan__study_session",
+      "title": "计划的学习会话",
+      "leftType": "study_plan",
+      "rightType": "study_session",
+      "cardinality": "one_to_many",
+      "leftLinkName": "study_sessions",
+      "rightLinkName": "study_plan",
+      "referenceKind": "historical",
+      "fkColumn": "plan_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 70,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "study_session__study_assessment",
+      "title": "会话的测评证据",
+      "leftType": "study_session",
+      "rightType": "study_assessment",
+      "cardinality": "one_to_many",
+      "leftLinkName": "study_assessments",
+      "rightLinkName": "study_session",
+      "referenceKind": "historical",
+      "fkColumn": "session_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 80,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "news_task__news_item",
+      "title": "news_task → news_item",
+      "leftType": "news_task",
+      "rightType": "news_item",
+      "cardinality": "one_to_many",
+      "leftLinkName": "news_items",
+      "rightLinkName": "news_task",
+      "referenceKind": "strong",
+      "fkColumn": "task_id",
+      "onDelete": "restrict",
+      "isSystem": true,
+      "sortOrder": 200,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "study_plan__course",
+      "title": "study_plan → course",
+      "leftType": "study_plan",
+      "rightType": "course",
+      "cardinality": "one_to_many",
+      "leftLinkName": "courses",
+      "rightLinkName": "study_plan",
+      "referenceKind": "historical",
+      "fkColumn": "plan_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 201,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "course__course_lesson",
+      "title": "course → course_lesson",
+      "leftType": "course",
+      "rightType": "course_lesson",
+      "cardinality": "one_to_many",
+      "leftLinkName": "course_lessons",
+      "rightLinkName": "course",
+      "referenceKind": "strong",
+      "fkColumn": "course_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 202,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "course__course_overview",
+      "title": "course → course_overview",
+      "leftType": "course",
+      "rightType": "course_overview",
+      "cardinality": "one_to_one",
+      "leftLinkName": "course_overviews",
+      "rightLinkName": "course",
+      "referenceKind": "strong",
+      "fkColumn": "course_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 203,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "course__course_request",
+      "title": "course → course_request",
+      "leftType": "course",
+      "rightType": "course_request",
+      "cardinality": "one_to_many",
+      "leftLinkName": "course_requests",
+      "rightLinkName": "course",
+      "referenceKind": "strong",
+      "fkColumn": "course_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 204,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "course__study_plan_draft",
+      "title": "course → study_plan_draft",
+      "leftType": "course",
+      "rightType": "study_plan_draft",
+      "cardinality": "one_to_many",
+      "leftLinkName": "study_plan_drafts",
+      "rightLinkName": "course",
+      "referenceKind": "historical",
+      "fkColumn": "course_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 205,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "study_plan__study_plan_draft",
+      "title": "study_plan → study_plan_draft",
+      "leftType": "study_plan",
+      "rightType": "study_plan_draft",
+      "cardinality": "one_to_many",
+      "leftLinkName": "study_plan_drafts",
+      "rightLinkName": "study_plan",
+      "referenceKind": "historical",
+      "fkColumn": "plan_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 206,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "plan_item__study_session",
+      "title": "plan_item → study_session",
+      "leftType": "plan_item",
+      "rightType": "study_session",
+      "cardinality": "one_to_many",
+      "leftLinkName": "study_sessions",
+      "rightLinkName": "plan_item",
+      "referenceKind": "historical",
+      "fkColumn": "plan_item_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 207,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "study_plan__study_assessment",
+      "title": "study_plan → study_assessment",
+      "leftType": "study_plan",
+      "rightType": "study_assessment",
+      "cardinality": "one_to_many",
+      "leftLinkName": "study_assessments",
+      "rightLinkName": "study_plan",
+      "referenceKind": "historical",
+      "fkColumn": "plan_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 208,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "plan_item__study_assessment",
+      "title": "plan_item → study_assessment",
+      "leftType": "plan_item",
+      "rightType": "study_assessment",
+      "cardinality": "one_to_many",
+      "leftLinkName": "study_assessments",
+      "rightLinkName": "plan_item",
+      "referenceKind": "historical",
+      "fkColumn": "plan_item_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 209,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "study_plan__plan_adjustment",
+      "title": "study_plan → plan_adjustment",
+      "leftType": "study_plan",
+      "rightType": "plan_adjustment",
+      "cardinality": "one_to_many",
+      "leftLinkName": "plan_adjustments",
+      "rightLinkName": "study_plan",
+      "referenceKind": "historical",
+      "fkColumn": "plan_id",
+      "onDelete": "none",
+      "isSystem": true,
+      "sortOrder": 210,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "vault__vault_note",
+      "title": "vault → vault_note",
+      "leftType": "vault",
+      "rightType": "vault_note",
+      "cardinality": "one_to_many",
+      "leftLinkName": "vault_notes",
+      "rightLinkName": "vault",
+      "referenceKind": "strong",
+      "fkColumn": "vault_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 211,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "vault_note__vault_concept_link",
+      "title": "vault_note → vault_concept_link",
+      "leftType": "vault_note",
+      "rightType": "vault_concept_link",
+      "cardinality": "one_to_many",
+      "leftLinkName": "vault_concept_links",
+      "rightLinkName": "vault_note",
+      "referenceKind": "strong",
+      "fkColumn": "note_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 212,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "vault__vault_concept_link",
+      "title": "vault → vault_concept_link",
+      "leftType": "vault",
+      "rightType": "vault_concept_link",
+      "cardinality": "one_to_many",
+      "leftLinkName": "vault_concept_links",
+      "rightLinkName": "vault",
+      "referenceKind": "strong",
+      "fkColumn": "vault_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 213,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "media_topic__media_content",
+      "title": "media_topic → media_content",
+      "leftType": "media_topic",
+      "rightType": "media_content",
+      "cardinality": "one_to_many",
+      "leftLinkName": "media_contents",
+      "rightLinkName": "media_topic",
+      "referenceKind": "strong",
+      "fkColumn": "topic_id",
+      "onDelete": "set_null",
+      "isSystem": true,
+      "sortOrder": 214,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "media_content__media_content_version",
+      "title": "media_content → media_content_version",
+      "leftType": "media_content",
+      "rightType": "media_content_version",
+      "cardinality": "one_to_many",
+      "leftLinkName": "media_content_versions",
+      "rightLinkName": "media_content",
+      "referenceKind": "strong",
+      "fkColumn": "content_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 215,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "media_content_version__media_calendar_entry",
+      "title": "media_content_version → media_calendar_entry",
+      "leftType": "media_content_version",
+      "rightType": "media_calendar_entry",
+      "cardinality": "one_to_many",
+      "leftLinkName": "media_calendar_entrys",
+      "rightLinkName": "media_content_version",
+      "referenceKind": "strong",
+      "fkColumn": "content_version_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 216,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "media_calendar_entry__media_metric",
+      "title": "media_calendar_entry → media_metric",
+      "leftType": "media_calendar_entry",
+      "rightType": "media_metric",
+      "cardinality": "one_to_many",
+      "leftLinkName": "media_metrics",
+      "rightLinkName": "media_calendar_entry",
+      "referenceKind": "strong",
+      "fkColumn": "calendar_id",
+      "onDelete": "cascade",
+      "isSystem": true,
+      "sortOrder": 217,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "news_item__media_topic",
+      "title": "news_item → media_topic",
+      "leftType": "news_item",
+      "rightType": "media_topic",
+      "cardinality": "one_to_many",
+      "leftLinkName": "media_topics",
+      "rightLinkName": "news_item",
+      "referenceKind": "strong",
+      "fkColumn": "source_news_id",
+      "onDelete": "set_null",
+      "isSystem": true,
+      "sortOrder": 218,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "news_item__media_material",
+      "title": "news_item → media_material",
+      "leftType": "news_item",
+      "rightType": "media_material",
+      "cardinality": "one_to_many",
+      "leftLinkName": "media_materials",
+      "rightLinkName": "news_item",
+      "referenceKind": "strong",
+      "fkColumn": "source_news_id",
+      "onDelete": "set_null",
+      "isSystem": true,
+      "sortOrder": 219,
+      "createdAt": "2026-10-14T09:42:25.777"
+    },
+    {
+      "apiName": "media_content__media_material",
+      "title": "内容使用的素材",
+      "leftType": "media_content",
+      "rightType": "media_material",
+      "cardinality": "many_to_many",
+      "leftLinkName": "materials",
+      "rightLinkName": "contents",
+      "referenceKind": "strong",
+      "backingTableName": "media_content_materials",
+      "onDelete": "cascade",
+      "backingLeftProperty": "content_id",
+      "backingRightProperty": "material_id",
+      "isSystem": true,
+      "sortOrder": 230,
+      "createdAt": "2026-10-14T09:42:25.777"
+    }
+  ],
+  "源码动作摘要": [
+    {
+      "apiName": "add_media_content",
+      "title": "新增母稿",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content"
+        }
+      ]
+    },
+    {
+      "apiName": "add_media_material",
+      "title": "新增素材",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_material"
+        }
+      ]
+    },
+    {
+      "apiName": "add_media_metric",
+      "title": "录入发布指标",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_metric"
+        }
+      ]
+    },
+    {
+      "apiName": "add_media_topic",
+      "title": "新增选题",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_topic"
+        }
+      ]
+    },
+    {
+      "apiName": "add_media_version",
+      "title": "新增平台版本",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content",
+          "parameter": "content_id"
+        },
+        {
+          "objectType": "media_content_version"
+        }
+      ]
+    },
+    {
+      "apiName": "add_todo",
+      "title": "新增待办",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "todo"
+        }
+      ]
+    },
+    {
+      "apiName": "add_tool",
+      "title": "新增工具",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "tool"
+        }
+      ]
+    },
+    {
+      "apiName": "add_tool_category",
+      "title": "新增工具分类",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "tool_category"
+        }
+      ]
+    },
+    {
+      "apiName": "apply_plan_adjustments",
+      "title": "应用计划调整",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan",
+          "parameter": "id"
+        },
+        {
+          "objectType": "plan_adjustment"
+        }
+      ]
+    },
+    {
+      "apiName": "attach_media_material",
+      "title": "关联创作素材",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content",
+          "parameter": "content_id"
+        },
+        {
+          "objectType": "media_material",
+          "parameter": "material_id"
+        }
+      ]
+    },
+    {
+      "apiName": "cancel_media_schedule",
+      "title": "取消发布排期",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_calendar_entry",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "cancel_news_task",
+      "title": "取消新闻任务",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_task",
+          "parameter": "id"
+        },
+        {
+          "objectType": "news_item"
+        }
+      ]
+    },
+    {
+      "apiName": "cancel_study_plan_draft",
+      "title": "取消草案",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan_draft",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "checkin",
+      "title": "打卡",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "checkin"
+        },
+        {
+          "objectType": "todo"
+        },
+        {
+          "objectType": "plan_item"
+        },
+        {
+          "objectType": "day"
+        }
+      ]
+    },
+    {
+      "apiName": "claim_course_request",
+      "title": "认领课程生成",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "course_request",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "claim_news_task",
+      "title": "认领新闻任务",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_task",
+          "parameter": "task_id"
+        },
+        {
+          "objectType": "news_item"
+        }
+      ]
+    },
+    {
+      "apiName": "complete_course_request",
+      "title": "完成课程生成",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "course_request",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "complete_news_task",
+      "title": "完成新闻任务",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_task",
+          "parameter": "task_id"
+        },
+        {
+          "objectType": "news_item"
+        }
+      ]
+    },
+    {
+      "apiName": "complete_todo",
+      "title": "完成待办",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "todo",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "confirm_course_sample",
+      "title": "确认样课",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app-human"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "course",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "confirm_study_plan_draft",
+      "title": "确认学习草案",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan_draft",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "create_course_request",
+      "title": "请求生成课程",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "course",
+          "parameter": "course_id"
+        },
+        {
+          "objectType": "course_request"
+        }
+      ]
+    },
+    {
+      "apiName": "create_news_task",
+      "title": "创建新闻任务",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_task"
+        },
+        {
+          "objectType": "news_item"
+        }
+      ]
+    },
+    {
+      "apiName": "create_review_schedule",
+      "title": "安排间隔复习",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan"
+        }
+      ]
+    },
+    {
+      "apiName": "create_study_plan",
+      "title": "创建学习计划",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan"
+        }
+      ]
+    },
+    {
+      "apiName": "delete_media_content",
+      "title": "删除母稿",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "delete_media_material",
+      "title": "删除素材",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_material",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "delete_media_topic",
+      "title": "删除选题",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_topic",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "delete_news_item",
+      "title": "删除新闻",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_item",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "delete_study_plan",
+      "title": "删除学习计划",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "delete_todo",
+      "title": "删除待办",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "todo",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "delete_tool",
+      "title": "删除工具",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "tool",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "delete_tool_category",
+      "title": "删除工具分类",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "tool_category",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "detach_media_material",
+      "title": "解除创作素材",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content",
+          "parameter": "content_id"
+        },
+        {
+          "objectType": "media_material",
+          "parameter": "material_id"
+        }
+      ]
+    },
+    {
+      "apiName": "draft_study_plan",
+      "title": "创建排期草案",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan_draft"
+        }
+      ]
+    },
+    {
+      "apiName": "draft_study_topic",
+      "title": "创建专题草案",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan_draft"
+        }
+      ]
+    },
+    {
+      "apiName": "export_media_package",
+      "title": "导出素材包",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content",
+          "parameter": "content_id"
+        }
+      ]
+    },
+    {
+      "apiName": "export_study_cards",
+      "title": "导出学习卡片",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "card_export"
+        }
+      ]
+    },
+    {
+      "apiName": "import_course",
+      "title": "导入课程",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "course"
+        },
+        {
+          "objectType": "course_lesson"
+        },
+        {
+          "objectType": "course_overview"
+        }
+      ]
+    },
+    {
+      "apiName": "link_concept_note",
+      "title": "关联知识笔记",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "vault_note"
+        },
+        {
+          "objectType": "vault_concept_link"
+        }
+      ]
+    },
+    {
+      "apiName": "mark_all_news_read",
+      "title": "批量标记已读",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_item"
+        }
+      ]
+    },
+    {
+      "apiName": "mark_lesson_read",
+      "title": "标记讲义已读",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "course",
+          "parameter": "course_id"
+        },
+        {
+          "objectType": "course_lesson"
+        }
+      ]
+    },
+    {
+      "apiName": "mark_media_published",
+      "title": "回填发布结果",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_calendar_entry",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "mark_news_read",
+      "title": "标记新闻已读",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_item",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "mark_news_starred",
+      "title": "收藏新闻",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_item",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "record_study_assessment",
+      "title": "记录测评",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_assessment"
+        }
+      ]
+    },
+    {
+      "apiName": "record_study_session",
+      "title": "记录学习会话",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_session"
+        }
+      ]
+    },
+    {
+      "apiName": "register_vault",
+      "title": "注册知识库",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "vault"
+        }
+      ]
+    },
+    {
+      "apiName": "release_news_task",
+      "title": "释放新闻任务",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_task",
+          "parameter": "task_id"
+        },
+        {
+          "objectType": "news_item"
+        }
+      ]
+    },
+    {
+      "apiName": "remove_checkin",
+      "title": "解除打卡",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "checkin"
+        }
+      ]
+    },
+    {
+      "apiName": "remove_vault",
+      "title": "移除知识库注册",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "vault",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "rename_tool_category",
+      "title": "重命名工具分类",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "tool_category",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "reopen_todo",
+      "title": "撤销完成",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "todo",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "reorder_tool_categories",
+      "title": "排列工具分类",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "tool_category"
+        }
+      ]
+    },
+    {
+      "apiName": "review_media_version",
+      "title": "审核平台版本",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app-human"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content_version",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "scan_vault",
+      "title": "扫描知识库",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "vault",
+          "parameter": "id"
+        },
+        {
+          "objectType": "vault_note"
+        }
+      ]
+    },
+    {
+      "apiName": "schedule_media_post",
+      "title": "安排发布",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_calendar_entry"
+        },
+        {
+          "objectType": "media_content_version"
+        }
+      ]
+    },
+    {
+      "apiName": "schedule_study_draft",
+      "title": "草案排期",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan_draft",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "submit_lesson_quiz",
+      "title": "提交讲义自测",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "course",
+          "parameter": "course_id"
+        },
+        {
+          "objectType": "course_lesson"
+        }
+      ]
+    },
+    {
+      "apiName": "submit_media_version",
+      "title": "提交平台版本审核",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content_version",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "submit_news_items",
+      "title": "提交新闻",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "news_task",
+          "parameter": "task_id"
+        },
+        {
+          "objectType": "news_item"
+        }
+      ]
+    },
+    {
+      "apiName": "unlink_concept_note",
+      "title": "解除知识笔记关联",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "vault_concept_link",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_media_content",
+      "title": "更新母稿",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_media_material",
+      "title": "更新素材",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_material",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_media_topic",
+      "title": "更新选题",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_topic",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_media_version",
+      "title": "编辑平台版本",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "media_content_version",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_plan_item",
+      "title": "更新计划条目",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "plan_item",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_study_plan",
+      "title": "更新学习计划",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_study_topic_draft",
+      "title": "更新专题草案",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "study_plan_draft",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_todo",
+      "title": "更新待办",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "todo",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_tool",
+      "title": "更新工具",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "tool",
+          "parameter": "id"
+        }
+      ]
+    },
+    {
+      "apiName": "update_vault",
+      "title": "更新知识库配置",
+      "isBuiltin": true,
+      "allowedChannels": [
+        "app",
+        "mcp",
+        "core"
+      ],
+      "targetBindings": [
+        {
+          "objectType": "vault",
+          "parameter": "id"
+        }
+      ]
+    }
+  ],
+  "实际库结构摘要": {
+    "路径口径": "默认 macOS 路径",
+    "迁移版本": 13,
+    "非内部表数": 37,
+    "对象类型数": 29,
+    "关系类型数": 29,
+    "动作数": 72,
+    "额外表结构": [
+      {
+        "name": "news_config_meta",
+        "sql": "CREATE TABLE news_config_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        "columns": [
+          {
+            "cid": 0,
+            "name": "key",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 1
+          },
+          {
+            "cid": 1,
+            "name": "value",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          }
+        ],
+        "foreignKeys": [],
+        "indexes": [
+          {
+            "seq": 0,
+            "name": "sqlite_autoindex_news_config_meta_1",
+            "unique": 1,
+            "origin": "pk",
+            "partial": 0
+          }
+        ]
+      },
+      {
+        "name": "ont_obj_daily_brief",
+        "sql": "CREATE TABLE \"ont_obj_daily_brief\" (id TEXT PRIMARY KEY, \"brief_date\" TEXT, \"title\" TEXT, \"content\" TEXT, \"source_urls\" TEXT, \"news_ids\" TEXT, \"item_count\" INTEGER, \"task_id\" INTEGER, \"status\" TEXT, \"window_start\" TEXT, \"window_end\" TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)",
+        "columns": [
+          {
+            "cid": 0,
+            "name": "id",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 1
+          },
+          {
+            "cid": 1,
+            "name": "brief_date",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 2,
+            "name": "title",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 3,
+            "name": "content",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 4,
+            "name": "source_urls",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 5,
+            "name": "news_ids",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 6,
+            "name": "item_count",
+            "type": "INTEGER",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 7,
+            "name": "task_id",
+            "type": "INTEGER",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 8,
+            "name": "status",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 9,
+            "name": "window_start",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 10,
+            "name": "window_end",
+            "type": "TEXT",
+            "notnull": 0,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 11,
+            "name": "created_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          },
+          {
+            "cid": 12,
+            "name": "updated_at",
+            "type": "TEXT",
+            "notnull": 1,
+            "dflt_value": null,
+            "pk": 0
+          }
+        ],
+        "foreignKeys": [],
+        "indexes": [
+          {
+            "seq": 0,
+            "name": "idx_ont_obj_daily_brief_brief_date",
+            "unique": 0,
+            "origin": "c",
+            "partial": 0
+          },
+          {
+            "seq": 1,
+            "name": "sqlite_autoindex_ont_obj_daily_brief_1",
+            "unique": 1,
+            "origin": "pk",
+            "partial": 0
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -2,6 +2,8 @@
 // - App 不抓取 RSS、不配置新闻源或凭证、无任何定时抓取入口；
 // - 新闻由 AI 助手经 MCP 认领「新闻任务」后提交（带原始来源链接与摘要），离线时任务保持待执行；
 // - 新闻按发布时间倒序，滚动到底部自动分页加载；
+// - 内容两种形态：'url' 详情页内嵌来源网页；'html' 用 agent 提交的本地快照展示
+//   （X/Twitter 等无法内嵌的来源；快照经 news-file:// 协议在 iframe 中加载，可外开原文）；
 // - 旧新闻与收藏（is_starred）全部保留；已读/收藏为用户本地操作，与 MCP 共享同一状态。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, call } from '../api';
@@ -22,6 +24,8 @@ interface NewsRow {
   is_starred: boolean;
   task_id: number | null;
   source_name: string | null;
+  content_kind: 'url' | 'html';
+  html_rel: string | null;
 }
 interface NewsTask {
   id: number;
@@ -397,7 +401,7 @@ export default function NewsPanel() {
             <button className="btn slim primary" disabled={creating || !draft.title.trim()} onClick={createTaskSubmit}>{creating ? '创建中…' : '创建采集请求'}</button>
             <button className="btn slim ghost" onClick={() => setFormOpen(false)}>取消</button>
           </div>
-          <p className="mono news3-agent-hint">创建后不会立即联网。下一次 AI 助手连接 TodoDesk 时，会按这里的要求搜索、打开来源页面核实后提交。</p>
+          <p className="mono news3-agent-hint">创建后不会立即联网。下一次 AI 助手连接 Dayfolio 时，会按这里的要求搜索、打开来源页面核实后提交。</p>
         </div>
       )}
       <div className="news3-request-list">
@@ -423,6 +427,7 @@ export default function NewsPanel() {
           <h2 className="news3-title">{detail.title}</h2>
           <div className="news3-detail-meta mono">
             <span className="ref-badge">{sourceBadge(detail)}</span>
+            {detail.content_kind === 'html' && <span className="ref-badge">本地快照</span>}
             {publishedTime(detail)}
             <span className="spacer" />
             <button className={`icon-btn ${detail.is_starred ? 'starred' : ''}`} title={detail.is_starred ? '取消收藏' : '收藏'} onClick={() => toggleStar(detail)}>
@@ -433,7 +438,37 @@ export default function NewsPanel() {
           </div>
           {/* 只展示真实入库的内容（agent 核实后的摘要），绝不伪造全文 */}
           <div className="news3-content">{detail.summary || '（这条内容没有可用摘要，点下方原文入口查看来源页面）'}</div>
-          {isEmbeddableSource(detail.url) ? (
+          {detail.content_kind === 'html' && detail.html_rel ? (
+            <EmbeddedFrame
+              label="新闻本地快照内嵌阅读"
+              className="news-source-embed"
+              title="本地快照"
+              meta={
+                <span className={`news3-source-status s-${sourceStatus}`}>
+                  {sourceStatus === 'loading' ? '加载中…' : sourceStatus === 'ready' ? '已加载' : sourceStatus === 'failed' ? '加载失败' : ''}
+                </span>
+              }
+              actions={
+                <>
+                <button className="btn slim ghost" onClick={reloadSource} title="重新加载本地快照">
+                  <IconRefresh width={13} height={13} />重新加载
+                </button>
+                <button className="btn slim ghost" onClick={() => void call(() => api.news.openUrl({ url: detail.url }))}>
+                  <IconExternal width={13} height={13} />打开原文
+                </button>
+                </>
+              }
+            >
+              {/* X/Twitter 等来源无法内嵌网页，改用 agent 提交的本地快照（news-file:// 协议，圈定在库旁 news 目录） */}
+              <iframe
+                key={`snap:${detail.id}:${detail.html_rel}:${sourceNonce}`}
+                className="tool-iframe news3-source-view"
+                title={`本地快照 · ${detail.title.slice(0, 30)}`}
+                src={`news-file://n/${detail.html_rel}`}
+                onLoad={() => setSourceStatus('ready')}
+              />
+            </EmbeddedFrame>
+          ) : isEmbeddableSource(detail.url) ? (
             <EmbeddedFrame
               label="新闻原文内嵌阅读"
               className="news-source-embed"
@@ -467,7 +502,7 @@ export default function NewsPanel() {
             <div className="news3-source-fallback">
               <span>这条来源不是 HTTPS 页面，不能内嵌显示。</span>
               <button className="btn" onClick={() => void call(() => api.news.openUrl({ url: detail.url }))}>
-                <IconExternal width={13} height={13} style={{ marginRight: 4, verticalAlign: -2 }} />打开原文
+                <IconExternal width={13} height={13} />打开原文
               </button>
             </div>
           )}
@@ -541,6 +576,7 @@ export default function NewsPanel() {
                 {n.summary && n.summary !== n.title && <span className="news3-row-summary">{n.summary}</span>}
                 <span className="news3-row-meta mono">
                   <span className="ref-badge">{sourceBadge(n)}</span>
+                  {n.content_kind === 'html' && <span className="ref-badge">快照</span>}
                   {publishedTime(n)}
                 </span>
               </span>

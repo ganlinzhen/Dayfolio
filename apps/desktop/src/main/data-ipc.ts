@@ -11,7 +11,7 @@ const handle = (channel: string, fn: (payload: unknown) => unknown) => {
     try {
       return { ok: true, data: fn(payload) };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      return { ok: false, error: e instanceof Error ? e.message : String(e), code: e && typeof e==='object' && 'code' in e ? e.code : undefined };
     }
   });
 };
@@ -78,13 +78,22 @@ export function registerDataIpc(core: TodoDeskCore): void {
     const { apiName, search, limit, offset } = (p ?? {}) as { apiName: string; search?: string; limit?: number; offset?: number };
     return core.objects.list(apiName, { search, limit: limit ?? 50, offset: offset ?? 0 });
   });
+  handle('data:queryObjects', (p) => core.queries.list(p));
+  handle('data:aggregateObjects', (p) => core.queries.aggregate(p));
+  handle('data:queryRelated', (p) => core.queries.related(p));
+  handle('data:readObject', (p) => core.queries.get(p));
+  handle('data:queryContract', (p) => core.queries.describe(String((p as { apiName: string }).apiName)));
   handle('data:getObject', (p) => {
     const { apiName, id } = (p ?? {}) as { apiName: string; id: string | number };
     const row = core.objects.get(apiName, id);
     if (!row) throw new Error(`对象不存在：${apiName}#${String(id)}`);
-    return { row, links: core.objects.resolveLinks(apiName, row) };
+    return { row, links: core.objects.resolveLinks(apiName, row), groups:core.relations.groups(apiName,id) };
   });
 
+  handle('data:listLinks',(p)=>{const input=p as {apiName:string;id:string|number;linkType:string;side:'left'|'right';limit?:number;offset?:number};return core.relations.list(input.apiName,input.id,input.linkType,input.side,input.limit,input.offset);});
+  handle('data:createLink',(p)=>{const input=p as {linkType:string;leftId:string|number;rightId:string|number;properties?:Record<string,unknown>;options?:unknown};return core.actions.writeRelation(input.linkType,'create',input.leftId,input.rightId,input.properties,input.options,'app');});
+  handle('data:deleteLink',(p)=>{const input=p as {linkType:string;leftId:string|number;rightId:string|number;options?:unknown};return core.actions.writeRelation(input.linkType,'delete',input.leftId,input.rightId,undefined,input.options,'app');});
+  handle('data:updateObject',(p)=>{const input=p as {apiName:string;id:string|number;values:Record<string,unknown>;options?:unknown};return core.actions.writeObject(input.apiName,'update',input.id,input.values,input.options,'app');});
   // ---------- 对象类型管理 ----------
   handle('data:createObjectType', (p) => core.ontology.createObjectType(p as never));
   handle('data:updateObjectType', (p) => {
@@ -114,9 +123,11 @@ export function registerDataIpc(core: TodoDeskCore): void {
     return true;
   });
   handle('data:invokeAction', (p) => {
-    const { apiName, params } = (p ?? {}) as { apiName: string; params: Record<string, unknown> };
-    return core.actions.execute(apiName, params ?? {});
+    const { apiName, params, options } = (p ?? {}) as { apiName: string; params: Record<string, unknown>; options?: unknown };
+    return core.actions.execute(apiName, params ?? {}, options, 'app');
   });
+  handle('data:previewAction', p => { const input = p as { apiName: string; params?: Record<string, unknown> }; return core.actions.preview(input.apiName, input.params ?? {}); });
+  handle('data:listActionExecutions', p => core.actionRuns.list((p ?? {}) as Parameters<typeof core.actionRuns.list>[0]));
 
   // ---------- 维护 ----------
   // 备份：VACUUM INTO 在线备份（WAL 下直接拷贝主文件会得到不一致快照，禁止）
@@ -154,7 +165,7 @@ export function registerDataIpc(core: TodoDeskCore): void {
   handle('data:healthCheck', () => {
     const integrity = (core.db.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check?: string }>).map((r) => String(r.integrity_check ?? ''));
     const fk = core.db.prepare('PRAGMA foreign_key_check').all();
-    return { integrityOk: integrity.every((x) => x === 'ok'), integrityMessages: integrity, foreignKeyViolations: fk.length };
+    return { integrityOk: integrity.every((x) => x === 'ok'), integrityMessages: integrity, foreignKeyViolations: fk.length, relationIssues: core.relations.health() };
   });
   handle('data:vacuum', () => {
     core.db.exec('VACUUM');

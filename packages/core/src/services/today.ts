@@ -1,6 +1,6 @@
-// 今日概览服务：聚合逾期/今日到期待办、今日计划条目、打卡状态
+// 今日概览服务：聚合逾期/今日到期待办、今日计划条目、打卡状态、今日日程
 import type { DbAdapter } from '../db';
-import { mapCheckin, mapTodo } from '../db';
+import { mapCalendarEvent, mapCheckin, mapTodo } from '../db';
 import type { TodayOverview } from '../types';
 import { todayStr } from '../utils/date';
 import type { CheckinService } from './checkin';
@@ -9,11 +9,20 @@ import type { PlanService } from './plan';
 export function createTodayService(db: DbAdapter, plans: PlanService, checkins: CheckinService) {
   const getToday = (date: string = todayStr()): TodayOverview => {
     const all = db.prepare('SELECT * FROM todos').all().map(mapTodo);
-    const overdue_todos = all.filter((t) => t.status === 'open' && t.due_date && t.due_date < date);
-    const due_today_todos = all.filter((t) => t.status === 'open' && t.due_date === date);
+    const isOverdue = (t: (typeof all)[number]) => t.status === 'open' && t.due_date !== null && (t.due_date < date || (date === todayStr() && t.due_date === date && t.is_overdue));
+    const overdue_todos = all.filter(isOverdue);
+    const due_today_todos = all.filter((t) => t.status === 'open' && t.due_date === date && !isOverdue(t));
     const completed_today_todos = all.filter((t) => t.completed_at?.startsWith(date));
     const todayItems = plans.itemsOnDate(date);
     const todayCheckins = checkins.list({ from: date, to: date });
+    // 今日日程：与今天相交（跨天含今天；全天含今天），全天排最前
+    const calendar_events = db
+      .prepare(
+        `SELECT * FROM calendar_events WHERE date <= ? AND COALESCE(end_date, date) >= ?
+         ORDER BY date ASC, (start_time IS NULL) DESC, start_time ASC, id ASC`,
+      )
+      .all(date, date)
+      .map(mapCalendarEvent);
     const summary = {
       todo_done_count: completed_today_todos.length,
       plan_item_done_count: todayItems.filter((i) => i.status === 'done').length,
@@ -26,6 +35,7 @@ export function createTodayService(db: DbAdapter, plans: PlanService, checkins: 
       `${date}（周${week}）`,
       overdue_todos.length ? `${overdue_todos.length} 项待办已逾期` : null,
       due_today_todos.length ? `${due_today_todos.length} 项今天到期` : null,
+      calendar_events.length ? `日程 ${calendar_events.length} 项` : null,
       todayItems.length
         ? `学习安排 ${todayItems.length} 项（已完成 ${summary.plan_item_done_count}）`
         : '今日无学习安排',
@@ -42,6 +52,7 @@ export function createTodayService(db: DbAdapter, plans: PlanService, checkins: 
       streak: checkins.streak(),
       summary,
       summary_text: parts.join('；') + '。',
+      calendar_events,
     };
   };
 

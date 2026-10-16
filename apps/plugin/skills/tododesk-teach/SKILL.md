@@ -1,11 +1,11 @@
 ---
 name: tododesk-teach
-description: 按 TodoDesk 学习闭环规范执行教学：课程计划→逐日讲义导入→学习会话→测评留证→复习调整→知识卡片。当用户说「学习 X」「教我 X」「导入课程」时显式调用（不自动触发）。
+description: 按 Dayfolio 学习闭环规范执行教学：课程计划→逐日讲义导入→学习会话→测评留证→复习调整→知识卡片。当用户说「学习 X」「教我 X」「导入课程」时显式调用（不自动触发）。
 ---
 
-# TodoDesk 教学
+# Dayfolio 教学
 
-本技能让 agent 按 **TodoDesk 学习闭环规范**（`get_study_workflow` 工具返回的单一来源）执行教学。
+本技能让 agent 按 **Dayfolio 学习闭环规范**（`get_study_workflow` 工具返回的单一来源）执行教学。
 调用方式：**显式**（用户明确要求学习某主题时）——不自动触发、不冒称已自动调用。
 
 ## 来源与许可
@@ -13,14 +13,16 @@ description: 按 TodoDesk 学习闭环规范执行教学：课程计划→逐日
 教学流程思路改编自 [mattpocock/skills](https://github.com/mattpocock/skills) 的 teach 技能
 （MIT License, Copyright (c) 2026 Matt Pocock, commit `49dd158`）。上游使用
 `disable-model-invocation: true`（仅显式调用）——本改编保留同一语义。
-本文为 TodoDesk 自有改写，非上游原文复制；上游 MIT 许可全文随包保留在同目录 `LICENSE`。
+本文为 Dayfolio 自有改写，非上游原文复制；上游 MIT 许可全文随包保留在同目录 `LICENSE`。
 
 ## 前置
 
-本插件内置 TodoDesk MCP 服务器（`tododesk`），声明于 `mcp.json` / `.mcp.json`
+统一能力包内置 Dayfolio MCP 服务器（`tododesk`），声明于 `mcp.json` / `.mcp.json`
 （双宿主：Codex 与 ZCode；启动命令用 `${CLAUDE_PLUGIN_ROOT}/mcp/mcp-server.cjs`
 官方约定，任何工作目录均可启动）。`TODODESK_DB` 环境变量指定 SQLite 库路径
-（从宿主环境继承，与桌面 App 共用同一文件；stdio, 需 node ≥ 20）。
+（从宿主环境继承，与桌面 App 共用同一文件；stdio，需 Node 22.13+ 的 22.x 或 24.x）。
+
+未注册 MCP 时可使用能力包内 `runtime/call.mjs` 经 stdio 调用同一服务器。教学和通用、赛事技能共享一个服务声明；不会为每个技能重复注册服务器。
 
 ## 执行流程（透明规则见 get_study_workflow 返回的规范全文）
 

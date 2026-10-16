@@ -3,13 +3,23 @@ title: MCP 与 AI 接入
 description: 让 zcode 等 AI 客户端直接读写你的待办与计划
 ---
 
+## 页面操作区
+
+顶部操作栏可筛选工具或技能，并展示分组和工具总数。输入关键词后显示命中的工具数量；三个技能也按名称和说明筛选。
+
 ## 是什么
 
-TodoDesk 内置一个 MCP Server（`apps/mcp`），AI 客户端（如 zcode）接入后可以直接读写同一份数据库：查待办、加待办、制定学习计划、打卡、抓新闻，全部与 App 实时同步。
+Dayfolio 内置一个 MCP Server（`apps/mcp`），AI 客户端（如 zcode）接入后可以直接读写同一份数据库：查待办、加待办、制定学习计划、打卡、抓新闻，全部与 App 实时同步。
 
 ## 在 App 里查看
 
-侧边栏左下角「MCP」面板分「业务模块」与「应用本体」两个分区（后者对应「数据」面板的本体层），按组单列列出全部工具的能力与说明，支持关键词筛选——想了解「AI 能对我的数据做什么」直接翻这个面板即可，本页则说明接入方式与数据位置。
+侧边栏左下角「MCP」面板展示统一 AI 能力包与工具目录。通用操作、教学、赛事页面三个技能共用一个 `tododesk` MCP 服务入口。
+
+工具目录分「业务模块」与「应用本体」两个分区，直接从实际注册生成；完整工具数量与说明以该面板和客户端的工具列表为准。
+
+- **导出 / 更新能力包**：选择目录后，把随 App 提供的完整包写入其 `Dayfolio-Agent` 子目录。已由本功能导出的目录可原位更新，保留上一版；目录含人工修改或其他文件时会拒绝覆盖。
+- **检查接入包**：核对随包与上次导出副本的文件、版本，以及 App 的 PATH 中能找到的 Node。若客户端配置了 Node 绝对路径，应以客户端环境为准。
+- **随包 / 已导出版本**：分别表示 App 内能力包和导出副本的版本，不表示客户端已加载。导出不会改写客户端配置，也不会自动重启 MCP 会话；加载与重连按客户端方式完成。
 
 ## 接入方式
 
@@ -41,15 +51,37 @@ npm run build:mcp
 
 源码检出不会自动注册 MCP，也不会自动启动 AI 助手。若客户端找不到 `node`，将 `command` 改为本机 Node 可执行文件的绝对路径。其他客户端按照其配置格式添加同一个 stdio 服务器。
 
-## 教学插件
+## 统一技能与能力包
 
-仓库的 `apps/plugin/` 提供教学技能与内置 MCP 服务，分发前运行 `npm run plugin:build` 和 `npm run plugin:verify`。包内 `mcp.json` 与 `.mcp.json` 分别供两个宿主读取，必须一起保留；仓库根目录的个人 `.mcp.json` 不随源码分发。
+三个技能在 `packages/agent-kit/skills/` 统一维护：
+
+- `tododesk`：通用数据操作与专业技能导引。
+- `tododesk-teach`：学习计划、样课、讲义、会话和测评；样课仍需用户在 App 亲自确认。
+- `tododesk-sports`：生成体育或电竞赛事页面，并更新已有工具的数据；继续使用工具箱保存，不提供内置体育后台或自动定时采集。
+
+源码分发前运行 `npm run agent:build`、`npm run agent:verify`，完整包生成在 `dist/agent-kit/`。保留包内技能、运行时、MCP、宿主清单和发布记录文件，不单独拷贝技能目录。没有注册 MCP 的助手可使用包内 `runtime/call.mjs` 调用同一服务器。
+
+旧 `npm run plugin:build`、`npm run plugin:verify` 和 `apps/plugin/` 路径继续可用；旧插件身份 `tododesk-teach` 保留为兼容入口。新能力包身份为 `dayfolio`。同一客户端选择一种接入方式，避免同时加载新旧插件或重复注册同一个 MCP。
+
+现有手工 MCP 配置、服务名、工具名和 `TODODESK_DB` 均保持兼容。包内提供现有两种宿主格式的清单；实际插件加载是否支持，以客户端为准，目录导出与隔离协议测试不代表已完成宿主加载验收。
+
+维护与诊断命令：
+
+```bash
+npm run agent:build
+npm run agent:verify
+npm run agent:install -- --target /自选目录/Dayfolio-Agent --dry-run
+npm run agent:install -- --target /自选目录/Dayfolio-Agent
+npm run agent:doctor -- --target /自选目录/Dayfolio-Agent
+```
+
+安装命令只处理指定的能力包目录，不修改客户端配置。`--rollback` 可与原安装目标一起使用以恢复上一版文件；恢复前需核对旧 MCP 与当前数据库的兼容性，文件回退不会回退数据库。
 
 ## 数据位置
 
 数据库固定在 `~/Library/Application Support/tododesk/tododesk.db`，可用环境变量 `TODODESK_DB` 覆盖。**App 与 MCP 必须指向同一文件**，否则两边看到的数据会不一致。
 
-## 工具一览（80 个）
+## 常用工具（完整目录见 MCP 面板）
 
 | 工具 | 用途 |
 | --- | --- |
@@ -67,7 +99,8 @@ npm run build:mcp
 | `suggest_plan_adjustments` / `apply_plan_adjustments` | 未完成条目调整：预览（不写库）/ 按预览快照应用（只动未完成并同步待办） |
 | `preview_study_cards` / `export_study_cards` / `list_card_exports` | 待审知识卡片：预览 / 导出到指定目录（防重、不覆盖人工编辑）/ 导出历史 |
 | `checkin` | 每日打卡、对待办或计划条目打卡 |
-| `get_today` | 今日概览（逾期、安排、打卡状态、连续天数） |
+| `get_today` | 今日概览（逾期、安排、今日日程、打卡状态、连续天数） |
+| `list_calendar_events` / `add_calendar_event` / `update_calendar_event` / `delete_calendar_event` | 日程（个人日历）增删改查：跨天区间相交、全天/定时；与 App 今日页月历同源 |
 | `get_checkin_stats` | 打卡统计与最近记录 |
 | `create_review_schedule` | 按遗忘曲线批量生成复习计划与待办 |
 | `list_news` | 库内查询新闻（任务/来源/未读/收藏筛选、关键词、时间窗、分页；只读不联网） |
@@ -82,11 +115,12 @@ npm run build:mcp
 | `list_tool_categories` / `add_tool_category` / `rename_tool_category` / `delete_tool_category` | 工具箱分类管理 |
 | `list_object_types` | 列出本体全部对象/链接/动作类型定义（AI 的「数据字典」） |
 | `query_objects` / `get_object` | 按类型查询实例 / 读单个对象详情（含出链入链） |
-| `create_object` / `update_object` / `delete_object` | 任意类型（含自定义类型）的实例增删改 |
+| `create_object` / `update_object` / `delete_object` | 自定义实例增删改；系统对象仅允许更新用户扩展字段，内置字段走业务动作 |
 | `create_object_type` / `update_object_type` / `delete_object_type` | 对象类型管理（建表/加列/删列） |
+| `list_object_links` / `create_link` / `delete_link` | 关系双向分页、建立与精确解除（目标存在性、基数和删除规则生效） |
 | `create_link_type` / `delete_link_type` | 链接类型管理（类型间关系） |
 | `create_action_type` / `update_action_type` / `delete_action_type` | 动作类型管理（启停/创建/删除） |
-| `invoke_action` | 执行动作（内置或自定义，单事务） |
+| `invoke_action` | 执行共用业务命令或自定义动作；自定义声明式动作单事务 |
 
 日期类参数（`due_date`、`date` 等）除 `YYYY-MM-DD` 外，还接受 **today / tomorrow / yesterday** 与「今天 / 明天 / 后天 / 昨天」等别名，AI 说「加到今日待办」时无需先查日历。
 
@@ -94,6 +128,7 @@ npm run build:mcp
 
 - 「帮我看下现在有哪些待办」
 - 「把这个任务加到今日待办」
+- 「帮我记个日程：周五下午 3 点牙医」
 - 「加一条高优先级待办：周五前交报告」
 - 「把 ~/Downloads/色板.html 加到工具箱，分类放到效率工具」
 - 「帮我写个倒计时小工具放进工具箱」
@@ -105,3 +140,12 @@ npm run build:mcp
 - 「为今天学的《递归》知识点按遗忘曲线生成复习计划」
 - 「帮我建一个"读书笔记"的类型，要有书名、评分和心得字段，然后记一条《三体》9.5 分」
 - 「建一个"记一条心得"的动作：参数是内容，执行时自动建笔记并打上今天日期」
+
+
+## 本体写入边界
+
+所有公开业务写工具与 App 共用动作启停和业务校验。`list_object_types` 返回写入方式、适用对象和入口限制，使用 `invoke_action` 前先查看其参数结构；复杂动作的 `input`／`patch` 为结构化 JSON，不是 JSON 字符串。课程、笔记索引、自媒体内容等现有业务对象也可统一查询。系统内置字段裸写会返回推荐业务入口，不能用通用 CRUD 绕过样课确认、审核、新闻租约或学习证据规则。
+
+## 功能归属
+
+「学习计划」功能分组统一为「学习」。完成记录工具 `checkin`、`get_checkin_stats` 归入「待办」，不再单列打卡分组；底层工具名保持兼容。待办时段使用 `start_time` / `end_time`（同一天 HH:MM），两者须成对填写；均传 null 切回仅日期。

@@ -65,6 +65,124 @@ afterAll(async () => {
 });
 
 describe('MCP 端到端主流程', () => {
+  it('服务版本来自根版本，能力目录与实际公开工具一致', async () => {
+    const { version } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'));
+    expect(client.getServerVersion()).toMatchObject({ name: 'tododesk', version });
+    const catalog = JSON.parse(readFileSync(new URL('../dist/agent-catalog.json', import.meta.url), 'utf8'));
+    const actual = (await client.listTools()).tools.map(t => ({ name: t.name, desc: t.description })).sort((a, b) => a.name.localeCompare(b.name));
+    const published = catalog.tools.map((t: { name: string; desc: string }) => ({ name: t.name, desc: t.desc })).sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+    expect(actual).toEqual(published);
+    expect(catalog.version).toBe(version);
+    expect(catalog.skills.map((s: { id: string }) => s.id)).toEqual(['tododesk', 'tododesk-teach', 'tododesk-sports']);
+  });
+
+  it('阅读组合、幂等重放、修订冲突与只读执行记录通过真实 MCP 链路', async () => {
+    const call = async (name: string, args: Record<string, unknown>) => arg(await client.callTool({ name, arguments: args }));
+    await call('create_object_type', { api_name: 'e2e_reading', title: '阅读组合夹具', properties: [{ api_name: 'title', data_type: 'string', nullable: false }, { api_name: 'status', data_type: 'enum', enum_values: ['done', 'pending'], nullable: false }] });
+    await call('update_object_type', { api_name: 'todo', patch: { add_properties: [{ api_name: 'e2e_reading_ref', data_type: 'string' }] } });
+    await call('create_link_type', { api_name: 'e2e_reading_todos', title: '阅读复习', left_type: 'e2e_reading', right_type: 'todo', cardinality: 'one_to_many', fk_column: 'e2e_reading_ref' });
+    const defined = await call('create_action_type', { api_name: 'e2e_finish_reading', title: '完成阅读并安排复习', parameters: [{ name: 'title', data_type: 'string', required: true }], operations: [
+      { kind: 'create_object', objectType: 'e2e_reading', propertyMappings: { title: { source: { parameter: 'title' } }, status: { literal: 'done' } } },
+      { kind: 'invoke_command', command: 'add_todo', params: { title: { source: { parameter: 'title' } }, notes: { result: { step: 0, path: ['objectId'] } } } },
+      { kind: 'create_link', linkType: 'e2e_reading_todos', leftId: { result: { step: 0, path: ['objectId'] } }, rightId: { result: { step: 1, path: ['value', 'id'] } } },
+    ] });
+    expect(defined.ok).toBe(true);
+    const input = { action: 'e2e_finish_reading', params: { title: '阅读组合复习' }, options: { idempotencyKey: 'mcp-reading-1' } };
+    const first = await call('invoke_action', input);
+    expect(first.ok).toBe(true);
+    const replay = await call('invoke_action', input);
+    expect(replay.data).toMatchObject({ executionId: first.data.executionId, replayed: true });
+    const reading = (await call('query_objects', { object_type: 'e2e_reading' })).data.rows[0];
+    const todo = (await call('list_todos', { search: '阅读组合复习' })).data.todos[0];
+    expect(todo.notes).toBe(reading.id);
+    const actions = (await call('list_object_types', {})).data.actionTypes;
+    const update = actions.find((a: { template?: { targetName: string; operation: string } }) => a.template?.targetName === 'e2e_reading' && a.template.operation === 'update');
+    const preview = (await call('preview_action', { action: update.apiName, params: { id: reading.id, values: { title: '修改' } } })).data;
+    await call('update_object', { object_type: 'e2e_reading', id: reading.id, values: { status: 'pending' } });
+    const stale = await call('invoke_action', { action: update.apiName, params: { id: reading.id, values: { title: '修改' } }, options: { expectedDefinitionRevision: preview.definitionRevision, expectedObjects: preview.targets } });
+    expect(stale.code).toBe('REVISION_CONFLICT');
+    const runs = (await call('list_action_executions', { action: 'e2e_finish_reading' })).data;
+    expect(runs.rows.filter((r: { status: string }) => r.status === 'succeeded')).toHaveLength(1);
+    expect(JSON.stringify(runs)).not.toContain('result_json');
+    expect((await call('query_objects', { query: { version: 1, objectType: 'action_execution', select: ['request_key'] } })).code).toBe('FIELD_NOT_READABLE');
+    await call('delete_action_type', { api_name: 'e2e_finish_reading' });
+    await call('delete_link', { link_type: 'e2e_reading_todos', left_id: reading.id, right_id: todo.id });
+    await call('delete_link_type', { api_name: 'e2e_reading_todos' });
+    await call('delete_object', { object_type: 'e2e_reading', id: reading.id });
+    await call('delete_object_type', { api_name: 'e2e_reading' });
+    await call('update_object_type', { api_name: 'todo', patch: { drop_property: 'e2e_reading_ref' } });
+    await call('delete_todo', { id: todo.id });
+  });
+
+  it('统一查询与旧查询并存，数组/NULL/布尔、字段投影与错误经真实协议一致', async () => {
+    const call = async (name: string, args: Record<string, unknown>) => arg(await client.callTool({ name, arguments: args }));
+    await call('create_object_type', { api_name: 'query_e2e', title: '统一查询夹具', properties: [
+      { api_name: 'title', data_type: 'string', nullable: false },
+      { api_name: 'active', data_type: 'boolean' }, { api_name: 'note', data_type: 'string' },
+      { api_name: 'tags', data_type: 'json' },
+    ] });
+    const created = await call('create_object', { object_type: 'query_e2e', values: { title: '协议验收', active: true, tags: ['甲'] } });
+    const id = created.data.id;
+    const definitions = await call('list_object_types', {});
+    const updateAction = definitions.data.actionTypes.find((a: { template?: { targetName: string; operation: string } }) => a.template?.targetName === 'query_e2e' && a.template.operation === 'update');
+    expect(updateAction).toBeTruthy();
+    await call('update_action_type', { api_name: updateAction.apiName, patch: { status: 'disabled' } });
+    const blockedWrite = await call('update_object', { object_type: 'query_e2e', id, values: { title: '停用旁路' } });
+    expect(blockedWrite.code).toBe('ACTION_DISABLED');
+    await call('update_action_type', { api_name: updateAction.apiName, patch: { status: 'active' } });
+    const contract = await call('get_query_contract', { object_type: 'query_e2e' });
+    expect(contract.data.version).toBe(1);
+    const input = { version: 1, objectType: 'query_e2e', select: ['title', 'tags'], where: { and: [
+      { property: 'id', op: 'in', value: [id] }, { property: 'active', op: 'eq', value: true }, { property: 'note', op: 'is_null' },
+    ] }, includeTotal: true };
+    const result = await call('query_objects', { query: input });
+    expect(result.ok).toBe(true);
+    expect(result.data.rows).toEqual([{ id, title: '协议验收', tags: ['甲'] }]);
+    expect(result.data.total).toBe(1);
+    const grouped = await call('aggregate_objects', { query: { version: 1, objectType: 'query_e2e', groupBy: ['active'], metrics: [{ op: 'count', as: 'n' }], having: { property: 'n', op: 'gte', value: 1 } } });
+    expect(grouped.data.rows).toEqual([{ dimensions: { active: true }, metrics: { n: 1 } }]);
+    await call('create_object_type', { api_name: 'query_e2e_parent', title: '父对象', properties: [{ api_name: 'title', data_type: 'string' }] });
+    await call('update_object_type', { api_name: 'query_e2e', patch: { add_properties: [{ api_name: 'parent_id', data_type: 'string' }] } });
+    const parent = await call('create_object', { object_type: 'query_e2e_parent', values: { title: '父对象' } });
+    await call('create_link_type', { api_name: 'query_e2e_link', title: '关系', left_type: 'query_e2e_parent', right_type: 'query_e2e', cardinality: 'one_to_many', fk_column: 'parent_id' });
+    await call('create_link', { link_type: 'query_e2e_link', left_id: parent.data.id, right_id: id });
+    const related = await call('query_related_objects', { query: { version: 1, objectType: 'query_e2e_parent', id: parent.data.id, linkType: 'query_e2e_link', side: 'left', select: ['title'] } });
+    expect(related.data.rows).toEqual([{ id, title: '协议验收' }]);
+    const legacy = await call('query_objects', { object_type: 'query_e2e', filters: [{ property: 'id', op: 'in', value: [id] }, { property: 'note', op: 'eq', value: null }, { property: 'active', op: 'eq', value: true }] });
+    expect(legacy.data.rows[0].tags).toBe('["甲"]');
+    expect((await call('get_object', { query: { version: 1, objectType: 'query_e2e', id, select: ['active'] } })).data).toEqual({ id, active: true });
+    expect((await call('query_objects', { query: input, object_type: 'query_e2e' })).ok).toBe(false);
+    const denied = await call('query_objects', { query: { version: 1, objectType: 'news_task', select: ['claim_token'] } });
+    expect(denied.code).toBe('FIELD_NOT_READABLE');
+    await call('delete_link', { link_type: 'query_e2e_link', left_id: parent.data.id, right_id: id });
+    await call('delete_link_type', { api_name: 'query_e2e_link' });
+    await call('delete_object', { object_type: 'query_e2e_parent', id: parent.data.id });
+    await call('delete_object_type', { api_name: 'query_e2e_parent' });
+    await call('delete_object', { object_type: 'query_e2e', id });
+    await call('delete_object_type', { api_name: 'query_e2e' });
+  });
+
+  it('待办时段经专用工具和本体动作读写，完成后带精确打卡时间', async () => {
+    const call = async (name: string, args: Record<string, unknown>) => arg(await client.callTool({ name, arguments: args }));
+    const created = await call('add_todo', { title: '时段主链路', due_date: 'today', start_time: '09:00', end_time: '10:30' });
+    expect(created.ok).toBe(true);
+    const id = created.data.id;
+    expect(created.data).toMatchObject({ start_time: '09:00', end_time: '10:30' });
+    expect((await call('update_todo', { id, end_time: '08:00' })).ok).toBe(false);
+    expect((await call('update_todo', { id, end_time: '11:00' })).data.end_time).toBe('11:00');
+    const listed = await call('list_todos', { search: '时段主链路' });
+    expect(listed.data.todos[0]).toMatchObject({ start_time: '09:00', end_time: '11:00' });
+    expect((await call('invoke_action', { action: 'update_todo', params: { id, patch: { start_time: null, end_time: null } } })).ok).toBe(true);
+    const actionTodo = await call('invoke_action', { action: 'add_todo', params: { title: '动作时段', due_date: todayStr(), start_time: '14:00', end_time: '15:00' } });
+    expect(actionTodo.ok).toBe(true);
+    const actionList = await call('list_todos', { search: '动作时段' });
+    await call('delete_todo', { id: actionList.data.todos[0].id });
+    await call('complete_todo', { id });
+    const stats = await call('get_checkin_stats', {});
+    expect(stats.data.recent_checkins.find((r: any) => r.ref_type === 'todo' && r.ref_id === id).created_at).toMatch(/T\d{2}:\d{2}:\d{2}/);
+    await call('delete_todo', { id });
+  });
+
   it('列出工具：包含全部核心工具', async () => {
     const res = await client.listTools();
     const names = res.tools.map((t) => t.name);
@@ -74,7 +192,7 @@ describe('MCP 端到端主流程', () => {
       'update_study_plan', 'delete_study_plan', 'checkin', 'get_today', 'get_checkin_stats',
       'create_review_schedule', 'list_news', 'create_news_task', 'list_news_tasks',
       'claim_news_task', 'submit_news_items', 'complete_news_task', 'release_news_task', 'cancel_news_task',
-      'mark_news_read', 'mark_news_starred', 'mark_all_news_read', 'delete_news_item',
+      'mark_news_read', 'mark_news_starred', 'mark_all_news_read', 'delete_news_item', 'read_news_html',
       'get_study_workflow', 'draft_study_plan', 'list_study_drafts', 'get_study_draft',
       'confirm_study_plan_draft', 'cancel_study_plan_draft',
       'record_study_session', 'list_study_sessions',
@@ -99,9 +217,42 @@ describe('MCP 端到端主流程', () => {
       'attach_media_material', 'detach_media_material',
       'schedule_media_post', 'list_media_calendar', 'mark_media_published', 'cancel_media_schedule',
       'add_media_metric', 'list_media_metrics', 'get_media_stats', 'export_media_package',
+      // 日历（个人日程）
+      'list_calendar_events', 'add_calendar_event', 'update_calendar_event', 'delete_calendar_event',
     ]) {
       expect(names).toContain(expected);
     }
+  });
+
+  it('删除学习计划 action 与专用工具均支持连删或保留待办', async () => {
+    const meta = arg(await client.callTool({ name: 'list_object_types', arguments: {} })).data;
+    expect(meta.actionTypes.some((a: any) => a.apiName === 'delete_study_plan' && a.isBuiltin)).toBe(true);
+    for (const viaAction of [true, false]) {
+      for (const keepTodos of [false, true]) {
+        const created = arg(await client.callTool({ name: 'create_study_plan', arguments: {
+          title: '删除链路测试', start_date: todayStr(), items: [{ date: todayStr(), content: '关联待办' }],
+        } }));
+        expect(created.ok).toBe(true);
+        const plan = arg(await client.callTool({ name: 'get_study_plan', arguments: { id: created.data.plan_id } })).data;
+        await client.callTool({ name: 'update_plan_item', arguments: { id: plan.items[0].id, status: 'done' } });
+        const params = { id: plan.id, ...(keepTodos ? { delete_todos: false } : {}) };
+        const result = arg(await client.callTool(viaAction
+          ? { name: 'invoke_action', arguments: { action: 'delete_study_plan', params } }
+          : { name: 'delete_study_plan', arguments: params }));
+        expect(result.ok).toBe(true);
+        expect(arg(await client.callTool({ name: 'get_study_plan', arguments: { id: plan.id } })).ok).toBe(false);
+        const todos = arg(await client.callTool({ name: 'list_todos', arguments: { tag: `plan:${plan.id}` } })).data.todos;
+        expect(todos).toHaveLength(keepTodos ? 1 : 0);
+        const db = new DatabaseSync(join(dbDir, 'e2e.db'), { readOnly: true });
+        try {
+          expect(db.prepare("SELECT COUNT(*) AS n FROM checkins WHERE ref_type='plan_item' AND ref_id=?").get(plan.items[0].id)?.n).toBe(0);
+          expect(db.prepare('PRAGMA foreign_key_check').all()).toHaveLength(0);
+        } finally { db.close(); }
+        if (keepTodos) await client.callTool({ name: 'delete_todo', arguments: { id: plan.items[0].todo_id } });
+      }
+    }
+    const missing = arg(await client.callTool({ name: 'invoke_action', arguments: { action: 'delete_study_plan', params: { id: 999999 } } }));
+    expect(missing.ok).toBe(false);
   });
 
   it('本体工具：list_object_types → query_objects → invoke_action 全链路', async () => {
@@ -110,7 +261,7 @@ describe('MCP 端到端主流程', () => {
       expect.arrayContaining(['todo', 'study_plan', 'plan_item', 'checkin', 'news_item', 'tool', 'tool_category', 'day']),
     );
     expect(meta.linkTypes.length).toBeGreaterThanOrEqual(6);
-    expect(meta.actionTypes.filter((a: any) => a.isBuiltin)).toHaveLength(5);
+    expect(meta.actionTypes.filter((a: any) => a.isBuiltin).length).toBeGreaterThan(50);
 
     const added = arg(
       await client.callTool({ name: 'invoke_action', arguments: { action: 'add_todo', params: { title: '本体链路测试' } } }),
@@ -191,6 +342,8 @@ describe('MCP 端到端主流程', () => {
       }),
     );
     const folder2 = arg(await client.callTool({ name: 'create_object', arguments: { object_type: 'mcp_folder', values: { name: '生活' } } })).data;
+    const unlinked = await client.callTool({name:'delete_link',arguments:{link_type:'mcp_folder__note',left_id:folder.id,right_id:note.id}});
+    expect(unlinked.isError).not.toBe(true);
     const ran = arg(await client.callTool({ name: 'invoke_action', arguments: { action: 'mcp_move_note', params: { folder_id: folder2.id, note_id: note.id } } })).data;
     expect(ran.results[0].kind).toBe('create_link');
     const moved = arg(await client.callTool({ name: 'get_object', arguments: { object_type: 'mcp_note', id: note.id } })).data;
@@ -402,6 +555,68 @@ describe('MCP 端到端主流程', () => {
     expect(tasks.map((t: any) => t.id)).toContain(task.id);
   });
 
+  it('新闻本地快照：submit 带 html 落盘消毒 → list/read 回读 → 删除随行清理', async () => {
+    // 1. 建任务并认领
+    const task = arg(await client.callTool({ name: 'create_news_task', arguments: { title: 'e2e：X 快照任务', max_items: 2 } })).data;
+    const claim = arg(await client.callTool({ name: 'claim_news_task', arguments: { task_id: task.id, claimed_by: 'e2e-snap' } })).data;
+
+    // 2. 提交一条带 html 快照（X 来源）+ 一条普通 URL 条目
+    const snapshotHtml = [
+      '<article><h3>某作者的推文</h3>',
+      '<p>正文：新模型开源了。</p>',
+      '<img src="https://pbs.twimg.com/media/e2e.jpg" alt="配图">',
+      '<a href="https://x.com/author/status/999">原帖</a>',
+      "<script>alert('bad')</script>",
+      '<a href="javascript:alert(1)">危险链接</a>',
+      '</article>',
+    ].join('');
+    const submitted = arg(await client.callTool({ name: 'submit_news_items', arguments: {
+      task_id: task.id,
+      claim_token: claim.claim_token,
+      items: [
+        { title: 'e2e X 快照新闻', summary: '摘要：推文宣布开源。', source_url: 'https://x.com/author/status/999', source_name: 'X', published_at: new Date(Date.now() - 1800_000).toISOString(), html: snapshotHtml },
+        { title: 'e2e 普通网页新闻', summary: '摘要：普通页面。', source_url: 'https://example.com/e2e-snap-plain', published_at: new Date(Date.now() - 2400_000).toISOString() },
+      ],
+    } })).data;
+    expect(submitted.inserted).toBe(2);
+    const snap = submitted.items[0];
+    const plain = submitted.items[1];
+    expect(snap.content_kind).toBe('html');
+    expect(snap.html_rel).toMatch(/^[0-9a-f-]{36}\.html$/);
+    expect(plain.content_kind).toBe('url');
+    expect(plain.html_rel).toBeNull();
+
+    // 3. 文件真实落盘在库旁 news/ 目录，且已消毒（无脚本/危险协议，保留图床外链），带 charset
+    const abs = join(dbDir, 'news', snap.html_rel);
+    expect(existsSync(abs)).toBe(true);
+    const saved = readFileSync(abs, 'utf8');
+    expect(saved).not.toContain('<script');
+    expect(saved).not.toContain('javascript:');
+    expect(saved).toContain('https://pbs.twimg.com/media/e2e.jpg');
+    expect(saved).toMatch(/<meta charset="utf-8">/);
+
+    // 4. list_news 携带内容形态；read_news_html 回读快照原文，url 条目返回 null
+    const listed = arg(await client.callTool({ name: 'list_news', arguments: { task_id: task.id } })).data;
+    expect(listed.news.find((n: any) => n.id === snap.id).content_kind).toBe('html');
+    const back = arg(await client.callTool({ name: 'read_news_html', arguments: { id: snap.id } })).data;
+    expect(back.content_kind).toBe('html');
+    expect(back.missing).toBe(false);
+    expect(back.html).toContain('新模型开源了');
+    expect(arg(await client.callTool({ name: 'read_news_html', arguments: { id: plain.id } })).data).toMatchObject({ content_kind: 'url', html: null });
+
+    // 5. 空快照整批拒绝（原子性），不占用预算
+    const bad = await client.callTool({ name: 'submit_news_items', arguments: { task_id: task.id, claim_token: claim.claim_token, items: [{ title: 'e2e 空快照', summary: 'x。', source_url: 'https://x.com/author/status/1000', published_at: new Date(Date.now() - 1200_000).toISOString(), html: ' ' }] } });
+    expect(bad.isError).toBe(true);
+    expect(arg(bad).error).toContain('html 快照不能为空');
+
+    // 6. 删除快照新闻：文件随行清理，指纹防回流
+    const del = arg(await client.callTool({ name: 'delete_news_item', arguments: { id: snap.id } })).data;
+    expect(del.deleted).toBe(true);
+    expect(del.html_removed).toBe(1);
+    expect(existsSync(abs)).toBe(false);
+    await client.callTool({ name: 'complete_news_task', arguments: { task_id: task.id, claim_token: claim.claim_token, note: 'e2e 快照链路完成' } });
+  });
+
    it('新闻删除：delete_news_item 事务删除、指纹防回流、媒体引用解除、预算不返还、幂等', async () => {
      // 1. 真实提交路径造 2 条 + 一条引用它的自媒体选题
      const task = arg(await client.callTool({ name: 'create_news_task', arguments: { title: 'e2e：删除任务', max_items: 2 } })).data;
@@ -582,6 +797,83 @@ describe('MCP 端到端主流程', () => {
     expect(existsSync(toolDir)).toBe(false);
     const listed2 = arg(await client.callTool({ name: 'list_tools', arguments: {} }));
     expect(listed2.data.tools.find((t: any) => t.id === id)).toBeUndefined();
+  });
+});
+
+describe('日历模块（MCP 主链路：读写对称，App 今日页同源）', () => {
+  it('add（别名日期/颜色别名/跨天）→ list 区间相交 → get_today 带出今日日程 → update 部分更新 → delete', async () => {
+    const t = todayStr();
+    // 1. 新建：今天全天（别名颜色）、明天 09:30–11:00、跨天（今天→后天）
+    const ev1 = arg(await client.callTool({ name: 'add_calendar_event', arguments: { title: '日历链路：全天事项', date: '今天', color: '蓝' } }));
+    expect(ev1.ok).toBe(true);
+    expect(ev1.data.date).toBe(t);
+    expect(ev1.data.color).toBe('blue');
+    expect(ev1.data.start_time).toBeNull();
+    expect(ev1.data.source).toBe('mcp');
+    const ev2 = arg(await client.callTool({ name: 'add_calendar_event', arguments: { title: '日历链路：晨会', date: '明天', start_time: '09:30', end_time: '11:00', note: '带时间' } }));
+    expect(ev2.ok).toBe(true);
+    expect(ev2.data.date).toBe(addDays(t, 1));
+    const ev3 = arg(await client.callTool({ name: 'add_calendar_event', arguments: { title: '日历链路：跨城出差', date: t, end_date: addDays(t, 2) } }));
+    expect(ev3.ok).toBe(true);
+
+    // 2. list 区间相交：后天（区间 [t, t+2]）能同时看到三条；单查「今天」也命中跨天日程
+    const range = arg(await client.callTool({ name: 'list_calendar_events', arguments: { from: '今天', to: addDays(t, 2) } }));
+    const titles = range.data.events.map((e: any) => e.title);
+    expect(titles).toContain('日历链路：全天事项');
+    expect(titles).toContain('日历链路：晨会');
+    expect(titles).toContain('日历链路：跨城出差');
+    const onlyToday = arg(await client.callTool({ name: 'list_calendar_events', arguments: {} }));
+    expect(onlyToday.data.events.map((e: any) => e.title)).toContain('日历链路：跨城出差');
+
+    // 3. get_today 集成：今日日程含全天与跨天，全天排最前
+    const today = arg(await client.callTool({ name: 'get_today', arguments: {} }));
+    const todayTitles = today.data.calendar_events.map((e: any) => e.title);
+    expect(todayTitles).toContain('日历链路：全天事项');
+    expect(todayTitles).toContain('日历链路：跨城出差');
+    expect(todayTitles.indexOf('日历链路：全天事项')).toBeLessThan(todayTitles.indexOf('日历链路：跨城出差'));
+    expect(today.data.summary_text).toContain('日程');
+
+    // 4. update 只传要改的字段：颜色不被重置、时间可改；显式传 null 清除结束日期
+    const upd = arg(await client.callTool({ name: 'update_calendar_event', arguments: { id: ev3.data.id, title: '日历链路：出差（改期）', end_date: null } }));
+    expect(upd.ok).toBe(true);
+    expect(upd.data.title).toBe('日历链路：出差（改期）');
+    expect(upd.data.end_date).toBeNull();
+    expect(upd.data.color).toBe('blue'); // 未传颜色不得被重置
+    const upd2 = arg(await client.callTool({ name: 'update_calendar_event', arguments: { id: ev2.data.id, start_time: '08:00' } }));
+    expect(upd2.data.start_time).toBe('08:00');
+    expect(upd2.data.end_time).toBe('11:00'); // 未传字段保持原值
+    const upd3 = arg(await client.callTool({ name: 'update_calendar_event', arguments: { id: ev2.data.id, start_time: '10:00', end_time: '12:00' } }));
+    expect(upd3.data.start_time).toBe('10:00');
+    expect(upd3.data.end_time).toBe('12:00');
+
+    // 5. search 命中标题/备注；delete 后不可再查
+    const found = arg(await client.callTool({ name: 'list_calendar_events', arguments: { search: '带时间' } }));
+    expect(found.data.events.length).toBe(1);
+    for (const id of [ev1.data.id, ev2.data.id, ev3.data.id]) {
+      arg(await client.callTool({ name: 'delete_calendar_event', arguments: { id } }));
+    }
+    const after = arg(await client.callTool({ name: 'list_calendar_events', arguments: { search: '日历链路' } }));
+    expect(after.data.events.length).toBe(0);
+    const gone = await client.callTool({ name: 'delete_calendar_event', arguments: { id: ev1.data.id } });
+    expect(gone.isError).toBe(true); // 不存在的日程删除报错
+  });
+
+  it('边界校验：非法时间/日期倒置/全天带结束时间/未知颜色/区间倒置被拒', async () => {
+    const t = todayStr();
+    const badTime = await client.callTool({ name: 'add_calendar_event', arguments: { title: 'x', date: t, start_time: '25:00' } });
+    expect(badTime.isError).toBe(true);
+    const badRange = await client.callTool({ name: 'add_calendar_event', arguments: { title: 'x', date: t, end_date: addDays(t, -1) } });
+    expect(badRange.isError).toBe(true);
+    const allDayEnd = await client.callTool({ name: 'add_calendar_event', arguments: { title: 'x', date: t, end_time: '10:00' } });
+    expect(allDayEnd.isError).toBe(true);
+    const endTimeFirst = await client.callTool({ name: 'add_calendar_event', arguments: { title: 'x', date: t, start_time: '11:00', end_time: '10:00' } });
+    expect(endTimeFirst.isError).toBe(true);
+    const badColor = await client.callTool({ name: 'add_calendar_event', arguments: { title: 'x', date: t, color: 'pink' } });
+    expect(badColor.isError).toBe(true);
+    const ok = arg(await client.callTool({ name: 'add_calendar_event', arguments: { title: '临时校验事件', date: t } }));
+    const badUpdate = await client.callTool({ name: 'update_calendar_event', arguments: { id: ok.data.id, end_date: '2020-01-01' } });
+    expect(badUpdate.isError).toBe(true);
+    arg(await client.callTool({ name: 'delete_calendar_event', arguments: { id: ok.data.id } }));
   });
 });
 
@@ -1467,7 +1759,7 @@ describe('知识库 vault（MCP 只读联动主链路）', () => {
     expect(bad2.ok).toBe(false);
   });
 
-  it('概念关联：link → 查询 → 解除（只写 TodoDesk 库）', async () => {
+  it('概念关联：link → 查询 → 解除（只写 Dayfolio 库）', async () => {
     const link = arg(
       await client.callTool({
         name: 'link_concept_note',
@@ -1605,5 +1897,47 @@ describe('自媒体工作流（MCP 主链路：agent 写稿 + 用户审核红线
     );
     expect(studyIn.ok).toBe(false);
     expect(studyIn.error).toContain('vault');
+  });
+});
+
+
+describe('轻量本体公开契约',()=>{
+  it('系统状态裸写拒绝，停用动作对专用 MCP 同样生效',async()=>{
+    const todo=arg(await client.callTool({name:'add_todo',arguments:{title:'写边界验收'}})).data;
+    expect(arg(await client.callTool({name:'update_object',arguments:{object_type:'todo',id:todo.id,values:{status:'done'}}})).ok).toBe(false);
+    await client.callTool({name:'update_action_type',arguments:{api_name:'complete_todo',patch:{status:'disabled'}}});
+    try {const denied=arg(await client.callTool({name:'complete_todo',arguments:{id:todo.id}}));expect(denied.ok).toBe(false);expect(denied.error).toContain('ACTION_DISABLED');}
+    finally {await client.callTool({name:'update_action_type',arguments:{api_name:'complete_todo',patch:{status:'active'}}});}
+    const done=arg(await client.callTool({name:'invoke_action',arguments:{action:'complete_todo',params:{id:todo.id}}}));expect(done.ok).toBe(true);
+    await client.callTool({name:'delete_todo',arguments:{id:todo.id}});
+  });
+  it('目录包含现有业务对象，通用任务详情不返回认领令牌',async()=>{
+    const meta=arg(await client.callTool({name:'list_object_types',arguments:{}})).data;
+    for(const type of ['course','course_lesson','course_overview','vault','vault_note','media_content','media_metric','card_export'])expect(meta.objectTypes.some((t:{apiName:string})=>t.apiName===type)).toBe(true);
+    const task=arg(await client.callTool({name:'create_news_task',arguments:{title:'凭据读取边界'}})).data;
+    const claim=arg(await client.callTool({name:'claim_news_task',arguments:{task_id:task.id}})).data;
+    expect(claim.claim_token).toBeTruthy();
+    const obj=arg(await client.callTool({name:'get_object',arguments:{object_type:'news_task',id:task.id}})).data;
+    expect(obj.row).not.toHaveProperty('claim_token');
+    expect(arg(await client.callTool({name:'complete_news_task',arguments:{task_id:task.id,claim_token:claim.claim_token,note:'零条验收完成'}})).ok).toBe(true);
+  });
+  it('从素材反查内容，重复关联幂等，解除通过同一服务',async()=>{
+    const content=arg(await client.callTool({name:'add_media_content',arguments:{title:'关系验收内容'}})).data;
+    const material=arg(await client.callTool({name:'add_media_material',arguments:{title:'关系验收素材'}})).data;
+    const args={link_type:'media_content__media_material',left_id:content.id,right_id:material.id};
+    expect(arg(await client.callTool({name:'create_link',arguments:args})).data.created).toBe(true);
+    expect(arg(await client.callTool({name:'create_link',arguments:args})).data.created).toBe(false);
+    const links=arg(await client.callTool({name:'list_object_links',arguments:{object_type:'media_material',id:material.id,link_type:args.link_type,side:'right'}})).data;
+    expect(links.items.some((r:{targetId:number})=>r.targetId===content.id)).toBe(true);
+    expect(arg(await client.callTool({name:'delete_link',arguments:args})).data.deleted).toBe(true);
+    await client.callTool({name:'delete_media_content',arguments:{id:content.id}});await client.callTool({name:'delete_media_material',arguments:{id:material.id}});
+  });
+  it('通用动作不可代替 App 的平台审核',async()=>{
+    const content=arg(await client.callTool({name:'add_media_content',arguments:{title:'审核边界'}})).data;
+    const version=arg(await client.callTool({name:'add_media_version',arguments:{content_id:content.id,platform:'weixin',body:'正文'}})).data;
+    await client.callTool({name:'submit_media_version',arguments:{id:version.id}});
+    const result=arg(await client.callTool({name:'invoke_action',arguments:{action:'review_media_version',params:{id:version.id,action:'approve'}}}));
+    expect(result.ok).toBe(false);expect(result.error).toContain('ACTION_CHANNEL_DENIED');
+    await client.callTool({name:'delete_media_content',arguments:{id:content.id}});
   });
 });

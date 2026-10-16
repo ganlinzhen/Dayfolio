@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1560 1110" role="img" aria-labelledby="title desc">
+  <title id="title">Dayfolio 当前项目数据流架构</title>
+  <desc id="desc">桌面 App 经预加载与 IPC，外部 AI 经 stdio MCP，分别实例化共享 core 代码，通过不同 SQLite 驱动访问同一数据库。课程、工具与新闻文件位于数据库旁，外部知识库只读扫描，导出写入用户指定目录。</desc>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern>
+    <marker id="cyan" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto-start-reverse"><path d="M0 0L9 4L0 8Z" fill="#22d3ee"/></marker>
+    <marker id="green" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto-start-reverse"><path d="M0 0L9 4L0 8Z" fill="#34d399"/></marker>
+    <marker id="purple" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto-start-reverse"><path d="M0 0L9 4L0 8Z" fill="#a78bfa"/></marker>
+    <marker id="slate" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto-start-reverse"><path d="M0 0L9 4L0 8Z" fill="#94a3b8"/></marker>
+  </defs>
+  <style>
+    text { font-family: 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif; fill:#e2e8f0; }
+    .heading { font-size:18px; font-weight:600; }
+    .body { font-size:14px; fill:#cbd5e1; }
+    .small { font-size:12px; fill:#94a3b8; }
+    .label { font-size:13px; fill:#cbd5e1; paint-order:stroke; stroke:#0f172a; stroke-width:6px; stroke-linejoin:round; }
+    .code { font-family:'SF Mono', 'Menlo', 'PingFang SC', monospace; font-size:13px; fill:#cbd5e1; }
+    .line { fill:none; stroke-width:1.8; stroke-linejoin:round; }
+    .files { stroke-dasharray:7 5; }
+  </style>
+  <rect width="1560" height="1110" fill="#0f172a"/>
+  <rect width="1560" height="1110" fill="url(#grid)"/>
+
+  <!-- 进程与代码层边界 -->
+  <rect x="30" y="130" width="645" height="250" rx="14" fill="none" stroke="#22d3ee" stroke-opacity="0.45" stroke-dasharray="8 5"/>
+  <text x="48" y="153" class="small" style="fill:#22d3ee">桌面运行环境 · Electron 渲染进程 + 主进程</text>
+  <rect x="30" y="425" width="645" height="245" rx="14" fill="none" stroke="#94a3b8" stroke-opacity="0.45" stroke-dasharray="8 5"/>
+  <text x="48" y="448" class="small">AI 执行环境 + 独立 MCP 进程</text>
+  <rect x="725" y="130" width="360" height="570" rx="14" fill="none" stroke="#34d399" stroke-dasharray="8 5"/>
+  <text x="745" y="154" class="small" style="fill:#34d399">packages/core · 共享代码层</text>
+  <rect x="1155" y="130" width="375" height="560" rx="14" fill="none" stroke="#a78bfa" stroke-opacity="0.6" stroke-dasharray="8 5"/>
+  <text x="1175" y="154" class="small" style="fill:#a78bfa">本地持久化 · App / MCP 共享</text>
+
+  <!-- 业务调用与结果 -->
+  <path class="line" d="M280 270H375" stroke="#22d3ee" marker-start="url(#cyan)" marker-end="url(#cyan)"/>
+  <text x="327" y="250" text-anchor="middle" class="label">调用 / 结果</text>
+  <path class="line" d="M655 270H745" stroke="#22d3ee" marker-start="url(#cyan)" marker-end="url(#cyan)"/>
+  <text x="700" y="250" text-anchor="middle" class="label">core</text>
+  <path class="line" d="M280 525H375" stroke="#94a3b8" marker-start="url(#slate)" marker-end="url(#slate)"/>
+  <text x="327" y="505" text-anchor="middle" class="label">stdio</text>
+  <path class="line" d="M655 525H745" stroke="#34d399" marker-start="url(#green)" marker-end="url(#green)"/>
+  <text x="700" y="505" text-anchor="middle" class="label">core</text>
+  <path class="line" d="M165 615V578" stroke="#94a3b8" marker-end="url(#slate)"/>
+  <path class="line" d="M1065 270H1175" stroke="#a78bfa" marker-start="url(#purple)" marker-end="url(#purple)"/>
+  <text x="1120" y="250" text-anchor="middle" class="label">SQL</text>
+  <path class="line" d="M1065 485H1175" stroke="#a78bfa" marker-start="url(#purple)" marker-end="url(#purple)"/>
+  <text x="1120" y="465" text-anchor="middle" class="label">文件读写</text>
+  <!-- 文件展示与外部目录，均沿组件外侧布线 -->
+  <path class="line files" d="M1220 645V725H515V775" stroke="#a78bfa" marker-end="url(#purple)"/>
+  <text x="845" y="715" text-anchor="middle" class="label">工具 / 新闻本地协议；课程 HTML 经 core 与 IPC 返回</text>
+  <path class="line files" d="M375 820H320V345H280" stroke="#22d3ee" marker-end="url(#cyan)"/>
+  <text x="315" y="710" text-anchor="end" class="label">HTML 展示</text>
+  <path class="line files" d="M1175 815H1110V640H1065" stroke="#94a3b8" marker-end="url(#slate)"/>
+  <text x="1140" y="757" text-anchor="middle" class="label">只读</text>
+  <path class="line" d="M955 680V950H1175" stroke="#34d399" marker-end="url(#green)"/>
+  <text x="1065" y="936" text-anchor="middle" class="label">卡片 / 素材包</text>
+
+  <!-- 桌面与 Agent 入口 -->
+  <rect x="50" y="185" width="230" height="170" rx="10" fill="#0f172a"/>
+  <rect x="50" y="185" width="230" height="170" rx="10" fill="#083344" fill-opacity="0.65" stroke="#22d3ee"/>
+  <text x="165" y="219" text-anchor="middle" class="heading">用户 · 桌面 App</text>
+  <text x="165" y="251" text-anchor="middle" class="body">React 业务面板</text>
+  <text x="165" y="277" text-anchor="middle" class="body">今日 / 学习 / 新闻 / 数据</text>
+  <text x="165" y="303" text-anchor="middle" class="body">快速录入与菜单栏</text>
+  <text x="165" y="331" text-anchor="middle" class="small">渲染层通过预加载 API 访问</text>
+
+  <rect x="375" y="185" width="280" height="170" rx="10" fill="#0f172a"/>
+  <rect x="375" y="185" width="280" height="170" rx="10" fill="#78350f" fill-opacity="0.3" stroke="#fb923c"/>
+  <text x="515" y="219" text-anchor="middle" class="heading">预加载桥 → 主进程</text>
+  <text x="515" y="252" text-anchor="middle" class="code">window.tododesk</text>
+  <text x="515" y="278" text-anchor="middle" class="body">ipcRenderer.invoke → IPC 处理器</text>
+  <text x="515" y="304" text-anchor="middle" class="small">业务 IPC + 数据管理 IPC</text>
+  <text x="515" y="331" text-anchor="middle" class="small">菜单栏操作直接调用主进程 core</text>
+
+  <rect x="50" y="470" width="230" height="108" rx="10" fill="#0f172a"/>
+  <rect x="50" y="470" width="230" height="108" rx="10" fill="#1e293b" fill-opacity="0.65" stroke="#94a3b8"/>
+  <text x="165" y="502" text-anchor="middle" class="heading">AI 客户端 / Agent</text>
+  <text x="165" y="532" text-anchor="middle" class="body">检索、核验、生成、工具调用</text>
+  <text x="165" y="557" text-anchor="middle" class="small">可经技能脚本直连同一 MCP</text>
+
+  <rect x="375" y="470" width="280" height="140" rx="10" fill="#0f172a"/>
+  <rect x="375" y="470" width="280" height="140" rx="10" fill="#064e3b" fill-opacity="0.5" stroke="#34d399"/>
+  <text x="515" y="502" text-anchor="middle" class="heading">MCP Server</text>
+  <text x="515" y="532" text-anchor="middle" class="body">stdio · Zod 校验 · 输入归一化</text>
+  <text x="515" y="559" text-anchor="middle" class="body">业务工具 + 本体工具</text>
+  <text x="515" y="587" text-anchor="middle" class="small">工具结果 → JSON 文本 / 错误</text>
+
+  <rect x="50" y="615" width="230" height="35" rx="6" fill="#0f172a"/>
+  <rect x="50" y="615" width="230" height="35" rx="6" fill="#1e293b" stroke="#64748b"/>
+  <text x="165" y="638" text-anchor="middle" class="small">网页来源 / 课程暂存包</text>
+
+  <!-- 共享 core 只表示代码复用，两个进程各自实例化 -->
+  <rect x="745" y="180" width="320" height="500" rx="10" fill="#0f172a"/>
+  <rect x="745" y="180" width="320" height="500" rx="10" fill="#064e3b" fill-opacity="0.36" stroke="#34d399"/>
+  <text x="905" y="212" text-anchor="middle" class="heading">公共业务写入口 / 动作</text>
+  <text x="905" y="241" text-anchor="middle" class="body">动作启停 · 参数 · 对象引用校验</text>
+  <text x="905" y="268" text-anchor="middle" class="body">内置动作 → 命令 → 业务服务</text>
+  <text x="905" y="295" text-anchor="middle" class="small">人工确认 / 审核使用专门 App 入口</text>
+  <line x1="765" y1="318" x2="1045" y2="318" stroke="#34d399" stroke-opacity="0.3"/>
+  <text x="905" y="352" text-anchor="middle" class="heading">业务服务与跨模块联动</text>
+  <text x="905" y="384" text-anchor="middle" class="body">待办 / 计划 / 打卡 / 今日汇总</text>
+  <text x="905" y="412" text-anchor="middle" class="body">复习 / 学习闭环 / 课程</text>
+  <text x="905" y="440" text-anchor="middle" class="body">新闻任务 / 工具资产</text>
+  <text x="905" y="468" text-anchor="middle" class="body">知识库索引 / 创作工作流</text>
+  <text x="905" y="496" text-anchor="middle" class="small">查询方法直接读取；写方法经 facade</text>
+  <line x1="765" y1="518" x2="1045" y2="518" stroke="#34d399" stroke-opacity="0.3"/>
+  <text x="905" y="551" text-anchor="middle" class="heading">本体与通用数据入口</text>
+  <text x="905" y="581" text-anchor="middle" class="body">对象 / 链接 / 动作类型元数据</text>
+  <text x="905" y="609" text-anchor="middle" class="body">对象仓储 · 关系约束 · DSL 动作</text>
+  <text x="905" y="639" text-anchor="middle" class="small">自定义数据可写；系统核心字段走动作</text>
+  <text x="905" y="665" text-anchor="middle" class="small">createCore() · 每进程分别实例化</text>
+
+  <!-- 共享数据库与文件 -->
+  <rect x="1175" y="185" width="335" height="215" rx="10" fill="#0f172a"/>
+  <rect x="1175" y="185" width="335" height="215" rx="10" fill="#4c1d95" fill-opacity="0.38" stroke="#a78bfa"/>
+  <text x="1342" y="219" text-anchor="middle" class="heading">共享 SQLite · tododesk.db</text>
+  <text x="1342" y="250" text-anchor="middle" class="body">业务记录 / 状态 / 任务租约</text>
+  <text x="1342" y="277" text-anchor="middle" class="body">本体元数据 / 自定义对象与关系</text>
+  <line x1="1195" y1="294" x2="1490" y2="294" stroke="#a78bfa" stroke-opacity="0.3"/>
+  <text x="1342" y="321" text-anchor="middle" class="code">DbAdapter · App: better-sqlite3</text>
+  <text x="1342" y="347" text-anchor="middle" class="code">MCP: node:sqlite</text>
+  <text x="1342" y="376" text-anchor="middle" class="small">WAL · 外键 · 写锁等待 · 版本化迁移</text>
+
+  <rect x="1175" y="445" width="335" height="200" rx="10" fill="#0f172a"/>
+  <rect x="1175" y="445" width="335" height="200" rx="10" fill="#4c1d95" fill-opacity="0.38" stroke="#a78bfa"/>
+  <text x="1342" y="478" text-anchor="middle" class="heading">数据库旁的文件资产</text>
+  <text x="1342" y="510" text-anchor="middle" class="code">courses/&lt;slug&gt;/ · 课程 / 讲义</text>
+  <text x="1342" y="540" text-anchor="middle" class="code">tools/&lt;id&gt;/ · HTML 工具</text>
+  <text x="1342" y="570" text-anchor="middle" class="code">news/&lt;uuid&gt;.html · 新闻快照</text>
+  <text x="1342" y="605" text-anchor="middle" class="small">根目录从 dirname(db) 推导</text>
+  <text x="1342" y="629" text-anchor="middle" class="small">元数据 / 状态 / 相对路径存 SQLite</text>
+
+  <rect x="375" y="775" width="280" height="110" rx="10" fill="#0f172a"/>
+  <rect x="375" y="775" width="280" height="110" rx="10" fill="#78350f" fill-opacity="0.3" stroke="#fb923c"/>
+  <text x="515" y="807" text-anchor="middle" class="heading">主进程文件读取 → 渲染</text>
+  <text x="515" y="837" text-anchor="middle" class="code">tool-file:// / news-file://</text>
+  <text x="515" y="864" text-anchor="middle" class="small">工具 / 快照 iframe；讲义 HTML 走 IPC</text>
+
+  <rect x="1175" y="775" width="335" height="95" rx="10" fill="#0f172a"/>
+  <rect x="1175" y="775" width="335" height="95" rx="10" fill="#1e293b" fill-opacity="0.65" stroke="#94a3b8"/>
+  <text x="1342" y="808" text-anchor="middle" class="heading">外部知识库 Markdown</text>
+  <text x="1342" y="839" text-anchor="middle" class="body">只读原文件 · 索引与关联入 SQLite</text>
+
+  <rect x="1175" y="915" width="335" height="85" rx="10" fill="#0f172a"/>
+  <rect x="1175" y="915" width="335" height="85" rx="10" fill="#1e293b" fill-opacity="0.65" stroke="#94a3b8"/>
+  <text x="1342" y="947" text-anchor="middle" class="heading">用户指定导出目录</text>
+  <text x="1342" y="977" text-anchor="middle" class="body">待审学习卡片 / 创作素材包</text>
+
+  <!-- 说明与图例，独立于进程区域 -->
+  <text x="50" y="947" class="body">新闻采集与课程生成由外部 Agent 执行；任务与认领状态持久化在 SQLite。</text>
+  <text x="50" y="977" class="small">图为源码调用结构；共享数据库后的界面更新仍依赖各面板重新查询。</text>
+  <line x1="50" y1="1030" x2="110" y2="1030" stroke="#34d399" stroke-width="2" marker-end="url(#green)"/>
+  <text x="125" y="1035" class="small">业务调用 / 持久化访问</text>
+  <line x1="325" y1="1030" x2="385" y2="1030" stroke="#a78bfa" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#purple)"/>
+  <text x="400" y="1035" class="small">文件读取 / 内容展示</text>
+  <line x1="600" y1="1030" x2="660" y2="1030" stroke="#22d3ee" stroke-width="2" marker-start="url(#cyan)" marker-end="url(#cyan)"/>
+  <text x="675" y="1035" class="small">调用 / 数据返回</text>
+  <text x="50" y="1075" class="small">当前工作区源码快照 · 2026-10-13 · 详细数据流及源码索引见 data-flow-architecture.md</text>
+  <text x="50" y="58" font-size="30" font-weight="700">Dayfolio · 数据流架构</text>
+  <text x="50" y="94" class="body">双入口，共享业务规则；SQLite 保存状态，库旁目录保存文件资产。</text>
+</svg>
