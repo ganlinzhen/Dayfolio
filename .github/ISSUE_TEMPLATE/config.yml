@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用指南
+    url: https://github.com/ganlinzhen/Dayfolio/blob/main/apps/help/docs/00-quickstart.md
+    about: 先了解各模块的使用方式和常见边界。
+  - name: AI 助手接入
+    url: https://github.com/ganlinzhen/Dayfolio/blob/main/apps/help/docs/08-mcp.md
+    about: 查看 AI 客户端接入、能力包和诊断说明。

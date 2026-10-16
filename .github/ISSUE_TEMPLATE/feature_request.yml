@@ -1,0 +1,33 @@
+name: 功能建议
+description: 描述你的使用场景，以及希望改善的体验。
+title: "[建议] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎分享想法。比起先确定按钮或实现方式，我们更想了解你希望完成什么，以及现在卡在哪里。
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 你想完成什么
+      description: 描述一个具体的日常场景。
+      placeholder: 当我……时，希望能……，这样就可以……
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 目前遇到的困难
+      description: 现在怎样完成这件事？哪里不方便？
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 你的建议
+      description: 可附操作描述、草图或参考示例，也可以只描述期望效果。
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 其他可行办法
+      description: 如果考虑过其他方式，也欢迎补充。

@@ -1,0 +1,54 @@
+name: 问题反馈
+description: 报告使用中遇到的异常，帮助我们定位与修复。
+title: "[问题] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请先搜索已有 Issue。截图与日志请隐去个人内容、账号及凭证，无需上传数据库或完整课程文件。
+  - type: input
+    id: version
+    attributes:
+      label: Dayfolio 版本
+      description: 在 App 左下角「帮助」旁查看；源码运行也可以填写提交编号。
+      placeholder: 版本号或提交编号
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 使用环境
+      description: 请填写 macOS 版本、芯片类型；涉及 AI 时补充客户端名称和版本。
+      placeholder: macOS 版本 / Apple 芯片或 Intel / AI 客户端（如适用）
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 如何重现
+      description: 从哪个页面开始，做了哪些操作？
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 出现……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望的结果
+      placeholder: 你原本希望发生什么？
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际的结果
+      description: 可附错误提示、经过脱敏的截图或相关日志。
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充信息
+      description: 是否每次都能重现？升级前是否正常？有没有临时解决办法？
