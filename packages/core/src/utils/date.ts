@@ -47,10 +47,10 @@ const DATE_INPUT_ALIASES: Record<string, number> = {
  * 宽松日期解析（agent 输入友好）：支持 today/tomorrow/yesterday 及中文别名
  * 「今天/明天/后天/昨天」，其余按 YYYY-MM-DD 严格校验；一律返回绝对日期。
  */
-export function parseDateInput(s: string): string {
+export function parseDateInput(s: string, baseDate = todayStr()): string {
   const trimmed = s.trim();
   const offset = DATE_INPUT_ALIASES[trimmed.toLowerCase()] ?? DATE_INPUT_ALIASES[trimmed];
-  if (offset !== undefined) return addDays(todayStr(), offset);
+  if (offset !== undefined) return addDays(baseDate, offset);
   return ensureValidDateStr(trimmed);
 }
 

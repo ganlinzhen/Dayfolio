@@ -3,6 +3,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { version } from '../../../package.json';
 import type { McpContext, ToolCatalogEntry } from './shared/context';
 import { createRegistrar } from './shared/context';
+import { registerRuntimeTools } from './runtime-tools';
+import { wrap } from './shared/response';
 import { TOOL_GROUPS } from './groups';
 import { registerStudyResource } from './resources/study';
 import { registerTools as todos } from './tools/todos';
@@ -34,5 +36,6 @@ export function createMcpServer(context: McpContext) {
   ontology(createRegistrar(server, TOOL_GROUPS.ontology, catalog), context);
   knowledge(createRegistrar(server, TOOL_GROUPS.knowledge, catalog), context);
   media(createRegistrar(server, TOOL_GROUPS.media, catalog), context);
+  registerRuntimeTools(createRegistrar(server, TOOL_GROUPS.runtime, catalog), context.core, wrap);
   return { server, catalog };
 }

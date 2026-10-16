@@ -4,6 +4,7 @@ export interface TodoScheduleValue {
   dateOnly: boolean;
   start: string;
   end: string;
+  endDate?: string;
 }
 
 export default function TodoSchedule({ value, onChange, editing = false }: {
@@ -21,6 +22,9 @@ export default function TodoSchedule({ value, onChange, editing = false }: {
         <option value="time">时间段</option>
         <option value="date">仅日期</option>
       </select>
+      <span className="sub">结束日期</span>
+      <input className="chip-date" type="date" title="结束日期（可选）" aria-label={`${prefix}结束日期（可选）`} value={value.endDate ?? ''}
+        onChange={(e) => onChange({ ...value, endDate: e.target.value })} />
       {!value.dateOnly && <>
         <input className="chip-date todo-time" type="time" aria-label={`${prefix}开始时间`} value={value.start}
           onChange={(e) => onChange({ ...value, start: e.target.value })} />

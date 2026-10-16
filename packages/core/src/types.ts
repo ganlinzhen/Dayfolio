@@ -22,9 +22,17 @@ export interface Todo {
   status: TodoStatus;
   /** 截止日期，格式 YYYY-MM-DD，可为空 */
   due_date: string | null;
-  /** 当天起止时间 HH:MM；均为空表示仅日期 */
+  /** 浮动时间或固定时刻镜像 HH:MM；允许仅开始；均为空表示仅日期 */
   start_time: string | null;
   end_time: string | null;
+  end_date: string | null;
+  time_mode: 'floating' | 'instant';
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
+  collection_id: string | null;
+  source_status: 'scheduled'|'postponed'|'cancelled'|'finished'|null;
+  source_time_kind: 'timed'|'all_day'|'tbd'|null;
+  revision: number;
   tags: string[];
   /** 来源：app（界面创建）| mcp（AI 创建）| plan（由学习计划生成） */
   source: string;
@@ -85,6 +93,11 @@ export interface NewTodoInput {
   due_date?: string | null;
   start_time?: string | null;
   end_time?: string | null;
+  end_date?: string | null;
+  time_mode?: 'floating' | 'instant';
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
+  collection_id?: string | null;
   tags?: string[];
   source?: string;
 }
@@ -96,6 +109,12 @@ export interface UpdateTodoInput {
   due_date?: string | null;
   start_time?: string | null;
   end_time?: string | null;
+  end_date?: string | null;
+  time_mode?: 'floating' | 'instant';
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
+  collection_id?: string | null;
+  expected_revision?: number;
   tags?: string[];
   status?: TodoStatus;
 }

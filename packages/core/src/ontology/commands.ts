@@ -2,6 +2,7 @@
 import { COMMAND_INPUTS } from './command-inputs';
 import { validateCommandInput } from './input-validation';
 import { ensureValidDateStr } from '../utils/date';
+import type { ExtensionService } from '../services/extensions';
 import type { CourseService } from '../services/course';
 import type { MediaService } from '../services/media';
 import type { DbAdapter } from '../db';
@@ -23,7 +24,7 @@ function command(name: string, title: string, service: string, method: string, t
     targetBindings: targets.map(objectType => ({ objectType, parameter: params.find(p => p[3] === objectType)?.[0] })) });
 }
 const input: Param = ['input','json']; const id = (t: string): Param => ['id','integer',true,t]; const patch: Param = ['patch','json'];
-command('add_todo','新增待办','todos','add',['todo'],[['title','string'],['notes','string',false],['priority','string',false],['due_date','date',false],['start_time','string',false],['end_time','string',false],['tags','json',false],['source','string',false]],'flat');
+command('add_todo','新增待办','todos','add',['todo'],[['title','string'],['notes','string',false],['priority','string',false],['due_date','date',false],['start_time','string',false],['end_time','string',false],['end_date','date',false],['time_mode','string',false],['scheduled_start_at','string',false],['scheduled_end_at','string',false],['collection_id','string',false],['tags','json',false],['source','string',false]],'flat');
 command('update_todo','更新待办','todos','update',['todo'],[id('todo'),patch], 'args', false, true);
 command('complete_todo','完成待办','todos','complete',['todo'],[id('todo')],'args',false,true);
 command('reopen_todo','撤销完成','todos','reopen',['todo'],[id('todo')],'args',false,true);
@@ -100,6 +101,23 @@ for (const [name,title,method,params] of [
   ['delete_calendar_event','删除日程','remove',[id('calendar_event')]],
 ] as Array<[string,string,string,Param[]]>) command(name,title,'calendar',method,['calendar_event'],params);
 for(const d of defs)for(const p of d.parameters){if(d.apiName==='delete_study_plan'&&p.name==='delete_todos')p.defaultValue=true;if(d.apiName==='checkin'&&p.name==='ref_id')p.defaultValue=0;}
+command('set_display_timezone','设置显示时区','runtime','setDisplayTimezone',[],[['zone','string']],'args',false,true);
+command('set_calendar_collection_visibility','设置日历分类显示','runtime','setVisibility',[],[input],'args',false,true);
+for(const [name,title,service,method,targets]of [
+  ['import_external_events','导入标准事件','externalEvents','import',['external_event','event_provider']],
+  ['archive_external_event','归档外部事件','externalEvents','archive',['external_event']],
+  ['delete_unused_external_event','删除未使用事件','externalEvents','deleteUnused',['external_event']],
+  ['update_event_provider','更新数据源','externalEvents','updateProvider',['event_provider']],
+  ['subscribe_event','订阅事件','subscriptions','subscribe',['external_event','event_subscription','todo']],
+  ['unsubscribe_event','取消事件订阅','subscriptions','unsubscribe',['event_subscription','todo']],
+  ['resume_event_following','恢复事件跟随','subscriptions','resumeFollowing',['event_subscription','todo']],
+] as Array<[string,string,string,string,string[]]>)command(name,title,service,method,targets,[input],'args',false,true);
+command('install_extension','安装运行时工具','extensions','install',['tool_extension'],[input]);
+command('authorize_extension_install','授权运行时工具安装','extensions','authorizeInstall',['tool_extension'],[input],'args',true);
+command('set_extension_enabled','启停运行时工具','extensions','setEnabled',['tool_extension'],[input]);
+command('uninstall_extension','卸载运行时工具并保留数据','extensions','uninstall',['tool_extension'],[input]);
+command('rollback_extension','回滚运行时工具版本','extensions','rollback',['tool_extension'],[input]);
+command('refresh_event_provider','请求刷新事件来源','externalEvents','refresh',['event_provider'],[input],'args',false,true);
 export const COMMAND_DEFS = defs;
 /** 已核对为短数据库操作的组合白名单，文件/联网/人工审核命令不在其中。 */
 export const COMPOSABLE_COMMANDS = new Set(['add_todo', 'update_todo', 'complete_todo', 'reopen_todo', 'update_plan_item']);
@@ -177,6 +195,7 @@ export function createCommandService(db: DbAdapter, ontology: OntologyService, s
     return wrapped;
   };
   const human = {
+    authorizeExtensionInstall:(input:Parameters<ExtensionService['authorizeInstall']>[0])=>invoke(defs.find(d=>d.apiName==='authorize_extension_install')!,[input],true) as ReturnType<ExtensionService['authorizeInstall']>,
     confirmCourseSample: (id:number) => invoke(defs.find(d=>d.apiName==='confirm_course_sample')!,[id],true) as ReturnType<CourseService['confirmSample']>,
     reviewMediaVersion: (id:number,action:string,note?:string) => invoke(defs.find(d=>d.apiName==='review_media_version')!,[id,action,note],true) as ReturnType<MediaService['reviewVersion']>,
   };

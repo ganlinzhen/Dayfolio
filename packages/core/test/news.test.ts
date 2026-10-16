@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { openNodeSqliteDb } from '../src/adapters/node-sqlite';
 import { beijingDateOf, createCore, newsDedupKey, newsRootForDb, NEWS_HTML_MAX_CHARS, todayStr } from '../src/index';
 import type { NewsSubmissionItem } from '../src/types';
-import { mkCore } from './helpers';
+import { mkCore, mkLegacyDb } from './helpers';
 import { MIGRATIONS } from '../src/migrations';
 
 const H = 3600_000;
@@ -625,14 +625,13 @@ describe('删除新闻：事务边界、共享引用与指纹防回流', () => {
 
 describe('v10 → v11 迁移：news_deleted_fingerprints + accepted_count 回填', () => {
   it('v10 结构副本升级：指纹表重建、accepted_count 按存量回填、存量行零丢失、完整性检查通过', () => {
-    const { dbPath, cleanup } = mkCore();
+    const { db: down, dbPath, cleanup } = mkLegacyDb(10);
     try {
-      // 把新库降级成 v10 形态（无指纹表、无 accepted_count 列），并写入存量数据
-      const down = new DatabaseSync(dbPath);
+      // 真实执行到 v10 的合成库；不能把当前新库只改版本号冒充旧结构。
       try {
-        down.exec('PRAGMA user_version = 10;');
-        down.exec('DROP TABLE news_deleted_fingerprints;');
-        down.exec('ALTER TABLE news_tasks DROP COLUMN accepted_count;');
+        // initDb 的基础建表已包含当前新闻列；显式还原本项要验证的 v10 新闻形态。
+        down.exec('DROP TABLE news_deleted_fingerprints; ALTER TABLE news_tasks DROP COLUMN accepted_count;');
+        expect(down.prepare('PRAGMA table_info(news_tasks)').all().some(column => column.name === 'accepted_count')).toBe(false);
         down.prepare(
           "INSERT INTO news_tasks (title, instructions, max_items, window_hours, status, created_by, created_at, updated_at) VALUES ('v10 老任务', '', 5, 24, 'completed', 'mcp', '2026-10-01T00:00:00.000', '2026-10-01T00:00:00.000')",
         ).run();

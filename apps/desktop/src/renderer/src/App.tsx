@@ -12,6 +12,9 @@ import TodayPanel from './components/TodayPanel';
 import TodoPanel from './components/TodoPanel';
 import ToolsPanel from './components/ToolsPanel';
 import { ToastHost } from './components/Toast';
+import RuntimeToolFrame from './components/RuntimeToolFrame';
+import RuntimeTodoDetails from './components/RuntimeTodoDetails';
+import { api } from './api';
 
 type Tab = 'today' | 'todos' | 'plans' | 'news' | 'knowledge' | 'media' | 'tools' | 'data' | 'mcp' | 'help';
 
@@ -95,6 +98,13 @@ const TAB_LABEL = (tab: Tab) =>
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
   const [showChangelog, setShowChangelog] = useState(false);
+  const [runtimeId, setRuntimeId] = useState<string|null>(null), [runtimeTodo, setRuntimeTodo] = useState<number|null>(null);
+  useEffect(()=>{
+    const open=(event:Event)=>{const id=(event as CustomEvent<{extensionId?:unknown}>).detail?.extensionId;if(typeof id==='string'){setRuntimeId(id);setTab('tools');}};
+    window.addEventListener('dayfolio:openTool',open);
+    const remove=api.extensions.onOpenTodo(target=>{if(target.objectType==='todo'&&Number.isSafeInteger(target.id))setRuntimeTodo(target.id);});
+    return()=>{window.removeEventListener('dayfolio:openTool',open);remove();};
+  },[]);
 
   // 窗口标题跟随当前面板，便于 Mission Control 辨认
   useEffect(() => {
@@ -115,7 +125,7 @@ export default function App() {
             <button
               key={key}
               className={`nav-item ${tab === key ? 'active' : ''}`}
-              onClick={() => setTab(key)}
+              onClick={() => {setRuntimeId(null);setTab(key);}}
             >
               <Icon />
               {label}
@@ -128,7 +138,7 @@ export default function App() {
             <button
               key={key}
               className={`nav-item ${tab === key ? 'active' : ''}`}
-              onClick={() => setTab(key)}
+              onClick={() => {setRuntimeId(null);setTab(key);}}
             >
               <Icon />
               {label}
@@ -155,12 +165,13 @@ export default function App() {
         {tab === 'news' && <NewsPanel />}
         {tab === 'knowledge' && <KnowledgePanel />}
         {tab === 'media' && <MediaPanel />}
-        {tab === 'tools' && <ToolsPanel />}
+        {tab === 'tools' && (runtimeId?<RuntimeToolFrame extensionId={runtimeId} onClose={()=>setRuntimeId(null)}/>:<ToolsPanel />)}
         {tab === 'data' && <DataPanel />}
         {tab === 'mcp' && <McpPanel />}
         {tab === 'help' && <HelpPanel />}
       </main>
       {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
+      {runtimeTodo!==null && <RuntimeTodoDetails id={runtimeTodo} onClose={()=>setRuntimeTodo(null)}/>}
       <ToastHost />
     </div>
   );

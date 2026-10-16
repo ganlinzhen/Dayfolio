@@ -1,188 +1,86 @@
-// 待办服务：增删改查、完成/重开、筛选排序
-import type { DbAdapter } from '../db';
-import { inTx, mapTodo } from '../db';
+// 待办业务的唯一写入口；订阅与 App/MCP 共用事务、时间和用户接管检测。
+import { inTx, readSnapshot, mapTodo, TODO_SOURCE_SELECT, type DbAdapter } from '../db';
 import type { NewTodoInput, Todo, TodoFilters, UpdateTodoInput, Priority } from '../types';
-import { ensureValidDateStr, nowIso, todayStr } from '../utils/date';
+import { nowIso } from '../utils/date';
+import { resolveSchedule, displayTimezone, dateInZone, timestampInZone, runtimeError } from '../utils/schedule';
 
 const PRIORITIES: Priority[] = ['high', 'medium', 'low'];
-
-function validateSchedule(date: string | null, start: string | null, end: string | null) {
-  if (date !== null) ensureValidDateStr(date);
-  if (start === null && end === null) return;
-  if (!date) throw new Error('设置起止时间时必须选择日期');
-  if (!start || !end) throw new Error('请同时填写开始时间和结束时间');
-  const time = /^([01]\d|2[0-3]):[0-5]\d$/;
-  if (!time.test(start) || !time.test(end)) throw new Error('起止时间格式应为 HH:MM');
-  if (end <= start) throw new Error('结束时间必须晚于开始时间');
-}
-
+const managedKeys = ['title', 'due_date', 'end_date', 'start_time', 'end_time', 'time_mode', 'scheduled_start_at', 'scheduled_end_at'] as const;
 export interface TodoServiceDeps {
-  /** 完成待办时回调（用于联动打卡），recordCheckin=false 时跳过 */
   onCompleted?: (todoId: number, completedDate: string, recordCheckin: boolean) => void;
   onReopened?: (todoId: number) => void;
+  onManagedEdited?: (todoId: number) => void;
+  onBeforeRemoved?: (todoId: number) => void;
+  isManagedWrite?: () => boolean;
 }
-
 export function createTodoService(db: DbAdapter, deps: TodoServiceDeps = {}) {
-  const add = (input: NewTodoInput): Todo => {
-    validateSchedule(input.due_date ?? null, input.start_time ?? null, input.end_time ?? null);
-    if (!input.title || !input.title.trim()) throw new Error('待办标题不能为空');
-    const priority = input.priority ?? 'medium';
-    if (!PRIORITIES.includes(priority)) {
-      throw new Error(`无效优先级 "${priority}"，应为 high / medium / low`);
-    }
-    const now = nowIso();
-    const r = db
-      .prepare(
-        `INSERT INTO todos (title, notes, priority, status, due_date, start_time, end_time, tags, source, created_at, updated_at)
-         VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        input.title.trim(),
-        input.notes ?? '',
-        priority,
-        input.due_date ?? null,
-        input.start_time ?? null,
-        input.end_time ?? null,
-        JSON.stringify(input.tags ?? []),
-        input.source ?? 'app',
-        now,
-        now,
-      );
-    return get(Number(r.lastInsertRowid));
-  };
-
-  const get = (id: number): Todo => {
-    const row = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
+  const get = (id: number): Todo => readSnapshot(db, () => {
+    const row = db.prepare(TODO_SOURCE_SELECT + ' WHERE t.id=?').get(id);
     if (!row) throw new Error(`待办 ${id} 不存在`);
-    return mapTodo(row);
+    return mapTodo(row, displayTimezone(db));
+  });
+  const collection = (id: string | null) => {
+    if (id && !db.prepare('SELECT 1 FROM calendar_collections WHERE id=? AND archived=0').get(id)) runtimeError('CONTRACT_INVALID', '日历分类不存在或已归档');
   };
-
-  const list = (filters: TodoFilters = {}): Todo[] => {
-    const where: string[] = ['1=1'];
-    const params: unknown[] = [];
-    const status = filters.status ?? 'all';
-    if (status !== 'all') {
-      where.push('status = ?');
-      params.push(status);
+  const add = (input: NewTodoInput): Todo => inTx(db, () => {
+    const title = input.title?.trim(); if (!title) throw new Error('待办标题不能为空');
+    const priority = input.priority ?? 'medium'; if (!PRIORITIES.includes(priority)) throw new Error(`无效优先级 "${priority}"`);
+    const schedule = resolveSchedule(input, displayTimezone(db)); collection(input.collection_id ?? null);
+    const now = nowIso();
+    const values = { title, notes: input.notes ?? '', priority, status: 'open', ...schedule, collection_id: input.collection_id ?? null, tags: JSON.stringify(input.tags ?? []), source: input.source ?? 'app', created_at: now, updated_at: now };
+    const keys = Object.keys(values);
+    const result = db.prepare(`INSERT INTO todos (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`).run(...Object.values(values));
+    return get(Number(result.lastInsertRowid));
+  });
+  const list = (filters: TodoFilters = {}): Todo[] => readSnapshot(db, () => {
+    const where = ['1=1']; const params: unknown[] = [];
+    if (filters.status && filters.status !== 'all') { where.push('status=?'); params.push(filters.status); }
+    if (filters.priority) { where.push('priority=?'); params.push(filters.priority); }
+    if (filters.search) { where.push('(title LIKE ? OR notes LIKE ?)'); params.push(`%${filters.search}%`, `%${filters.search}%`); }
+    if (filters.tag) { where.push('tags LIKE ?'); params.push(`%"${filters.tag}"%`); }
+    const zone = displayTimezone(db);
+    // 先按权威时间判断再分页，避免 SQL 与行映射使用不同的时区/截止规则。
+    const count = filters.limit && Number.isFinite(filters.limit) && filters.limit > 0 ? Math.floor(filters.limit) : 500;
+    const rows = db.prepare(`${TODO_SOURCE_SELECT} WHERE ${where.join(' AND ')} ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END,CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,(due_date IS NULL),due_date,start_time,id${filters.overdue ? '' : ' LIMIT ?'}`).all(...params, ...(filters.overdue ? [] : [count])).map(row => mapTodo(row, zone));
+    return rows.filter(row => !filters.overdue || row.is_overdue).slice(0, count);
+  });
+  const apply = (id: number, patch: UpdateTodoInput, recordCheckin = true): Todo => inTx(db, () => {
+    const current = get(id);
+    if (patch.expected_revision !== undefined && (!Number.isSafeInteger(patch.expected_revision) || patch.expected_revision !== current.revision)) runtimeError('REVISION_CONFLICT', '待办已被修改，请重新读取');
+    const schedule = resolveSchedule(patch, displayTimezone(db), current);
+    const values: Record<string, unknown> = { ...schedule };
+    if (patch.title !== undefined) { if (!patch.title.trim()) throw new Error('待办标题不能为空'); values.title = patch.title.trim(); }
+    if (patch.notes !== undefined) values.notes = patch.notes ?? '';
+    if (patch.priority !== undefined) { if (!PRIORITIES.includes(patch.priority)) throw new Error('无效优先级'); values.priority = patch.priority; }
+    if (patch.tags !== undefined) values.tags = JSON.stringify(patch.tags);
+    if (patch.collection_id !== undefined) {
+      collection(patch.collection_id);
+      if (patch.collection_id !== current.collection_id && !deps.isManagedWrite?.() && db.prepare("SELECT 1 FROM event_subscriptions WHERE todo_id=? AND status='active'").get(id)) runtimeError('WRITE_REQUIRES_ACTION', '订阅分类请通过取消订阅调整');
+      values.collection_id = patch.collection_id;
     }
-    if (filters.priority) {
-      where.push('priority = ?');
-      params.push(filters.priority);
+    if (patch.status !== undefined && patch.status !== current.status) {
+      if (!['open', 'done'].includes(patch.status)) runtimeError('CONTRACT_INVALID', '未知待办状态');
+      values.status = patch.status; values.completed_at = patch.status === 'done' ? timestampInZone(new Date(), displayTimezone(db)) : null;
     }
-    if (filters.overdue) {
-      where.push("status = 'open' AND due_date IS NOT NULL AND ((end_time IS NULL AND due_date < ?) OR (end_time IS NOT NULL AND due_date || 'T' || end_time <= ?))");
-      params.push(todayStr(), nowIso().slice(0, 16));
-    }
-    if (filters.search) {
-      where.push('(title LIKE ? OR notes LIKE ?)');
-      const q = `%${filters.search}%`;
-      params.push(q, q);
-    }
-    if (filters.tag) {
-      where.push('tags LIKE ?');
-      params.push(`%"${filters.tag}"%`);
-    }
-    const limit = filters.limit && filters.limit > 0 ? filters.limit : 500;
-    const sql = `
-      SELECT * FROM todos WHERE ${where.join(' AND ')}
-      ORDER BY
-        CASE status WHEN 'open' THEN 0 ELSE 1 END,
-        CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
-        (due_date IS NULL), due_date ASC, start_time ASC, id ASC
-      LIMIT ${Math.floor(limit)}`;
-    return db.prepare(sql).all(...params).map(mapTodo);
-  };
-
-  const setStatusDone = (id: number): void => {
-    db.prepare("UPDATE todos SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?").run(
-      nowIso(),
-      nowIso(),
-      id,
-    );
-  };
-
-  const update = (id: number, patch: UpdateTodoInput): Todo => {
-    const existing = get(id);
-    // 清除日期时同时清除时段，避免留下无法显示的时间。
-    const start = patch.start_time !== undefined ? patch.start_time : patch.due_date === null ? null : existing.start_time;
-    const end = patch.end_time !== undefined ? patch.end_time : patch.due_date === null ? null : existing.end_time;
-    validateSchedule(patch.due_date !== undefined ? patch.due_date : existing.due_date, start, end);
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    if (patch.title !== undefined) {
-      if (!patch.title.trim()) throw new Error('待办标题不能为空');
-      sets.push('title = ?');
-      params.push(patch.title.trim());
-    }
-    if (patch.notes !== undefined) {
-      sets.push('notes = ?');
-      params.push(patch.notes ?? '');
-    }
-    if (patch.priority !== undefined) {
-      if (!PRIORITIES.includes(patch.priority)) {
-        throw new Error(`无效优先级 "${patch.priority}"，应为 high / medium / low`);
-      }
-      sets.push('priority = ?');
-      params.push(patch.priority);
-    }
-    if (patch.due_date !== undefined) {
-      sets.push('due_date = ?');
-      params.push(patch.due_date ?? null);
-    }
-    if (patch.tags !== undefined) {
-      sets.push('tags = ?');
-      params.push(JSON.stringify(patch.tags));
-    }
-    if (patch.start_time !== undefined || patch.end_time !== undefined || patch.due_date === null) {
-      sets.push('start_time = ?', 'end_time = ?');
-      params.push(start, end);
-    }
-    if (patch.status !== undefined && patch.status !== existing.status) {
-      sets.push('status = ?');
-      params.push(patch.status);
-      if (patch.status === 'done') {
-        sets.push('completed_at = ?');
-        params.push(nowIso());
-      } else {
-        sets.push('completed_at = NULL');
-      }
-    }
-    if (sets.length === 0) return existing;
-    sets.push('updated_at = ?');
-    params.push(nowIso());
-    params.push(id);
-    db.prepare(`UPDATE todos SET ${sets.join(', ')} WHERE id = ?`).run(...params);
-
-    // 完成状态变化联动打卡
-    if (patch.status === 'done' && existing.status !== 'done') {
-      deps.onCompleted?.(id, todayStr(), true);
-    } else if (patch.status === 'open' && existing.status === 'done') {
-      deps.onReopened?.(id);
-    }
+    const changed = Object.entries(values).filter(([key, v]) => v !== (key === 'tags' ? JSON.stringify(current.tags) : current[key as keyof Todo]));
+    if (!changed.length) return current;
+    const edited = managedKeys.some(key => changed.some(([k]) => k === key));
+    changed.push(['updated_at', nowIso()]);
+    db.prepare(`UPDATE todos SET ${changed.map(([key]) => key + '=?').join(',')} WHERE id=?`).run(...changed.map(([, v]) => v), id);
+    if (edited && !deps.isManagedWrite?.()) deps.onManagedEdited?.(id);
+    if (patch.status === 'done' && current.status !== 'done') deps.onCompleted?.(id, dateInZone(new Date(), displayTimezone(db)), recordCheckin);
+    if (patch.status === 'open' && current.status === 'done') deps.onReopened?.(id);
     return get(id);
-  };
-
-  /** 完成待办；recordCheckin=false 时只改状态不记打卡（供计划条目联动使用，避免重复打卡） */
-  const complete = (id: number, recordCheckin = true): Todo => {
-    const existing = get(id);
-    if (existing.status === 'done') return existing;
-    setStatusDone(id);
-    deps.onCompleted?.(id, todayStr(), recordCheckin);
-    return get(id);
-  };
-
-  const reopen = (id: number): Todo => update(id, { status: 'open' });
-
-  const remove = (id: number): void => {
-    inTx(db, () => {
-      db.prepare("DELETE FROM checkins WHERE ref_type = 'todo' AND ref_id = ?").run(id);
-      db.prepare('UPDATE plan_items SET todo_id = NULL WHERE todo_id = ?').run(id);
-      const r = db.prepare('DELETE FROM todos WHERE id = ?').run(id);
-      if (r.changes === 0) throw new Error(`待办 ${id} 不存在`);
-    });
-  };
-
+  });
+  const update = (id: number, patch: UpdateTodoInput): Todo => apply(id, patch);
+  const complete = (id: number, recordCheckin = true): Todo => apply(id, { status: 'done' }, recordCheckin);
+  const reopen = (id: number): Todo => apply(id, { status: 'open' });
+  const remove = (id: number): void => inTx(db, () => {
+    get(id); deps.onBeforeRemoved?.(id);
+    db.prepare("DELETE FROM checkins WHERE ref_type='todo' AND ref_id=?").run(id);
+    db.prepare('UPDATE plan_items SET todo_id=NULL WHERE todo_id=?').run(id);
+    db.prepare('DELETE FROM todos WHERE id=?').run(id);
+  });
   return { add, get, list, update, complete, reopen, remove };
 }
-
 export type TodoService = ReturnType<typeof createTodoService>;

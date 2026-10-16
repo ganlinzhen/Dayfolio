@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, call } from '../api';
 import CalendarSection from './CalendarSection';
+import { useRuntimeRefresh } from './useRuntimeRefresh';
 import EmptyState from './EmptyState';
 import { IconItemType } from './icons';
 import type { Todo } from './TodoPanel';
@@ -39,9 +40,7 @@ export default function TodayPanel() {
     }
   }, []);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  useRuntimeRefresh(refresh);
 
   const completeTodo = async (id: number) => {
     await call(() => api.todos.complete({ id }));
@@ -95,10 +94,11 @@ export default function TodayPanel() {
                 </div>
                 <div className="todo-card-meta">
                   <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
-              {t.start_time && <span className="todo-meta mono">{t.start_time}–{t.end_time}</span>}
+              {t.source_status==='cancelled' && <span className="tag">来源已取消</span>}
+              {t.start_time && <span className="todo-meta mono">{t.start_time}{t.end_time?`–${t.end_date&&t.end_date!==t.due_date?t.end_date+' ':''}${t.end_time}`:' · 结束待定'}</span>}
                   {t.due_date && (
                     <span className="todo-meta mono danger">
-                      {t.due_date}{t.start_time ? ` ${t.start_time}–${t.end_time}` : ''}{overdueDays > 0 ? ` · 逾期 ${overdueDays} 天` : ''}
+                      {t.due_date}{t.start_time ? ` ${t.start_time}${t.end_time?'–'+(t.end_date&&t.end_date!==t.due_date?t.end_date+' ':'')+t.end_time:' · 结束待定'}` : ''}{overdueDays > 0 ? ` · 逾期 ${overdueDays} 天` : ''}
                     </span>
                   )}
                   {t.tags.filter((tag) => !/^plan:\d+$/.test(tag)).map((tag) => <span key={tag} className="tag">{tag}</span>)}
@@ -122,7 +122,8 @@ export default function TodayPanel() {
             </div>
             <div className="todo-card-meta">
               <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
-              {t.start_time && <span className="todo-meta mono">{t.start_time}–{t.end_time}</span>}
+              {t.source_status==='cancelled' && <span className="tag">来源已取消</span>}
+              {t.start_time && <span className="todo-meta mono">{t.start_time}{t.end_time?`–${t.end_date&&t.end_date!==t.due_date?t.end_date+' ':''}${t.end_time}`:' · 结束待定'}</span>}
               {t.tags.filter((tag) => !/^plan:\d+$/.test(tag)).map((tag) => <span key={tag} className="tag">{tag}</span>)}
             </div>
           </div>

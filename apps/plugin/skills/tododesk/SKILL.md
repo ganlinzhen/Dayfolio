@@ -16,7 +16,7 @@ Dayfolio 是用户 macOS 上的桌面待办/学习应用（曾用名 TodoDesk、
 
 用户要「生成 LoL 世界赛/欧冠/世界杯等赛事页面」「更新已有赛事工具的数据」时，转到同级 [tododesk-sports](../tododesk-sports/SKILL.md)，先读该技能，再使用工具箱读写。它与教学技能同级，独立维护赛事识别、需求澄清、赛制与进程、接口/AI 来源及原位更新流程；不要仅生成一份固定 HTML 或重复新增旧工具。
 
-页面由助手制作并核实数据，App 复用现有 `list_tools` / `add_tool` / `update_tool` 保存与展示。更新需要原工具完整文件集，传文件会整体替换，必须保留其他资源与人工内容。只问赛事知识不自动装工具；没有明确要求不生成日历、待办或后台定时器。
+页面由助手制作并核实数据。普通展示页复用 HTML 工具箱；需要赛事订阅、待办联动和日历分类时，按赛事技能的运行时工具路径生成包，复用固定接口，不增加宿主赛事专用代码。更新需要原工具完整文件集，传文件会整体替换，必须保留其他资源与人工内容。只问赛事知识不自动装工具；没有明确要求不生成日历、待办或后台定时器。
 
 ## 接入方式（先判断，二选一）
 
@@ -44,7 +44,7 @@ Node 要求 22.13+ 的 22.x 或 24.x。若 shell 报 `node: command not found`�
 - `get_today` — 今日概览（逾期/今日到期/今日学习/已完成/连续打卡）。**用户问"今天该干什么"或要汇报进度时先调它**
 
 **待办**
-- `add_todo` / `update_todo` / `complete_todo` / `delete_todo`：`due_date` 为日期，`start_time` / `end_time` 为同一天 HH:MM 时段，须成对填写且结束晚于开始；不填时保留仅日期。更新时两时间均传 null 清除时段，due_date 传 null 同时清除日期和时段。
+- `add_todo` / `update_todo` / `complete_todo` / `delete_todo`：浮动排期使用 `due_date`、可空 `start_time/end_time`；只知道开始时间时可不填结束，跨日填写 `end_date`。固定时刻使用 `time_mode=instant` 和带 Z/偏移的 `scheduled_start_at/scheduled_end_at`，不混入本地字段；显示时区由共享设置决定。更新可携带 `expected_revision`；due_date 传 null 清除浮动排期。
 - `list_todos` — 按状态/优先级/是否过期/关键词/标签筛选，未完成+紧急+近期在前
 
 - `checkin` — 待办与学习条目的完成记录，同目标同日幂等；保留首次记录时间
@@ -68,6 +68,13 @@ Node 要求 22.13+ 的 22.x 或 24.x。若 shell 报 `node: command not found`�
 - `add_tool` — 装入工具：`files`（base64 内容，现场生成的 HTML 用这个，无需落盘）或 `file_paths`（本地文件/目录）；`category_name` 不存在会自动建
 - `list_tools` / `update_tool` / `delete_tool`
 - `list_tool_categories` / `add_tool_category` / `rename_tool_category` / `delete_tool_category`
+
+**运行时日程与订阅**
+- `get_runtime_tool_contract` / `list_extensions` / `list_event_providers`：发现实际底座、工具身份、来源修订和更新状态。
+- `import_external_events`：标准事件完整快照，稳定 externalId、batchId 与 provider 基线保证幂等；不因缺失条目删除旧活动。
+- `subscribe_event` / `unsubscribe_event` / `resume_event_following`：单事件唯一待办；手动标题/排期与完成记录受保护，取消默认显式 keep。
+- `query_calendar_items` / `set_calendar_collection_visibility`：统一日历及显示偏好；隐藏不取消订阅。
+- `refresh_event_provider` / `get_provider_sync_run`：排队不是成功；external-agent 来源须由助手实际核验并导入。
 
 **本体与自定义数据**（用户想建自己的数据类型/记录，如书单、阅读记录）
 - `list_object_types` — 全部对象/链接/动作类型元数据。**操作自定义数据前先调它**

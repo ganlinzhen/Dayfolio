@@ -2,6 +2,7 @@
 import { dialog, ipcMain, shell } from 'electron';
 import {
   defaultDbPath,
+  runtimeErrorInfo,
   deleteToolFilesAt,
   sanitizeToolPath,
   saveToolFilesTo,
@@ -11,6 +12,8 @@ import {
 import { registerDataIpc } from './data-ipc';
 import { registerAgentIpc } from './agent-ipc';
 import { toolsRoot } from './tools-store';
+import { registerExtensionIpc } from './extension-ipc';
+import { registerRuntimeIpc } from './runtime-ipc';
 
 // 统一 IPC 信封：{ok, data|error}。async/await 包装——处理器返回 Promise 时先等待再装入 data，
 // 否则 Promise 会被结构化克隆成空对象（pickExportDir 的目录对话框等异步处理器都依赖这一点）
@@ -19,12 +22,14 @@ const handle = (channel: string, fn: (payload: unknown) => unknown) => {
     try {
       return { ok: true, data: await fn(payload) };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      const info=runtimeErrorInfo(e);return {ok:false,error:info.message,code:info.code,retryable:info.retryable};
     }
   });
 };
 
 export function registerIpc(core: TodoDeskCore): void {
+  registerRuntimeIpc(core);
+  registerExtensionIpc(core);
   registerAgentIpc();
   // 数据面板 / 本体管理（对象·链接·动作三类型）
   registerDataIpc(core);

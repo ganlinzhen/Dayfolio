@@ -25,6 +25,24 @@ beforeEach(() => {
 afterEach(() => rmSync(work, { recursive: true, force: true }));
 
 describe('统一能力包的构建与更新', () => {
+  it('作者校验器缺失时保留旧产物；合同或校验器变更使旧能力包失效', () => {
+    const previous = make(), before = digest(join(previous, 'release.json'));
+    write(join(root, 'packages/agent-kit/extension-tools/README.md'), '隔离作者夹具');
+    write(join(root, 'packages/core/src/contracts/event.schema.json'), '{"type":"object"}');
+    expect(() => make()).toThrow();
+    expect(digest(join(previous, 'release.json'))).toBe(before);
+    expect(() => verifyAgentKit(previous)).not.toThrow();
+    write(join(root, 'apps/mcp/dist/extension-validator.cjs'), '// 隔离校验器夹具，不冒充真实校验逻辑\n');
+    const built = make();
+    expect(readFileSync(join(built, 'extension-tools/contracts/event.schema.json'), 'utf8')).toContain('object');
+    expect(() => verifySourceFreshness(built, root)).not.toThrow();
+    write(join(root, 'packages/core/src/contracts/event.schema.json'), '{"type":"array"}');
+    expect(() => verifySourceFreshness(built, root)).toThrow('作者合同');
+    write(join(root, 'packages/core/src/contracts/event.schema.json'), '{"type":"object"}');
+    write(join(root, 'apps/mcp/dist/extension-validator.cjs'), '// 已变化的隔离夹具\n');
+    expect(() => verifySourceFreshness(built, root)).toThrow('校验器陈旧');
+  });
+
   it('在任意路径安装完整包，保留既有配置，支持更新与恢复上一版', () => {
     const source = make(), target = join(work, '异地安装/Dayfolio-Agent');
     const config = join(work, 'client.json'); write(config, '{"mcpServers":{"other":{}}}');

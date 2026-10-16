@@ -1,6 +1,7 @@
 import type { ToolGroup } from './shared/context';
 
 export const TOOL_GROUPS = {
+  runtime: { id: 'runtime', title: '运行时工具与订阅', entity: 'extension / provider / event / subscription', desc: '声明式工具安装、来源事件、订阅与统一日历。', section: '业务模块' },
   today: { id: 'today', title: '今日', entity: 'today', desc: '今日待办、学习与日程概览。', section: '业务模块' },
   todos: { id: 'todos', title: '待办', entity: 'todo / checkin', desc: '待办与完成记录，保留业务联动。', section: '业务模块' },
   plans: { id: 'plans', title: '学习', entity: 'plan / plan_item', desc: '学习计划与逐日安排。', section: '业务模块' },

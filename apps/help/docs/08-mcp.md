@@ -148,4 +148,22 @@ npm run agent:doctor -- --target /自选目录/Dayfolio-Agent
 
 ## 功能归属
 
-「学习计划」功能分组统一为「学习」。完成记录工具 `checkin`、`get_checkin_stats` 归入「待办」，不再单列打卡分组；底层工具名保持兼容。待办时段使用 `start_time` / `end_time`（同一天 HH:MM），两者须成对填写；均传 null 切回仅日期。
+「学习计划」功能分组统一为「学习」。完成记录工具 `checkin`、`get_checkin_stats` 归入「待办」，不再单列打卡分组；底层工具名保持兼容。待办时段使用 `start_time` / `end_time`（HH:MM），允许仅开始；跨日通过 end_date 指定结束日期；均传 null 切回仅日期。
+
+## 运行时事件与订阅（P1 接口）
+
+先用 `get_runtime_tool_contract` 查询阶段与限额，`list_event_providers` 获取已登记来源。通用工具如下，后续同类工具复用这些固定名称：
+
+| 用途 | 工具 |
+| --- | --- |
+| 标准事件 | `import_external_events`、`list_external_events`、`get_external_event` |
+| 历史处理 | `archive_external_event`、`delete_unused_external_event` |
+| 订阅 | `subscribe_event`、`get_event_subscription`、`list_event_subscriptions` |
+| 停止/恢复 | `unsubscribe_event`、`resume_event_following` |
+| 来源启停 | `update_event_provider` |
+| 分类偏好 | `list_calendar_collections`、`set_calendar_collection_visibility` |
+| 统一时区 | `set_display_timezone` |
+
+导入必须携带 batchId 与 provider 修订，并显式给出四个时间字段；相同批次、相同内容幂等重放，不同内容拒绝。取消订阅须显式选择 keep 或 delete_open。恢复跟随必须携带来源及待办的最新修订。固定时刻待办传 `time_mode: instant` 与 `scheduled_start_at`、可空 `scheduled_end_at`，不能同时传本地排期字段；浮动安排允许仅开始时间，跨日通过 `end_date` 表达。专用 `update_todo` 支持 `expected_revision` 防并发覆盖。
+
+统一日历工具 `query_calendar_items` 已接入 App 分类面板，使用共享偏好；显式空分类数组返回空。查询包含完整过滤统计和分页游标，数据变化后须整轮重查。工具包正式安装和联网刷新后续开放。

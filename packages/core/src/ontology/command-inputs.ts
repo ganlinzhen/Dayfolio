@@ -51,6 +51,52 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
             }
           ]
         },
+        "end_date": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "time_mode": {
+          "enum": [
+            "floating",
+            "instant"
+          ]
+        },
+        "scheduled_start_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "scheduled_end_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "collection_id": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
         "tags": {
           "anyOf": [
             {
@@ -133,6 +179,59 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
             },
             {
               "type": "string"
+            }
+          ]
+        },
+        "end_date": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "time_mode": {
+          "enum": [
+            "floating",
+            "instant"
+          ]
+        },
+        "scheduled_start_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "scheduled_end_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "collection_id": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "type": "number"
             }
           ]
         },
@@ -2373,6 +2472,676 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
   "delete_calendar_event": [
     {
       "type": "number"
+    }
+  ],
+  "set_display_timezone": [
+    {
+      "type": "string"
+    }
+  ],
+  "set_calendar_collection_visibility": [
+    {
+      "type": "object",
+      "properties": {
+        "collectionId": {
+          "type": "string"
+        },
+        "visible": {
+          "enum": [
+            false,
+            true
+          ]
+        }
+      },
+      "required": [
+        "collectionId",
+        "visible"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "import_external_events": [
+    {
+      "type": "object",
+      "properties": {
+        "providerId": {
+          "type": "string"
+        },
+        "batchId": {
+          "type": "string"
+        },
+        "expectedProviderRevision": {
+          "type": "number"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "timeKind": {
+                    "const": "timed"
+                  },
+                  "startAt": {
+                    "type": "string"
+                  },
+                  "endAt": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "startDate": {
+                    "type": "null"
+                  },
+                  "endDateExclusive": {
+                    "type": "null"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "cancelled",
+                      "scheduled",
+                      "postponed",
+                      "finished"
+                    ]
+                  },
+                  "sourceUrl": {
+                    "type": "string"
+                  },
+                  "sourceTimezone": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "payload": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {}
+                            ]
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "properties": {},
+                          "required": [],
+                          "additionalProperties": {
+                            "anyOf": [
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {}
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "timeKind",
+                  "startAt",
+                  "endAt",
+                  "startDate",
+                  "endDateExclusive",
+                  "externalId",
+                  "title",
+                  "status",
+                  "sourceUrl",
+                  "payload"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "timeKind": {
+                    "const": "all_day"
+                  },
+                  "startAt": {
+                    "type": "null"
+                  },
+                  "endAt": {
+                    "type": "null"
+                  },
+                  "startDate": {
+                    "type": "string"
+                  },
+                  "endDateExclusive": {
+                    "type": "string"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "cancelled",
+                      "scheduled",
+                      "postponed",
+                      "finished"
+                    ]
+                  },
+                  "sourceUrl": {
+                    "type": "string"
+                  },
+                  "sourceTimezone": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "payload": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {}
+                            ]
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "properties": {},
+                          "required": [],
+                          "additionalProperties": {
+                            "anyOf": [
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {}
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "timeKind",
+                  "startAt",
+                  "endAt",
+                  "startDate",
+                  "endDateExclusive",
+                  "externalId",
+                  "title",
+                  "status",
+                  "sourceUrl",
+                  "payload"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "timeKind": {
+                    "const": "tbd"
+                  },
+                  "startAt": {
+                    "type": "null"
+                  },
+                  "endAt": {
+                    "type": "null"
+                  },
+                  "startDate": {
+                    "type": "null"
+                  },
+                  "endDateExclusive": {
+                    "type": "null"
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": [
+                      "cancelled",
+                      "scheduled",
+                      "postponed",
+                      "finished"
+                    ]
+                  },
+                  "sourceUrl": {
+                    "type": "string"
+                  },
+                  "sourceTimezone": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "payload": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {}
+                            ]
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "properties": {},
+                          "required": [],
+                          "additionalProperties": {
+                            "anyOf": [
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {},
+                              {}
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "timeKind",
+                  "startAt",
+                  "endAt",
+                  "startDate",
+                  "endDateExclusive",
+                  "externalId",
+                  "title",
+                  "status",
+                  "sourceUrl",
+                  "payload"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "providerId",
+        "batchId",
+        "expectedProviderRevision",
+        "events"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "archive_external_event": [
+    {
+      "type": "object",
+      "properties": {
+        "eventId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "eventId"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "delete_unused_external_event": [
+    {
+      "type": "object",
+      "properties": {
+        "eventId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "eventId"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "update_event_provider": [
+    {
+      "type": "object",
+      "properties": {
+        "providerId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "number"
+        },
+        "enabled": {
+          "enum": [
+            false,
+            true
+          ]
+        }
+      },
+      "required": [
+        "providerId",
+        "expectedRevision",
+        "enabled"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "subscribe_event": [
+    {
+      "type": "object",
+      "properties": {
+        "eventId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "eventId"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "unsubscribe_event": [
+    {
+      "type": "object",
+      "properties": {
+        "todoPolicy": {
+          "enum": [
+            "keep",
+            "delete_open"
+          ]
+        },
+        "expectedTodoRevision": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "eventId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "todoPolicy",
+        "eventId"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "resume_event_following": [
+    {
+      "type": "object",
+      "properties": {
+        "expectedEventRevision": {
+          "type": "number"
+        },
+        "expectedTodoRevision": {
+          "type": "number"
+        },
+        "eventId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expectedEventRevision",
+        "expectedTodoRevision",
+        "eventId"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "install_extension": [
+    {
+      "type": "object",
+      "properties": {
+        "stagingDirectory": {
+          "type": "string"
+        },
+        "expectedExtensionRevision": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "expectedPackageDigest": {
+          "type": "string"
+        },
+        "authorizationRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "stagingDirectory",
+        "expectedExtensionRevision",
+        "expectedPackageDigest",
+        "authorizationRef"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "authorize_extension_install": [
+    {
+      "type": "object",
+      "properties": {
+        "stagingDirectory": {
+          "type": "string"
+        },
+        "expectedPackageDigest": {
+          "type": "string"
+        },
+        "expectedExtensionRevision": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "stagingDirectory",
+        "expectedPackageDigest",
+        "expectedExtensionRevision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "set_extension_enabled": [
+    {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "enum": [
+            false,
+            true
+          ]
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "enabled",
+        "extensionId",
+        "expectedRevision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "uninstall_extension": [
+    {
+      "type": "object",
+      "properties": {
+        "extensionId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "extensionId",
+        "expectedRevision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "rollback_extension": [
+    {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "authorizationRef": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "extensionId": {
+          "type": "string"
+        },
+        "expectedRevision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "version",
+        "extensionId",
+        "expectedRevision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "refresh_event_provider": [
+    {
+      "type": "object",
+      "properties": {
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerId"
+      ],
+      "additionalProperties": false
     }
   ]
 };

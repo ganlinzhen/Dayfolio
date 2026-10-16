@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, call } from '../api';
 import EmbeddedFrame from './EmbeddedFrame';
+import RuntimeTools from './RuntimeTools';
 import { toast } from './Toast';
 import {
   IconChevronDown,
@@ -65,6 +66,7 @@ const readFiles = async (fileList: FileList): Promise<UpFile[]> =>
   );
 
 export default function ToolsPanel() {
+  const [runtimeCount, setRuntimeCount] = useState(0);
   const [cats, setCats] = useState<ToolCategory[]>([]);
   const [tools, setTools] = useState<ToolRow[]>([]);
   const [error, setError] = useState('');
@@ -147,7 +149,7 @@ export default function ToolsPanel() {
   return (
     <div className="panel" role="region" aria-label="工具箱">
       <header className="panel-head">
-        <div className="head-meta mono">{tools.length} 个工具</div>
+        <div className="head-meta mono">{tools.length + runtimeCount} 个工具</div>
         <span className="spacer" />
         <button className="btn slim" onClick={() => setCatModalOpen(true)}>
           管理分类
@@ -165,17 +167,18 @@ export default function ToolsPanel() {
       </header>
 
       {error && <div className="notice error">{error}</div>}
+      <RuntimeTools onCount={setRuntimeCount} />
 
-      {tools.length === 0 ? (
+      {tools.length === 0 ? (runtimeCount === 0 ? (
         <div className="empty">
           <IconToolbox width={18} height={18} />
-          <div className="empty-title">工具箱还是空的</div>
+          <div className="empty-title">还没有工具</div>
           <div className="empty-hint">
-            点右上角「新增工具」，选一个图标、起个名字，再选一个 HTML 文件即可。多选的 CSS / JS /
+            通过「安装或更新工具包」加入可订阅日程的工具，也可点「新增工具」加入已有 HTML。多选的 CSS / JS /
             图片会一并保存，供页面引用。
           </div>
         </div>
-      ) : (
+      ) : null) : (
         groups.map(({ cat, items }) => (
           <section className="group" key={cat ? cat.id : 'none'}>
             <div className="group-label mono">

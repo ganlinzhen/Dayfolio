@@ -1,0 +1,187 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "collectionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "kind": {
+      "enum": [
+        "todo",
+        "plan_item",
+        "calendar_event",
+        "external_subscription"
+      ]
+    },
+    "timeKind": {
+      "enum": [
+        "timed",
+        "all_day"
+      ]
+    },
+    "startAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "pattern": "(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "endAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "pattern": "(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "startDate": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "endDateExclusive": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "status": {
+      "enum": [
+        "open",
+        "done",
+        "pending",
+        "skipped",
+        "scheduled"
+      ]
+    },
+    "sourceStatus": {
+      "enum": [
+        "scheduled",
+        "postponed",
+        "cancelled",
+        "finished",
+        null
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "objectType": {
+          "enum": [
+            "todo",
+            "plan_item",
+            "calendar_event"
+          ]
+        },
+        "id": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        }
+      },
+      "required": [
+        "objectType",
+        "id"
+      ]
+    },
+    "allowedActions": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "open",
+          "complete",
+          "reopen",
+          "edit",
+          "delete",
+          "unsubscribe"
+        ]
+      },
+      "minItems": 0,
+      "maxItems": 6
+    }
+  },
+  "required": [
+    "id",
+    "collectionId",
+    "title",
+    "kind",
+    "timeKind",
+    "startAt",
+    "endAt",
+    "startDate",
+    "endDateExclusive",
+    "status",
+    "sourceStatus",
+    "target",
+    "allowedActions"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "timeKind": {
+            "const": "timed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "startAt": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "null"
+          },
+          "endDateExclusive": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "timeKind": {
+            "const": "all_day"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "startAt": {
+            "type": "null"
+          },
+          "endAt": {
+            "type": "null"
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDateExclusive": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:dayfolio:p0:v1:calendar-item"
+}

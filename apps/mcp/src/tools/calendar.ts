@@ -1,9 +1,10 @@
 import type { ToolRegistrar, McpContext } from '../shared/context';
 import { z } from 'zod';
-import { dateSchema, nullableDateSchema } from '../shared/schemas';
+import { dateSchemas } from '../shared/schemas';
 import { wrap } from '../shared/response';
 
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
+  const { dateSchema, nullableDateSchema } = dateSchemas(core);
   // ---------- 日历（个人本地日程：读写对称，App 今日页同源展示） ----------
 
   const calendarColorSchema = z
@@ -105,18 +106,6 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
       wrap(() => {
         core.calendar.remove(id);
         return { deleted: id };
-      })(),
-  );
-
-  server.tool(
-    'get_checkin_stats',
-    '打卡统计：连续天数、近 7/30 天活跃天数、总打卡数、最近打卡记录',
-    {},
-    async () =>
-      wrap(() => {
-        const stats = core.checkins.stats();
-        const recent = core.checkins.listDetailed({ limit: 20 });
-        return { ...stats, recent_checkins: recent };
       })(),
   );
 }

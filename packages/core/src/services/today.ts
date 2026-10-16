@@ -1,17 +1,19 @@
 // 今日概览服务：聚合逾期/今日到期待办、今日计划条目、打卡状态、今日日程
 import type { DbAdapter } from '../db';
-import { mapCalendarEvent, mapCheckin, mapTodo } from '../db';
+import { mapCalendarEvent, mapCheckin, mapTodo, TODO_SOURCE_SELECT, readSnapshot } from '../db';
 import type { TodayOverview } from '../types';
-import { todayStr } from '../utils/date';
+import { ensureValidDateStr } from '../utils/date';
+import { dateInZone, displayTimezone } from '../utils/schedule';
 import type { CheckinService } from './checkin';
 import type { PlanService } from './plan';
 
 export function createTodayService(db: DbAdapter, plans: PlanService, checkins: CheckinService) {
-  const getToday = (date: string = todayStr()): TodayOverview => {
-    const all = db.prepare('SELECT * FROM todos').all().map(mapTodo);
-    const isOverdue = (t: (typeof all)[number]) => t.status === 'open' && t.due_date !== null && (t.due_date < date || (date === todayStr() && t.due_date === date && t.is_overdue));
+  const getToday = (requestedDate?: string): TodayOverview => readSnapshot(db,()=>{
+    const zone=displayTimezone(db);const currentDate=dateInZone(new Date(),zone);const date=ensureValidDateStr(requestedDate??currentDate);
+    const all = db.prepare(TODO_SOURCE_SELECT).all().map(row=>mapTodo(row,zone));
+    const isOverdue = (t: (typeof all)[number]) => t.status === 'open' && t.due_date !== null && (date===currentDate?t.is_overdue:(t.end_date??t.due_date)<date);
     const overdue_todos = all.filter(isOverdue);
-    const due_today_todos = all.filter((t) => t.status === 'open' && t.due_date === date && !isOverdue(t));
+    const due_today_todos = all.filter((t) => t.status === 'open' && t.due_date!==null&&t.due_date<=date&&(t.end_date??t.due_date)>=date && !isOverdue(t));
     const completed_today_todos = all.filter((t) => t.completed_at?.startsWith(date));
     const todayItems = plans.itemsOnDate(date);
     const todayCheckins = checkins.list({ from: date, to: date });
@@ -54,7 +56,7 @@ export function createTodayService(db: DbAdapter, plans: PlanService, checkins: 
       summary_text: parts.join('；') + '。',
       calendar_events,
     };
-  };
+  });
 
   return { getToday };
 }

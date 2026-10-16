@@ -1,9 +1,10 @@
 import type { ToolRegistrar, McpContext } from '../shared/context';
 import { z } from 'zod';
-import { dateSchema } from '../shared/schemas';
+import { dateSchemas } from '../shared/schemas';
 import { wrap } from '../shared/response';
 
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
+  const { dateSchema } = dateSchemas(core);
   // ---------- 间隔复习 ----------
 
   server.tool(

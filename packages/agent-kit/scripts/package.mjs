@@ -79,6 +79,15 @@ export function verifySourceFreshness(bundle, root) {
     if (JSON.stringify(expected) !== JSON.stringify(filesIn(join(bundle, dir)))) throw new Error(`${dir} 文件集与源码不一致`);
     for (const file of expected) if (digest(join(source, dir, file)) !== digest(join(bundle, dir, file))) throw new Error(`能力包源码已更新，请重新构建：${dir}/${file}`);
   }
+  const authorSource = join(source, 'extension-tools');
+  if (existsSync(authorSource)) {
+    const contracts = filesIn(join(root, 'packages/core/src/contracts'));
+    const expected = [...filesIn(authorSource), 'validate.cjs', ...contracts.map(file => 'contracts/' + file)].sort();
+    if (!isDeepStrictEqual(expected, filesIn(join(bundle, 'extension-tools')).sort())) throw new Error('工具作者包文件集陈旧');
+    for (const file of filesIn(authorSource)) if (digest(join(authorSource, file)) !== digest(join(bundle, 'extension-tools', file))) throw new Error('工具作者资源已变更：' + file);
+    for (const file of contracts) if (digest(join(root, 'packages/core/src/contracts', file)) !== digest(join(bundle, 'extension-tools/contracts', file))) throw new Error('作者合同已变更：' + file);
+    if (digest(join(root, 'apps/mcp/dist/extension-validator.cjs')) !== digest(join(bundle, 'extension-tools/validate.cjs'))) throw new Error('独立工具校验器陈旧');
+  }
   for (const [from, to] of [['apps/mcp/dist/mcp-server.cjs', 'mcp/mcp-server.cjs'], ['apps/mcp/dist/agent-catalog.json', 'catalog.json'], ['packages/agent-kit/manifest.json', 'manifest.json']]) {
     if (digest(join(root, from)) !== digest(join(bundle, to))) throw new Error(`构建产物陈旧：${to}`);
   }
@@ -112,6 +121,12 @@ export function buildAgentKit({ root, outDir = join(root, 'dist/agent-kit') }) {
       cpSync(dir, join(stage, 'skills', skill.id), { recursive: true });
     }
     cpSync(join(source, 'runtime'), join(stage, 'runtime'), { recursive: true });
+    if (existsSync(join(source, 'extension-tools'))) {
+      filesIn(join(source, 'extension-tools'));
+      cpSync(join(source, 'extension-tools'), join(stage, 'extension-tools'), { recursive: true });
+      cpSync(join(root, 'packages/core/src/contracts'), join(stage, 'extension-tools/contracts'), { recursive: true });
+      cpSync(join(root, 'apps/mcp/dist/extension-validator.cjs'), join(stage, 'extension-tools/validate.cjs'));
+    }
     mkdirSync(join(stage, 'scripts'), { recursive: true });
     for (const script of ['package.mjs', 'verify.mjs']) cpSync(join(source, 'scripts', script), join(stage, 'scripts', script));
     for (const alias of ['validate-package.mjs', 'install-verify.mjs']) writeFileSync(join(stage, 'scripts', alias), "// 自动生成的兼容入口。\nimport { main } from './verify.mjs';\nmain();\n");

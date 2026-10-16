@@ -6,6 +6,11 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { dateInZone } from '../../../packages/core/src/utils/schedule';
+import { createCore, openNodeSqliteDb } from '../../../packages/core/src';
+import { provisionProvider,eventFixture } from '../../../packages/core/test/runtime-fixtures';
+import { writePackage } from '../../../packages/core/test/extension-fixtures';
+import { installProvider } from '../../../packages/core/test/provider-fixtures';
 import { addDays, todayStr } from '../../../packages/core/src/utils/date';
 const SERVER = new URL('../dist/mcp-server.cjs', import.meta.url).pathname;
 
@@ -73,6 +78,8 @@ describe('MCP 端到端主流程', () => {
     const published = catalog.tools.map((t: { name: string; desc: string }) => ({ name: t.name, desc: t.desc })).sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
     expect(actual).toEqual(published);
     expect(catalog.version).toBe(version);
+    expect(catalog.tools.find((t: { name: string }) => t.name === 'get_checkin_stats').group.id).toBe('todos');
+    expect(catalog.tools.filter((t: { group: { id: string } }) => t.group.id === 'calendar')).toHaveLength(4);
     expect(catalog.skills.map((s: { id: string }) => s.id)).toEqual(['tododesk', 'tododesk-teach', 'tododesk-sports']);
   });
 
@@ -1940,4 +1947,163 @@ describe('轻量本体公开契约',()=>{
     expect(result.ok).toBe(false);expect(result.error).toContain('ACTION_CHANNEL_DENIED');
     await client.callTool({name:'delete_media_content',arguments:{id:content.id}});
   });
+});
+
+
+describe('P1 运行时事件与共享订阅端到端',()=>{
+ it('固定工具目录导入两个未知领域，宿主和 MCP 双向共用且无专有工具注册',async()=>{
+  const call=async(name:string,args:Record<string,unknown>={})=>arg(await client.callTool({name,arguments:args}));
+  const hostDb=openNodeSqliteDb(join(dbDir,'e2e.db'));const host=createCore(hostDb,{dbPath:join(dbDir,'e2e.db')});
+  try{
+   const names=(await client.listTools()).tools.map(t=>t.name);expect((await call('get_runtime_tool_contract')).data.stage).toBe('P4');
+   for(const id of ['test.sport','test.concert']){
+    const p=provisionProvider(host,id);const raw=eventFixture(id);expect((await call('import_external_events',{providerId:p.providerId,batchId:'seed',expectedProviderRevision:0,events:[raw]})).ok).toBe(true);
+    const event=host.externalEvents.list({providerId:p.providerId}).items[0];const sub=(await call('subscribe_event',{eventId:event.id})).data;
+    expect(host.todos.get(sub.todo.id).scheduled_start_at).toBe('2026-10-31T19:00:00.000Z');
+    expect((await call('subscribe_event',{eventId:event.id})).data.todo.id).toBe(sub.todo.id);
+    host.todos.update(sub.todo.id,{priority:'high',notes:'宿主备注'});expect((await call('update_todo',{id:sub.todo.id,notes:'MCP备注'})).data.priority).toBe('high');
+    expect(host.subscriptions.get({eventId:event.id}).subscription!.syncMode).toBe('follow');
+    await call('update_todo',{id:sub.todo.id,title:'用户安排'});expect(host.subscriptions.get({eventId:event.id}).subscription!.syncMode).toBe('manual');
+    await call('import_external_events',{providerId:p.providerId,batchId:'reschedule',expectedProviderRevision:1,events:[{...raw,title:'新来源',startAt:'2026-11-02T19:00:00Z'}]});expect(host.todos.get(sub.todo.id).title).toBe('用户安排');
+    const stale=await call('resume_event_following',{eventId:event.id,expectedEventRevision:1,expectedTodoRevision:sub.todo.revision});expect(stale.code).toBe('REVISION_CONFLICT');
+    const current=host.subscriptions.get({eventId:event.id});expect((await call('resume_event_following',{eventId:event.id,expectedEventRevision:2,expectedTodoRevision:current.todo!.revision})).data.todo.title).toBe('新来源');
+    expect((await call('unsubscribe_event',{eventId:event.id,todoPolicy:'keep'})).data.todo.collection_id).toBe('builtin.todo');host.todos.remove(sub.todo.id);
+   }
+   expect((await client.listTools()).tools.map(t=>t.name)).toEqual(names);
+  }finally{hostDb.close();}
+ });
+ it('专用 MCP 固定时刻、跨日、仅开始时间及修订保护与 core 一致',async()=>{
+  const call=async(name:string,args:Record<string,unknown>)=>arg(await client.callTool({name,arguments:args}));
+  const t=(await call('add_todo',{title:'MCP固定时间',time_mode:'instant',scheduled_start_at:'2026-10-31T19:00:00Z'})).data;expect(t.time_mode).toBe('instant');
+  expect((await call('update_todo',{id:t.id,notes:'改备注',expected_revision:t.revision})).ok).toBe(true);
+  expect((await call('update_todo',{id:t.id,title:'旧基线',expected_revision:t.revision})).code).toBe('REVISION_CONFLICT');
+  const a=await call('add_todo',{title:'MCP只开始',due_date:'2026-11-01',start_time:'23:00'});expect(a.data.end_time).toBeNull();
+  const b=await call('add_todo',{title:'MCP跨日',due_date:'2026-11-01',end_date:'2026-11-02',start_time:'23:30',end_time:'01:30'});expect(b.data.end_date).toBe('2026-11-02');
+  for(const id of [t.id,a.data.id,b.data.id])await call('delete_todo',{id});
+  const oldZone=(await call('get_runtime_tool_contract',{})).data.displayTimezone;
+  try {await call('set_display_timezone',{zone:'Etc/GMT+12'});const local=(await call('add_todo',{title:'统一今天',due_date:'today'})).data;expect(local.due_date).toBe(dateInZone(new Date(),'Etc/GMT+12'));await call('delete_todo',{id:local.id});} finally {await call('set_display_timezone',{zone:oldZone});}
+ });
+});
+
+
+describe('P2 统一日历 MCP 合同',()=>{
+ it('统一读取与分类偏好经固定工具共享，隐藏不删除订阅',async()=>{
+  const call=async(name:string,args:Record<string,unknown>={})=>arg(await client.callTool({name,arguments:args}));
+  const dbPath=join(dbDir,'e2e.db'),db=openNodeSqliteDb(dbPath),host=createCore(db,{dbPath});
+  try{
+   const p=provisionProvider(host,'test.calendar-p2');const raw={...eventFixture(),externalId:'shared',startAt:'2026-11-01T01:00:00Z'};
+   await call('import_external_events',{providerId:p.providerId,batchId:'first',expectedProviderRevision:0,events:[raw]});
+   const event=host.externalEvents.list({providerId:p.providerId}).items[0];const subscribed=(await call('subscribe_event',{eventId:event.id})).data;
+   const zone=host.runtime.getDisplayTimezone(),q={fromDate:'2026-11-01',toDateExclusive:'2026-11-02',displayTimezone:zone,collectionIds:[p.collectionId]};
+   const first=await call('query_calendar_items',q);expect(first.ok).toBe(true);expect(first.data.items).toHaveLength(1);expect(first.data.items[0].target.id).toBe(subscribed.todo.id);
+   expect(first.data.items[0].kind).toBe('external_subscription');
+   await call('set_calendar_collection_visibility',{collectionId:p.collectionId,visible:false});
+   expect((await call('query_calendar_items',{fromDate:q.fromDate,toDateExclusive:q.toDateExclusive,displayTimezone:zone})).data.items.some((i:{id:string})=>i.id===`todo:${subscribed.todo.id}`)).toBe(false);
+   expect(host.todos.get(subscribed.todo.id).status).toBe('open');expect((await call('query_calendar_items',{...q,collectionIds:[]})).data.items).toEqual([]);
+   expect((await call('query_calendar_items',{...q,collectionIds:['unknown']})).code).toBe('CONTRACT_INVALID');
+   await call('unsubscribe_event',{eventId:event.id,todoPolicy:'delete_open'});
+  }finally{db.close();}
+ });
+});
+
+describe('P3 工具包 MCP 与 App 共用安装记录',()=>{
+ it('不能自行授予权限；获宿主授权后安装、升级、回滚和卸载保留用户记录',async()=>{
+  const call=async(name:string,args:Record<string,unknown>={})=>arg(await client.callTool({name,arguments:args}));
+  const directory=join(dbDir,'runtime-package'),id='test.mcp-package';writePackage(directory,{id});
+  const names=(await client.listTools()).tools.map(tool=>tool.name);expect(names).not.toContain('authorize_extension_install');
+  let preview=(await call('preview_extension_install',{stagingDirectory:directory})).data;expect(preview.authorizationRef).toBeNull();
+  const input={stagingDirectory:directory,expectedExtensionRevision:preview.currentRevision,expectedPackageDigest:preview.digest};
+  expect((await call('install_extension',{...input,authorizationRef:'forged'})).code).toBe('PERMISSION_DENIED');
+  expect((await call('invoke_action',{action:'authorize_extension_install',params:{input}})).error).toContain('ACTION_CHANNEL_DENIED');
+  const dbPath=join(dbDir,'e2e.db'),db=openNodeSqliteDb(dbPath),host=createCore(db,{dbPath});
+  try{
+   // 合成环境中模拟 App 对当前摘要的明确授权；MCP 本身没有授权工具。
+   const approval=host.commands.human.authorizeExtensionInstall(input);
+   expect((await call('install_extension',{...input,authorizationRef:approval.authorizationRef})).data.effect).toBe('installed');
+   preview=(await call('preview_extension_install',{stagingDirectory:directory})).data;
+   expect((await call('install_extension',{...input,expectedExtensionRevision:preview.currentRevision,authorizationRef:preview.authorizationRef})).data.effect).toBe('unchanged');
+   expect((await call('list_extensions')).data.some((extension:{id:string})=>extension.id===id)).toBe(true);
+   expect((await call('get_extension_help',{extensionId:id})).data.markdown).toContain('隔离工具');
+   const event=(await call('list_external_events',{providerId:`ext:${id}/main`})).data.items[0];
+   const sub=(await call('subscribe_event',{eventId:event.id})).data;host.todos.update(sub.todo.id,{notes:'个人备注'});host.todos.complete(sub.todo.id);
+   const update=join(dbDir,'runtime-upgrade');writePackage(update,{id,version:'1.1.0',title:'页面升级'});preview=(await call('preview_extension_install',{stagingDirectory:update})).data;
+   expect((await call('install_extension',{stagingDirectory:update,expectedExtensionRevision:preview.currentRevision,expectedPackageDigest:preview.digest,authorizationRef:preview.authorizationRef})).data.effect).toBe('updated');
+   let current=(await call('get_extension',{extensionId:id})).data;
+   expect((await call('rollback_extension',{extensionId:id,expectedRevision:current.revision,version:'1.0.0'})).ok).toBe(true);
+   current=(await call('get_extension',{extensionId:id})).data;expect(current.version).toBe('1.0.0');
+   expect((await call('set_extension_enabled',{extensionId:id,expectedRevision:current.revision,enabled:false})).ok).toBe(true);
+   expect((await call('subscribe_event',{eventId:event.id})).code).toBe('PERMISSION_DENIED');
+   current=(await call('get_extension',{extensionId:id})).data;
+   expect((await call('uninstall_extension',{extensionId:id,expectedRevision:current.revision})).ok).toBe(true);
+   expect(host.todos.get(sub.todo.id)).toMatchObject({status:'done',notes:'个人备注'});
+   expect((await call('get_extension_help',{extensionId:id})).data.markdown).toContain('隔离工具');
+   expect((await client.listTools()).tools.map(tool=>tool.name)).toEqual(names);
+  }finally{db.close();}
+ });
+});
+
+
+describe('P4 固定刷新工具与持久任务', () => {
+ it('MCP 请求不冒充 AI 执行；跨入口读回排队，实际导入后才成功且保护个人修改', async () => {
+  const call = async (name: string, args: Record<string, unknown> = {}) => arg(await client.callTool({ name, arguments: args }));
+  const names = (await client.listTools()).tools.map(tool => tool.name);
+  expect(names).toContain('refresh_event_provider'); expect(names).toContain('get_provider_sync_run');
+  const dbPath = join(dbDir, 'e2e.db'), db = openNodeSqliteDb(dbPath), host = createCore(db, { dbPath });
+  try {
+   const source = installProvider(host, dbPath, 'test.mcp-refresh', 'import');
+   const event = host.externalEvents.list({ providerId: source.providerId }).items[0];
+   const subscription = (await call('subscribe_event', { eventId: event.id })).data;
+   host.todos.update(subscription.todo.id, { title: '用户个人标题', notes: '个人备注' });
+   const queued = (await call('refresh_event_provider', { providerId: source.providerId })).data;
+   expect(queued).toMatchObject({ effect: 'queued', run: { status: 'queued', mode: 'external-agent' } });
+   expect((await call('refresh_event_provider', { providerId: source.providerId })).data).toMatchObject({ effect: 'reused', run: { id: queued.run.id } });
+   expect(host.externalEvents.getRun({ runId: queued.run.id }).status).toBe('queued');
+   expect((await call('get_provider_sync_run', { runId: queued.run.id })).data).not.toHaveProperty('lease_token');
+   expect((await call('list_event_providers')).data.find((item: { id: string }) => item.id === source.providerId).status.activeRun.id).toBe(queued.run.id);
+   expect((await call('import_external_events', { providerId: source.providerId, batchId: 'assistant-verified', expectedProviderRevision: 1, events: [{ ...eventFixture(), title: '助手核验的新来源标题' }] })).ok).toBe(true);
+   expect((await call('get_provider_sync_run', { runId: queued.run.id })).data.status).toBe('succeeded');
+   expect(host.externalEvents.getStatus({ providerId: source.providerId })).toMatchObject({ activeRun: null, lastError: null });
+   expect(host.todos.get(subscription.todo.id)).toMatchObject({ title: '用户个人标题', notes: '个人备注' });
+   expect(host.subscriptions.get({ eventId: event.id })?.subscription?.syncMode).toBe('manual');
+   const extension = host.extensions.get({ extensionId: source.extensionId })!;
+   host.extensions.setEnabled({ extensionId: source.extensionId, expectedRevision: extension.revision, enabled: false });
+   expect((await call('refresh_event_provider', { providerId: source.providerId })).code).toBe('PERMISSION_DENIED');
+   expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(names);
+  } finally { db.close(); }
+ });
+});
+
+// 覆盖固定 MCP 管理入口的完整生命周期，防止只有订阅主链路可用而历史管理不可达。
+describe('P5 来源管理与历史边界', () => {
+ it('公开查询、来源启停、归档与删除经真实 stdio 保持对称和错误语义', async () => {
+  const call=async(name:string,args:Record<string,unknown>={})=>arg(await client.callTool({name,arguments:args}));
+  const dbPath=join(dbDir,'e2e.db'),db=openNodeSqliteDb(dbPath),host=createCore(db,{dbPath});
+  try {
+   const names=(await client.listTools()).tools.map(tool=>tool.name),provider=provisionProvider(host,'test.management-p5');
+   expect((await call('import_external_events',{providerId:provider.providerId,batchId:'management',expectedProviderRevision:0,events:[eventFixture('history'),eventFixture('unused')]})).ok).toBe(true);
+   const sources=(await call('list_event_providers')).data;
+   expect(sources.find((item:{id:string})=>item.id===provider.providerId)).toMatchObject({revision:1,enabled:true});
+   expect((await call('list_calendar_collections')).data.some((item:{id:string})=>item.id===provider.collectionId)).toBe(true);
+   const events=(await call('list_external_events',{providerId:provider.providerId})).data.items;
+   const history=events.find((item:{externalId:string})=>item.externalId==='history'),unused=events.find((item:{externalId:string})=>item.externalId==='unused');
+   expect((await call('get_external_event',{eventId:history.id})).data.id).toBe(history.id);
+   expect((await call('get_event_subscription',{eventId:history.id})).data).toEqual({subscription:null,todo:null});
+   const sub=(await call('subscribe_event',{eventId:history.id})).data;
+   expect((await call('get_event_subscription',{eventId:history.id})).data.todo.id).toBe(sub.todo.id);
+   expect((await call('list_event_subscriptions',{providerId:provider.providerId})).data.items).toHaveLength(1);
+   expect(await call('archive_external_event',{eventId:history.id})).toMatchObject({ok:false,code:'EVENT_IN_USE',retryable:false});
+   expect((await call('update_event_provider',{providerId:provider.providerId,expectedRevision:1,enabled:false})).data).toMatchObject({revision:2,enabled:false});
+   expect((await call('subscribe_event',{eventId:history.id})).code).toBe('PERMISSION_DENIED');
+   expect((await call('update_event_provider',{providerId:provider.providerId,expectedRevision:1,enabled:true})).code).toBe('REVISION_CONFLICT');
+   expect((await call('update_event_provider',{providerId:provider.providerId,expectedRevision:2,enabled:true})).data).toMatchObject({revision:3,enabled:true});
+   expect((await call('unsubscribe_event',{eventId:history.id,todoPolicy:'keep'})).data.todo.collection_id).toBe('builtin.todo');
+   expect((await call('archive_external_event',{eventId:history.id})).ok).toBe(true);
+   expect((await call('delete_unused_external_event',{eventId:history.id})).code).toBe('EVENT_IN_USE');
+   expect((await call('delete_unused_external_event',{eventId:unused.id})).ok).toBe(true);
+   expect((await call('list_external_events',{providerId:provider.providerId})).data.items).toEqual([]);
+   expect(await call('get_external_event',{eventId:unused.id})).toMatchObject({ok:false,code:'EVENT_NOT_FOUND',retryable:false});
+   expect(host.todos.get(sub.todo.id).status).toBe('open');
+   expect((await client.listTools()).tools.map(tool=>tool.name)).toEqual(names);
+  } finally {db.close();}
+ });
 });

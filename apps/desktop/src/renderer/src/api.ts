@@ -1,5 +1,6 @@
 // 渲染进程访问 preload API 的类型声明与封装
 /// <reference types="vite/client" />
+import type { CalendarQuery,CalendarResult,CalendarCollection,TodoDeskCore,EventImportInput,EventListInput,SubscriptionInput,SubscriptionListInput,UnsubscribeInput,ResumeFollowingInput } from '../../../../../packages/core/src';
 import type { AggregateResult, QueryResult, QueryRow, QueryService } from '../../../../../packages/core/src/ontology/query';
 import type { ActionService } from '../../../../../packages/core/src/ontology/action';
 import type { ActionRunService } from '../../../../../packages/core/src/services/action-run';
@@ -9,9 +10,48 @@ export interface ApiResult<T> {
   ok: boolean;
   data?: T;
   error?: string;
+  code?: string;
+  retryable?: boolean;
 }
 
 interface TododeskApi {
+  extensions:{
+    bindSession:(p:{extensionId:string;nonce:string})=>Promise<ApiResult<{sessionToken:string;releaseDigest:string}>>;
+    releaseSession:(p:{sessionToken:string})=>Promise<ApiResult<boolean>>;
+    sdkRequest:(p:{sessionToken:string;request:unknown})=>Promise<ApiResult<unknown>>;
+    onOpenTodo:(listener:(target:{objectType:'todo';id:number})=>void)=>()=>void;
+    describe:()=>Promise<ApiResult<unknown>>;
+    pickDirectory:()=>Promise<ApiResult<string|null>>;
+    previewInstall:(p:Parameters<TodoDeskCore['extensions']['previewInstall']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['previewInstall']>>>;
+    authorizeInstall:(p:Parameters<TodoDeskCore['extensions']['authorizeInstall']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['authorizeInstall']>>>;
+    install:(p:Parameters<TodoDeskCore['extensions']['install']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['install']>>>;
+    list:()=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['list']>>>;
+    get:(p:{extensionId:string})=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['get']>>>;
+    getHelp:(p:{extensionId:string})=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['getHelp']>>>;
+    setEnabled:(p:Parameters<TodoDeskCore['extensions']['setEnabled']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['setEnabled']>>>;
+    rollback:(p:Parameters<TodoDeskCore['extensions']['rollback']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['rollback']>>>;
+    uninstall:(p:Parameters<TodoDeskCore['extensions']['uninstall']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['extensions']['uninstall']>>>;
+  };
+  runtime:{revision:()=>Promise<ApiResult<number>>;timezone:()=>Promise<ApiResult<string>>;setTimezone:(p:{zone:string})=>Promise<ApiResult<string>>};
+  events:{
+    refresh:(p:Parameters<TodoDeskCore['externalEvents']['refresh']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['externalEvents']['refresh']>>>;
+    getRun:(p:Parameters<TodoDeskCore['externalEvents']['getRun']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['externalEvents']['getRun']>>>;
+    getStatus:(p:Parameters<TodoDeskCore['externalEvents']['getStatus']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['externalEvents']['getStatus']>>>;
+    listProviders:()=>Promise<ApiResult<ReturnType<TodoDeskCore['externalEvents']['listProviders']>>>;
+    updateProvider:(p:Parameters<TodoDeskCore['externalEvents']['updateProvider']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['externalEvents']['updateProvider']>>>;
+    import:(p:EventImportInput)=>Promise<ApiResult<ReturnType<TodoDeskCore['externalEvents']['import']>>>;
+    list:(p:EventListInput)=>Promise<ApiResult<ReturnType<TodoDeskCore['externalEvents']['list']>>>;
+    get:(p:SubscriptionInput)=>Promise<ApiResult<ReturnType<TodoDeskCore['externalEvents']['get']>>>;
+    archive:(p:SubscriptionInput)=>Promise<ApiResult<void>>;
+    deleteUnused:(p:SubscriptionInput)=>Promise<ApiResult<void>>;
+  };
+  subscriptions:{
+    subscribe:(p:SubscriptionInput)=>Promise<ApiResult<ReturnType<TodoDeskCore['subscriptions']['subscribe']>>>;
+    get:(p:SubscriptionInput)=>Promise<ApiResult<ReturnType<TodoDeskCore['subscriptions']['get']>>>;
+    list:(p:SubscriptionListInput)=>Promise<ApiResult<ReturnType<TodoDeskCore['subscriptions']['list']>>>;
+    unsubscribe:(p:UnsubscribeInput)=>Promise<ApiResult<ReturnType<TodoDeskCore['subscriptions']['unsubscribe']>>>;
+    resumeFollowing:(p:ResumeFollowingInput)=>Promise<ApiResult<ReturnType<TodoDeskCore['subscriptions']['resumeFollowing']>>>;
+  };
   agent: {
     status: () => Promise<ApiResult<AgentKitStatus>>;
     export: () => Promise<ApiResult<{ version: string; target: string } | null>>;
@@ -41,6 +81,9 @@ interface TododeskApi {
     get: (p?: { date?: string }) => Promise<ApiResult<unknown>>;
   };
   calendar: {
+    queryItems:(p:CalendarQuery)=>Promise<ApiResult<CalendarResult>>;
+    listCollections:()=>Promise<ApiResult<CalendarCollection[]>>;
+    setVisibility:(p:{collectionId:string;visible:boolean})=>Promise<ApiResult<void>>;
     list: (p?: { from?: string; to?: string; search?: string; limit?: number }) => Promise<ApiResult<unknown[]>>;
     rangeAgenda: (p: { from: string; to: string }) => Promise<ApiResult<unknown>>;
     add: (p: { title: string; date: string; end_date?: string | null; start_time?: string | null; end_time?: string | null; note?: string; color?: string; source?: string }) => Promise<ApiResult<unknown>>;
@@ -185,7 +228,7 @@ declare global {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function call<T>(fn: () => Promise<ApiResult<any>>): Promise<T> {
   const res = await fn();
-  if (!res.ok) throw new Error(res.error ?? '未知错误');
+  if (!res.ok) throw Object.assign(new Error(res.error ?? '未知错误'),{code:res.code});
   return res.data as T;
 }
 

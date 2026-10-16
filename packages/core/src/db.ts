@@ -2,6 +2,7 @@
 // 两个驱动 API 形态接近，这里统一成一个最小适配接口。
 import type { CalendarColor, NewsItem, NewsSource, Priority, Todo, TodoStatus } from './types';
 import { nowIso, todayStr } from './utils/date';
+import { overdue } from './utils/schedule';
 
 export interface SqlResult {
   changes: number;
@@ -244,7 +245,12 @@ export function initDb(db: DbAdapter): void {
 
 // ---------- 行映射 ----------
 
-export function mapTodo(row: Record<string, unknown>): Todo {
+/** 只读关联来源状态，避免复制来源字段到待办造成双份真相。 */
+export const TODO_SOURCE_SELECT = `SELECT t.*,
+ (SELECT e.status FROM event_subscriptions s JOIN external_events e ON e.id=s.event_id WHERE s.todo_id=t.id AND s.status='active') AS source_status,
+ (SELECT e.time_kind FROM event_subscriptions s JOIN external_events e ON e.id=s.event_id WHERE s.todo_id=t.id AND s.status='active') AS source_time_kind
+ FROM todos t`;
+export function mapTodo(row: Record<string, unknown>, timezone=Intl.DateTimeFormat().resolvedOptions().timeZone): Todo {
   const status = row.status as TodoStatus;
   const due = (row.due_date as string | null) ?? null;
   let tags: string[] = [];
@@ -263,12 +269,20 @@ export function mapTodo(row: Record<string, unknown>): Todo {
     due_date: due,
     start_time: (row.start_time as string | null) ?? null,
     end_time: (row.end_time as string | null) ?? null,
+    end_date: (row.end_date as string|null)??null,
+    time_mode: row.time_mode==='instant'?'instant':'floating',
+    scheduled_start_at:(row.scheduled_start_at as string|null)??null,
+    scheduled_end_at:(row.scheduled_end_at as string|null)??null,
+    collection_id:(row.collection_id as string|null)??null,
+    revision:Number(row.revision??1),
+    source_status:(row.source_status as Todo['source_status'])??null,
+    source_time_kind:(row.source_time_kind as Todo['source_time_kind'])??null,
     tags,
     source: String(row.source ?? 'app'),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
     completed_at: (row.completed_at as string | null) ?? null,
-    is_overdue: status === 'open' && due !== null && (row.end_time ? `${due}T${row.end_time}` <= nowIso().slice(0, 16) : due < todayStr()),
+    is_overdue: overdue(row,timezone),
   };
 }
 

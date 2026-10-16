@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { initDb, inTx, type DbAdapter } from './db';
-import { runMigrations } from './migrations';
+import { runMigrations,MIGRATIONS } from './migrations';
 import { createRelationService, type RelationService } from './ontology/relations';
 import { createCommandService, type CommandService } from './ontology/commands';
 import { createActionService, type ActionService } from './ontology/action';
@@ -13,6 +13,7 @@ import { createActionRunService, type ActionRunService } from './services/action
 import { createObjectRepo, type ObjectRepo } from './ontology/repo';
 import { createOntologyService, type OntologyService } from './ontology/registry';
 import { createCheckinService, type CheckinService } from './services/checkin';
+import { createCalendarQueryService, type CalendarQueryService } from './services/calendar-query';
 import { createCalendarService, type CalendarService } from './services/calendar';
 import { createNewsService, type NewsService } from './services/news';
 import { createPlanService, type PlanService } from './services/plan';
@@ -26,6 +27,19 @@ import { createToolAssetService } from './services/tool-assets';
 import { createToolService, type ToolService } from './services/tool';
 import { createVaultService, type VaultService } from './services/vault';
 import { todayStr } from './utils/date';
+import { createExtensionService,type ExtensionService } from './services/extensions';
+import { createRuntimeService, type RuntimeService } from './services/runtime';
+import { createSubscriptionService,scopeSubscriptionService,type SubscriptionService } from './services/subscriptions';
+import { createExternalEventService,type ExternalEventService } from './services/external-events';
+import { createProviderRefreshService } from './services/provider-refresh';
+import type { ProviderNetwork,ProviderWorker } from './provider-types';
+import { COMMAND_INPUTS } from './ontology/command-inputs';
+import { validateCommandInput } from './ontology/input-validation';
+import { runtimeError,dateInZone,displayTimezone } from './utils/schedule';
+export * from './runtime-types';
+export * from './extension-types';
+export * from './provider-types';
+export { RuntimeError,runtimeErrorInfo } from './utils/schedule';
 
 export * from './types';
 export { initDb, inTx } from './db';
@@ -104,6 +118,14 @@ export type { ObjectRepo } from './ontology/repo';
 export type { ActionService } from './ontology/action';
 
 export interface TodoDeskCore {
+  /** 受信 App/MCP 的刷新执行器；不向工具 SDK 暴露。 */
+  providerWorker:ProviderWorker;
+  runtime: RuntimeService;
+  extensions:ExtensionService;
+  externalEvents: ExternalEventService;
+  subscriptions: SubscriptionService;
+  /** 仅受信宿主根据实际 frame 身份创建范围接口；不能把此工厂暴露给工具页面。 */
+  forExtension:(extensionId:string)=>{externalEvents:ExternalEventService;subscriptions:ReturnType<typeof scopeSubscriptionService>};
   db: DbAdapter;
   todos: TodoService;
   plans: PlanService;
@@ -115,7 +137,7 @@ export interface TodoDeskCore {
   tools: ToolService;
   today: { getToday: (date?: string) => import('./types').TodayOverview };
   /** 个人本地日历：日程 CRUD + 区间聚合（今日页月视图） */
-  calendar: CalendarService;
+  calendar: CalendarService & CalendarQueryService & Pick<RuntimeService,'listCollections'|'setVisibility'>;
   /** 教学课程：导入/阅读/答题/样课确认/生成请求队列 */
   courses: CourseService;
   /** 知识库 vault：只读注册/索引/搜索/阅读/概念关联（绝不写 vault 文件） */
@@ -142,7 +164,9 @@ export interface TodoDeskCore {
  * - 计划条目置 done → 记 ref_type='plan_item' 打卡，并联动完成其关联待办（不重复打卡）
  * - 撤销完成 → 对应打卡记录一并删除
  */
-export function createCore(db: DbAdapter, opts: { dbPath?: string } = {}): TodoDeskCore {
+export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwork?:ProviderNetwork } = {}): TodoDeskCore {
+  if(Number(db.prepare('PRAGMA user_version').get()?.user_version??0)>Math.max(...MIGRATIONS.map(m=>m.version)))runtimeError('SCHEMA_TOO_NEW','数据库版本高于当前程序，拒绝写入');
+  if(db.prepare("SELECT 1 FROM sqlite_master WHERE name='runtime_revision'").get()&&Number(db.prepare('SELECT contract_major FROM runtime_revision WHERE id=1').get()?.contract_major)>1)runtimeError('HOST_API_UNSUPPORTED','数据库运行时合同高于当前程序，拒绝写入');
   initDb(db);
   const ontology = createOntologyService(db);
   inTx(db,()=>{runMigrations(db);ontology.init();});
@@ -152,14 +176,19 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string } = {}): TodoD
   let commands: CommandService;
   let publicTodos: TodoService;
   let publicPlans: PlanService;
+  let managedDepth=0;
+  const managedWrite=<T>(fn:()=>T):T=>{managedDepth++;try{return fn();}finally{managedDepth--;}};
   const checkins = createCheckinService(db);
   const todos = createTodoService(db, {
+    isManagedWrite:()=>managedDepth>0,
+    onManagedEdited:(id)=>{db.prepare("UPDATE event_subscriptions SET sync_mode='manual',updated_at=? WHERE todo_id=? AND status='active'").run(new Date().toISOString(),id);},
+    onBeforeRemoved:(id)=>{db.prepare("UPDATE event_subscriptions SET status='unsubscribed',updated_at=? WHERE todo_id=? AND status='active'").run(new Date().toISOString(),id);},
     onCompleted: (todoId, date, recordCheckin) => {
       if (recordCheckin) { commands.guard('checkin'); checkins.checkin({ ref_type: 'todo', ref_id: todoId, date }); }
     },
     onReopened: (todoId) => {
       commands.guard('remove_checkin');
-      checkins.remove('todo', todoId, todayStr());
+      checkins.remove('todo', todoId, dateInZone(new Date(),displayTimezone(db)));
     },
   });
   const plans = createPlanService(db, {
@@ -183,7 +212,22 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string } = {}): TodoD
   const vaults = createVaultService(db);
   const media = createMediaService(db);
   const calendar = createCalendarService(db, queries);
-  const services = { todos, plans, checkins, news, reviews, study, tools, courses, vaults, media, calendar };
+  const runtime=createRuntimeService(db,{todos:()=>publicTodos,managedWrite});
+  const subscriptionModule=createSubscriptionService(db,{todos:()=>publicTodos,managedWrite});
+  const subscriptions=subscriptionModule.service;
+  const eventService=createExternalEventService(db,subscriptionModule.syncEvent);
+  const refreshModule=createProviderRefreshService(db,{
+    network:opts.providerNetwork,guard:name=>commands.guard(name),
+    importEvents:(extensionId,input)=>{
+      commands.guard('import_external_events');validateCommandInput(COMMAND_INPUTS.import_external_events?.[0],input,'import_external_events');
+      const scoped=createSubscriptionService(db,{todos:()=>publicTodos,managedWrite},{extensionId});
+      return createExternalEventService(db,scoped.syncEvent,{extensionId},'providers.refresh').import(input);
+    },
+  });
+  const externalEvents={...eventService,...refreshModule.forActor()};
+  const extensionModule=createExtensionService(db,{dbPath:opts.dbPath??defaultDbPath(),events:()=>commands.wrap('externalEvents',externalEvents),guard:name=>commands.guard(name)});
+  const extensions=extensionModule.service;extensionModule.recover();
+  const services = { extensions,todos, plans, checkins, news, reviews, study, tools, courses, vaults, media, calendar, runtime,subscriptions,externalEvents };
   commands = createCommandService(db, ontology, services);
   publicTodos=commands.wrap('todos',todos); publicPlans=commands.wrap('plans',plans);
   const relationStore = createRelationService(db,ontology,objectStore,{attach:(l,r)=>commands.wrap('media',media).attachMaterial(l,r),detach:(l,r)=>commands.wrap('media',media).detachMaterial(l,r)});
@@ -212,11 +256,18 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string } = {}): TodoD
   relations.remove = (name, leftId, rightId) => {
     return actions.writeRelation(name, 'delete', leftId, rightId) as ReturnType<RelationService['remove']>;
   };
-  return { db, today, ontology, objects, queries, actions, actionRuns: actionRunStore.public, commands, relations,
+  const guarded=<T,R>(name:string,fn:(input:T)=>R)=>(input:T):R=>{commands.guard(name);validateCommandInput(COMMAND_INPUTS[name]?.[0],input,name);return fn(input);};
+  const forExtension=(extensionId:string)=>{
+    if(typeof extensionId!=='string'||!extensionId.trim()||!db.prepare('SELECT 1 FROM extensions WHERE id=?').get(extensionId))throw Object.assign(new Error('PERMISSION_DENIED: 工具身份无效'),{code:'PERMISSION_DENIED'});
+    const scopedSubs=createSubscriptionService(db,{todos:()=>publicTodos,managedWrite},{extensionId});
+    const ev={...createExternalEventService(db,scopedSubs.syncEvent,{extensionId}),...refreshModule.forActor({extensionId})};const sub=scopedSubs.service;
+    return {externalEvents:{...ev,refresh:guarded('refresh_event_provider',ev.refresh),import:guarded('import_external_events',ev.import),archive:guarded('archive_external_event',ev.archive),deleteUnused:guarded('delete_unused_external_event',ev.deleteUnused),updateProvider:guarded('update_event_provider',ev.updateProvider)},subscriptions:scopeSubscriptionService({...sub,subscribe:guarded('subscribe_event',sub.subscribe),unsubscribe:guarded('unsubscribe_event',sub.unsubscribe),resumeFollowing:guarded('resume_event_following',sub.resumeFollowing)})};
+  };
+  return { db, today, ontology, objects, queries, actions, actionRuns: actionRunStore.public, commands, relations,providerWorker:refreshModule.worker,extensions:commands.wrap('extensions',extensions),runtime:commands.wrap('runtime',runtime),externalEvents:commands.wrap('externalEvents',externalEvents),subscriptions:commands.wrap('subscriptions',subscriptions),forExtension,
     todos:publicTodos, plans:publicPlans, checkins:commands.wrap('checkins',checkins),
     news:commands.wrap('news',news), reviews:commands.wrap('reviews',reviews), study:commands.wrap('study',study),
     tools:commands.wrap('tools',tools), courses:commands.wrap('courses',courses), vaults:commands.wrap('vaults',vaults), media:commands.wrap('media',media),
-    calendar:commands.wrap('calendar',calendar),
+    calendar:{...commands.wrap('calendar',calendar),...createCalendarQueryService(db,runtime),listCollections:runtime.listCollections,setVisibility:commands.wrap('runtime',runtime).setVisibility},
   };
 }
 

@@ -1,21 +1,22 @@
 // 待办服务测试
 import { describe, expect, it, vi } from 'vitest';
 import { addDays, todayStr } from '../src/utils/date';
-import { mkCore } from './helpers';
+import { mkCore, mkLegacyDb } from './helpers';
 import { openNodeSqliteDb } from '../src/adapters/node-sqlite';
 import { createCore } from '../src';
 
 describe('待办服务', () => {
   it('旧版 v14 日期待办升级后不丢失原值，也不伪造时段', () => {
-    const { core, dbPath, cleanup } = mkCore();
+    const { db, dbPath, cleanup } = mkLegacyDb(14);
     let upgraded: ReturnType<typeof openNodeSqliteDb> | undefined;
     try {
-      const old = core.todos.add({ title: '旧日期任务', due_date: todayStr(), tags: ['保留'] });
-      core.db.exec('ALTER TABLE todos DROP COLUMN start_time; ALTER TABLE todos DROP COLUMN end_time; PRAGMA user_version = 14;');
-      core.db.close();
+      const old = { title: '旧日期任务', due_date: todayStr(), tags: ['保留'], created_at: '2026-10-01T00:00:00.000' };
+      const result = db.prepare('INSERT INTO todos(title,due_date,tags,created_at,updated_at) VALUES(?,?,?,?,?)').run(old.title, old.due_date, JSON.stringify(old.tags), old.created_at, old.created_at);
+      expect(db.prepare('PRAGMA table_info(todos)').all().some(column => column.name === 'start_time')).toBe(false);
+      db.close();
       upgraded = openNodeSqliteDb(dbPath);
       const next = createCore(upgraded, { dbPath });
-      expect(next.todos.get(old.id)).toMatchObject({ title: old.title, due_date: old.due_date, tags: old.tags, start_time: null, end_time: null, created_at: old.created_at });
+      expect(next.todos.get(result.lastInsertRowid)).toMatchObject({ title: old.title, due_date: old.due_date, tags: old.tags, start_time: null, end_time: null, created_at: old.created_at });
       expect(upgraded.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
     } finally { upgraded?.close(); cleanup(); }
   });
@@ -34,12 +35,12 @@ describe('待办服务', () => {
     } finally { cleanup(); }
   });
 
-  it('拒绝不完整、倒序、非法时间与无日期时段，失败不改原记录', () => {
+  it('拒绝仅结束、倒序、非法时间与无日期时段，失败不改原记录', () => {
     const { core, cleanup } = mkCore();
     try {
       const base = { title: '时间校验', due_date: todayStr() };
       for (const timing of [
-        { start_time: '09:00' }, { end_time: '10:00' },
+        { end_time: '10:00' },
         { start_time: '10:00', end_time: '10:00' },
         { start_time: '11:00', end_time: '10:00' },
         { start_time: '24:00', end_time: '25:00' },

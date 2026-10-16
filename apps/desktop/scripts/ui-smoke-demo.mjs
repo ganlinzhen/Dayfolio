@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { build } from 'esbuild';
 import { homedir } from 'node:os';
 
@@ -76,9 +76,12 @@ await new Promise((res, rej) => {
 });
 
 // ---------- 隔离拉起 Electron ----------
-const electronBin = join(repo, 'node_modules', '.bin', 'electron');
+// 指定候选 .app 可复用同一隔离验收，避免只证明开发入口可用。
+const packagedExecutable = process.env.TODODESK_SMOKE_APP;
+if (packagedExecutable && (!isAbsolute(packagedExecutable) || !packagedExecutable.endsWith('.app/Contents/MacOS/Dayfolio'))) throw new Error('候选 App 可执行路径不合法');
+const electronBin = packagedExecutable || join(repo, 'node_modules', '.bin', 'electron');
 if (!existsSync(electronBin)) throw new Error('未找到 electron 可执行文件');
-const app = spawn(electronBin, ['.', `--remote-debugging-port=${PORT}`], {
+const app = spawn(electronBin, [...(packagedExecutable ? [] : ['.']), `--remote-debugging-port=${PORT}`], {
   cwd: join(repo, 'apps/desktop'),
   stdio: ['ignore', 'pipe', 'pipe'],
   env: isolatedEnv,
@@ -143,11 +146,17 @@ const stopAndCleanup = async (runDbCheck = false) => {
 
 try {
   const page = await waitFor(async () => {
-    const list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
-    return list.find((t) => t.type === 'page');
+    const list = await (await fetch(`http://127.0.0.1:${PORT}/json`, { signal: AbortSignal.timeout(3000) })).json();
+    // 启动偏好迁移也有短生命周期的隐藏页面，只连接正式渲染入口。
+    return list.find((t) => t.type === 'page' && t.url === 'dayfolio-app://app/index.html');
   }, 30000, 'CDP 页面 target');
+  console.log('[smoke] 已发现隔离页面：' + page.url);
   const ws = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+  await new Promise((res, rej) => {
+    const timer = setTimeout(() => rej(new Error('CDP 连接超时')), 5000);
+    ws.onopen = () => { clearTimeout(timer); res(); };
+    ws.onerror = (error) => { clearTimeout(timer); rej(error); };
+  });
   let msgId = 0;
   const pending = new Map();
   ws.onmessage = (ev) => {
@@ -155,7 +164,12 @@ try {
     if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
   };
   const send = (method, params = {}) =>
-    new Promise((res) => { const id = ++msgId; pending.set(id, res); ws.send(JSON.stringify({ id, method, params })); });
+    new Promise((res, rej) => {
+      const id = ++msgId;
+      const timer = setTimeout(() => { pending.delete(id); rej(new Error('CDP 请求超时：' + method)); }, 10000);
+      pending.set(id, (value) => { clearTimeout(timer); res(value); });
+      ws.send(JSON.stringify({ id, method, params }));
+    });
   const evalJs = async (expression) => {
     const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
     if (r.result?.exceptionDetails) throw new Error('页面执行失败: ' + JSON.stringify(r.result.exceptionDetails).slice(0, 400));
@@ -332,7 +346,7 @@ try {
       if (layout.outerScroll !== 0 || layout.headTop < layout.contentTop - 1) console.log('页面位置诊断', label, width, JSON.stringify(layout));
       assert(layout.titles.length === 0 && !layout.overflow && layout.scrollTop === 0, `${width}px ${label}首页无重复大标题，操作栏无横向溢出且从顶部展示`);
       if (label === 'MCP') {
-        assert(await evalJs(`(() => { const groups = [...document.querySelectorAll('.mcp-group')]; const text = document.querySelector('.content').textContent; return !text.includes('打卡与今日') && ![...document.querySelectorAll('.mcp-group-title')].some(h => ['学习计划','打卡'].includes(h.textContent.trim())) && text.includes('get_checkin_stats'); })()`), 'MCP 完成记录归待办，无独立打卡与学习计划分组');
+        assert(await evalJs(`(() => { const groups = [...document.querySelectorAll('.mcp-group')]; const text = document.querySelector('.content').textContent; return !text.includes('打卡与今日') && ![...document.querySelectorAll('.mcp-group-title')].some(h => ['学习计划','打卡'].includes(h.textContent.trim())) && groups.find(g => g.querySelector('.mcp-group-title')?.textContent.trim() === '待办')?.textContent.includes('get_checkin_stats'); })()`), 'MCP 完成记录归待办，无独立打卡与学习计划分组');
         const expectedVersion = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8')).version;
         const expectedCount = JSON.parse(readFileSync(join(repo, 'apps/mcp/dist/agent-catalog.json'), 'utf8')).tools.length;
         await waitFor(() => evalJs(`document.querySelector('.content').textContent.includes(${JSON.stringify('随包 ' + expectedVersion)})`), 10000, '能力包版本检查');
@@ -473,8 +487,13 @@ try {
   await waitFor(() => evalJs(`!!document.querySelector('.checkin-hero')`), 10000, '待办完成记录页');
   assert(await evalJs(`!document.querySelector('.day-checkin') && !!document.querySelector('.heat-row')`), '打卡面板保留热力，无每日打卡入口');
   await clickUntil(nav('今日'), () => evalJs(`!!document.querySelector('.cal-weekview')`), 10000, '回到今日');
-  // 当日明细：晨会行带时间与编辑入口
-  assert(await evalJs(`[...document.querySelectorAll('.cal-ev-row')].some(r => r.textContent.includes('【演示】晨会') && r.textContent.includes('09:30') && r.querySelector('[title=编辑]'))`), '当日明细可编辑日程行');
+  // 当日明细统一通过标题进入业务编辑，验证实际表单和保留字段。
+  await waitFor(() => evalJs(`[...document.querySelectorAll('.cal-ev-row')].some(r => r.textContent.includes('【演示】晨会') && r.textContent.includes('09:30') && r.querySelector('.cal-item-open'))`), 10000, '当日明细与日历查询就绪');
+  assert(true, '当日明细可打开日程编辑');
+  await evalJs(`[...document.querySelectorAll('.cal-ev-row')].find(r => r.textContent.includes('【演示】晨会')).querySelector('.cal-item-open').click()`);
+  await waitFor(() => evalJs(`document.querySelector('.cal-form')?.getAttribute('aria-label') === '编辑日程'`), 10000, '既有日程编辑表单');
+  assert(await evalJs(`document.querySelector('[aria-label="日程备注"]').value === '演示定时日程' && document.querySelector('[aria-label="开始时间"]').value === '09:30'`), '既有日程备注和钟点保留');
+  await evalJs(`[...document.querySelectorAll('.cal-form .btn')].find(b => b.textContent.includes('取消')).click()`);
   // 周视图点击空档 → 表单预填时段（非全天）
   await evalJs(`(() => { const col = [...document.querySelectorAll('.cal-col')][3]; const rect = col.getBoundingClientRect(); const ev = new MouseEvent('click', { bubbles: true, clientX: rect.left + rect.width / 2, clientY: rect.top + 300 }); col.dispatchEvent(ev); })()`);
   const slotForm = await evalJs(`(() => { const f = document.querySelector('.cal-form'); if (!f) return null; const allDay = f.querySelector('input[type=checkbox]'); const times = [...f.querySelectorAll('input[type=time]')].map(i => i.value); return { allDay: allDay.checked, times }; })()`);
@@ -490,7 +509,9 @@ try {
   await evalJs(`[...document.querySelectorAll('.cal-form .btn')].find(b => b.textContent.includes('创建日程')).click()`);
   await waitFor(() => evalJs(`[...document.querySelectorAll('.cal-ev-row')].some(r => r.textContent.includes(${JSON.stringify(calTitle)}))`), 10000, '新建日程落库并显示');
   assert(await evalJs(`document.querySelector('.cal-allday-lane').textContent.includes(${JSON.stringify(calTitle)})`), '全天日程进入周视图全天区');
-  await evalJs(`[...document.querySelectorAll('.cal-ev-row')].find(r => r.textContent.includes(${JSON.stringify(calTitle)})).querySelector('[title=删除]').click()`);
+  await evalJs(`[...document.querySelectorAll('.cal-ev-row')].find(r => r.textContent.includes(${JSON.stringify(calTitle)})).querySelector('.cal-item-open').click()`);
+  await waitFor(() => evalJs(`document.querySelector('.cal-form')?.getAttribute('aria-label') === '编辑日程'`), 10000, '新建日程编辑入口');
+  await evalJs(`[...document.querySelectorAll('.cal-form .btn')].find(b => b.textContent.includes('删除')).click()`);
   await waitFor(() => evalJs(`![...document.querySelectorAll('.cal-ev-row')].some(r => r.textContent.includes(${JSON.stringify(calTitle)}))`), 10000, '删除日程后消失');
   // 切月视图复验
   await evalJs(`[...document.querySelectorAll('.cal-mode-switch button')].find(b => b.textContent === '月').click()`);

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, call } from '../api';
 import { HELP_DOCS, HELP_SYNCED_AT } from '../generated/helpContent';
+import { useRuntimeRefresh } from './useRuntimeRefresh';
+import type { TodoDeskCore } from '../../../../../../packages/core/src';
 
 // ---------- 极简 markdown 渲染（子集见 apps/help/README.md，不引第三方依赖） ----------
 
@@ -168,7 +170,19 @@ function parseBlocks(md: string): ReactNode[] {
 
 export default function HelpPanel() {
   const [activeId, setActiveId] = useState(HELP_DOCS[0]?.id ?? '');
-  const active = HELP_DOCS.find((d) => d.id === activeId) ?? HELP_DOCS[0];
+  const [dynamicDocs,setDynamicDocs]=useState<Array<{id:string;title:string;description:string;markdown:string}>>([]),[loadError,setLoadError]=useState('');
+  useRuntimeRefresh(async()=>{
+    try{
+      const extensions=await call<ReturnType<TodoDeskCore['extensions']['list']>>(()=>api.extensions.list());
+      const docs=await Promise.all(extensions.map(async extension=>{
+        try{const help=await call<ReturnType<TodoDeskCore['extensions']['getHelp']>>(()=>api.extensions.getHelp({extensionId:extension.id}));return {id:'extension:'+extension.id,title:help.title,description:`工具 ${help.version}${extension.status==='active'?'':extension.status==='disabled'?' · 已停用':' · 已卸载'}`,markdown:help.markdown};}
+        catch(error){return {id:'extension:'+extension.id,title:extension.title,description:'帮助暂不可用',markdown:(error as Error).message};}
+      }));
+      setDynamicDocs(docs);setLoadError('');
+    }catch(error){setLoadError((error as Error).message);}
+  });
+  const documents=useMemo(()=>[...HELP_DOCS,...dynamicDocs],[dynamicDocs]);
+  const active = documents.find((d) => d.id === activeId) ?? documents[0];
   const articleRef = useRef<HTMLElement>(null);
   const blocks = useMemo(() => (active ? parseBlocks(active.markdown) : []), [active]);
 
@@ -184,12 +198,13 @@ export default function HelpPanel() {
     <div className="panel help-panel" role="region" aria-label="帮助">
       <header className="panel-head">
         <div className="head-meta mono">
-          {HELP_DOCS.length} 个模块 · 更新于 {syncedAt}
+          {HELP_DOCS.length} 个内置模块 · {dynamicDocs.length} 个工具帮助 · 内置更新于 {syncedAt}
         </div>
       </header>
+      {loadError&&<div className="notice error">{loadError}</div>}
       <div className="help-layout">
         <nav className="help-toc" aria-label="帮助目录">
-          {HELP_DOCS.map((d, idx) => (
+          {documents.map((d, idx) => (
             <button
               key={d.id}
               className={`help-toc-item ${d.id === active.id ? 'active' : ''}`}

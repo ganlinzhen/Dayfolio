@@ -2053,3 +2053,29 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .todo-time { width: 108px; }
 .todo-toolbar { flex-wrap: wrap; }
 .todo-title[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* 运行时日历分类与固定业务详情 */
+.cal-display-panel { margin: 0 0 14px; border: 1px solid var(--border, #e6e3de); border-radius: 8px; padding: 9px 12px; }
+.cal-display-panel summary { cursor: pointer; font-size: 13px; }
+.cal-collection-list { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 12px; }
+.cal-zone { font-size: 11px; color: var(--muted, #777); }
+.cal-collection-list .inline-input { width: 160px; }
+.cal-item-details { border: 1px solid var(--border, #e6e3de); border-radius: 8px; padding: 14px; margin: 12px 0; }
+.cal-item-details > .cal-field { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+.cal-item-details .inline-input { flex: 1; min-width: 80px; }
+.cal-item-details textarea { min-height: 60px; resize: vertical; }
+.cal-source-detail { background: var(--surface, #f5f4f1); border-radius: 6px; padding: 12px; margin: 12px 0; overflow-wrap: anywhere; }
+.cal-source-detail p { margin: 6px 0; }
+.cal-item-open { border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 0; }
+.cal-item-open:hover { text-decoration: underline; }
+.cal-item-details .cal-form-row { flex-wrap: wrap; margin-top: 12px; }
+@media (max-width: 950px) { .cal-zone { display: none; } .cal-title { font-size: 15px; } }
+/* 运行时工具沿用工具箱和日历样式，不允许包资源改写宿主布局。 */
+.runtime-tools { padding-block: 16px; }
+.runtime-tool-card { padding: 12px; border: 1px solid var(--line, #e5e3df); border-radius: 10px; }
+.runtime-tool-card > .tool-card { width: 100%; min-height: 64px; height: auto; flex-direction: column; gap: 6px; }
+.runtime-tool-card .cal-form-row { flex-wrap: wrap; gap: 6px; }
+.runtime-todo-modal { padding: 20px; max-height: 90vh; overflow: auto; }
+
+/* 刷新状态紧随对应工具操作，较窄窗口允许换行。 */
+.runtime-refresh-action { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }

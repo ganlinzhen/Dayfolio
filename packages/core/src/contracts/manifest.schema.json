@@ -1,0 +1,379 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+      "maxLength": 120
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "icon": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "minAppVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "hostApi": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "major": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minMinor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "major",
+        "minMinor"
+      ]
+    },
+    "entry": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+      "maxLength": 240
+    },
+    "help": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+      "maxLength": 240
+    },
+    "collections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "localId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
+            "maxLength": 80
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "color": {
+            "enum": [
+              "blue",
+              "green",
+              "violet",
+              "amber",
+              "rose",
+              "slate"
+            ]
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "localId",
+          "title",
+          "color",
+          "sortOrder"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 64
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "localId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
+            "maxLength": 80
+          },
+          "collectionLocalId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
+            "maxLength": 80
+          },
+          "kind": {
+            "enum": [
+              "import",
+              "http-json"
+            ]
+          },
+          "config": {
+            "type": "object"
+          },
+          "refreshSeconds": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 86400
+          }
+        },
+        "required": [
+          "localId",
+          "collectionLocalId",
+          "kind",
+          "config"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "import"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "config": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {},
+                  "required": []
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "http-json"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "config": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "pattern": "^https://[^/@?#]+/[^#]*$",
+                      "maxLength": 2048
+                    },
+                    "itemsPath": {
+                      "type": "string",
+                      "pattern": "^(?:[A-Za-z_][A-Za-z0-9_]*)(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                    },
+                    "fieldMappings": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "path": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+                              }
+                            },
+                            "required": [
+                              "path"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "literal": {
+                                "type": [
+                                  "string",
+                                  "number",
+                                  "boolean",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "literal"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "statusMap": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "enum": [
+                          "scheduled",
+                          "postponed",
+                          "cancelled",
+                          "finished"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "url",
+                    "itemsPath",
+                    "fieldMappings"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 64
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "enum": [
+              "events.read",
+              "events.import",
+              "subscriptions.write",
+              "providers.refresh",
+              "navigation.openTodo"
+            ]
+          },
+          "providerLocalId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "name",
+          "providerLocalId"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 64
+    },
+    "contributions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "calendarActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "localId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
+                "maxLength": 80
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "position": {
+                "const": "calendar.actions"
+              },
+              "kind": {
+                "enum": [
+                  "open_tool",
+                  "refresh_provider"
+                ]
+              },
+              "providerLocalId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
+                "maxLength": 80
+              }
+            },
+            "required": [
+              "localId",
+              "title",
+              "position",
+              "kind",
+              "providerLocalId"
+            ]
+          },
+          "minItems": 0,
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "calendarActions"
+      ]
+    },
+    "seed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+          "maxLength": 240
+        },
+        "providerLocalId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$",
+          "maxLength": 80
+        }
+      },
+      "required": [
+        "file",
+        "providerLocalId"
+      ]
+    },
+    "files": {
+      "type": "object",
+      "minProperties": 2,
+      "maxProperties": 256,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+        "maxLength": 240
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "version",
+    "title",
+    "description",
+    "hostApi",
+    "entry",
+    "help",
+    "collections",
+    "providers",
+    "capabilities",
+    "files"
+  ],
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:dayfolio:p0:v1:manifest"
+}

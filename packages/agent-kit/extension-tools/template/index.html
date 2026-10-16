@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>日程工具</title><link rel="stylesheet" href="style.css"><script src="/__dayfolio_sdk__/v1.js" defer></script><script src="tool.js" defer></script></head>
+<body><main><header><div><p class="eyebrow">DAYFOLIO · 日程订阅</p><h1 id="title">正在连接工具…</h1><p id="scope" class="muted"></p></div><button id="request-refresh">请求更新资料</button></header>
+<div id="status" class="status" role="status">正在读取来源状态</div><p id="error" class="error" role="alert" hidden></p>
+<nav aria-label="工具视图"><button data-view="schedule" aria-pressed="true">赛程与订阅</button><button data-view="participants" aria-pressed="false">参赛者</button><button data-view="sources" aria-pressed="false">来源与覆盖</button></nav>
+<section id="schedule"><div class="filters"><label>日期 <select id="date"><option value="">全部日期</option></select></label><label>参赛者 <select id="team"><option value="">全部参赛者</option></select></label><label><input id="subscribed" type="checkbox">仅看已订阅</label><label>页面时区 <select id="timezone"><option>Asia/Shanghai</option><option>Europe/Paris</option><option>UTC</option><option>America/New_York</option></select></label></div><p id="count" class="muted"></p><div id="events" class="events"></div></section>
+<section id="participants" hidden><p class="muted">以下详情仅覆盖当前工具已收录的赛程。</p><div id="teams" class="teams"></div></section>
+<section id="sources" hidden><h2>资料范围与更新</h2><div id="source-details"></div><h3>请求外部助手更新</h3><p class="muted">请求更新只进入队列。请将下方任务交给已连接 Dayfolio 的助手；不会自动运行 AI。</p><textarea id="prompt" rows="7" readonly aria-label="助手更新任务"></textarea><p class="muted">选择文本后按 ⌘C 复制。</p></section>
+<dialog id="team-dialog"><h2 id="team-title"></h2><div id="team-matches"></div><button id="close-team">关闭</button></dialog>
+<footer>日历分类隐藏只影响展示。取消订阅默认保留待办；个人标题、排期和完成记录由宿主保护。</footer></main></body></html>

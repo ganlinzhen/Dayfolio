@@ -1,10 +1,11 @@
 import type { ToolRegistrar, McpContext } from '../shared/context';
 import { z } from 'zod';
 import { type PlanItemStatus, type PlanStatus } from '../../../../packages/core/src/index';
-import { dateSchema, itemTypeSchema } from '../shared/schemas';
+import { itemTypeSchema, dateSchemas } from '../shared/schemas';
 import { wrap } from '../shared/response';
 
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
+  const { dateSchema } = dateSchemas(core);
   server.tool(
     'create_study_plan',
     '创建完整学习计划：给定课程/目标与逐日安排（items 每项含 date 与 content），系统会为每个条目自动生成一条待办（除非 create_todos=false）。条目 item_type 可选 learn(学习)/review(复习)/practice(练习)/rest(休息)，建议按"学习新内容+定期复习"编排。所有条目日期必须落在 start_date~end_date 区间内',

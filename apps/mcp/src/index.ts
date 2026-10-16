@@ -8,7 +8,21 @@ async function main() {
   const db = openNodeSqliteDb(dbPath);
   const core = createCore(db, { dbPath });
   const { server } = createMcpServer({ core, toolFilesRoot: toolsRootForDb(dbPath) });
+  let stopping: Promise<void> | undefined;
+  const shutdown = () => {
+    stopping ??= (async () => {
+      try { await core.providerWorker.stop(); await server.close(); }
+      finally { db.close(); }
+    })();
+    return stopping;
+  };
+  const stop = () => { void shutdown().catch(error => { console.error('[tododesk-mcp] 停止失败：', error); process.exitCode = 1; }); };
+  server.server.onclose = stop;
+  process.stdin.once('end', stop);
+  process.once('SIGTERM', stop);
+  process.once('SIGINT', stop);
   await server.connect(new StdioServerTransport());
+  core.providerWorker.start();
   console.error(`[tododesk-mcp] 已启动，数据库：${dbPath}`);
 }
 

@@ -1,10 +1,11 @@
 import type { ToolRegistrar, McpContext } from '../shared/context';
 import { z } from 'zod';
-import { dateSchema } from '../shared/schemas';
+import { dateSchemas } from '../shared/schemas';
 import { wrap } from '../shared/response';
 import studyWorkflowSpec from '../../../../apps/help/docs/09-study-loop.md';
 
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
+  const { dateSchema } = dateSchemas(core);
   // ---------- 学习闭环（v1：草案→会话→测评→调整→卡片，agent 第一操作者） ----------
 
   const STUDY_TOOL_CHAIN = [

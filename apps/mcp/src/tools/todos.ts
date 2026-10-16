@@ -1,10 +1,11 @@
 import type { ToolRegistrar, McpContext } from '../shared/context';
 import { z } from 'zod';
 import { type CheckinRefType, type TodoStatus } from '../../../../packages/core/src/index';
-import { prioritySchema, dateSchema, nullableDateSchema } from '../shared/schemas';
+import { prioritySchema, dateSchemas } from '../shared/schemas';
 import { wrap } from '../shared/response';
 
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
+  const { dateSchema, nullableDateSchema } = dateSchemas(core);
   server.tool(
     'list_todos',
     '查询待办事项列表。可按状态(open/done/all，默认 open)、优先级(high/medium/low)、是否过期、关键词、标签筛选；结果按"未完成优先、优先级高优先、截止日期近优先"排序',
@@ -25,41 +26,52 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
 
 
   server.tool(
-    'add_todo',
-    '新增一条待办事项。要加进「今日待办」就把 due_date 设为 today（或「今天」）；priority 支持 high/medium/low（也接受 P0/P1/P2、高/中/低等别名）；due_date 支持 today/明天 等别名或 YYYY-MM-DD；start_time/end_time 为同一天的 HH:MM 起止时间，必须成对提供且结束晚于开始；不传时仅日期；tags 为字符串数组',
-    {
-      title: z.string().min(1).describe('待办标题'),
-      notes: z.string().optional().describe('备注详情'),
-      priority: prioritySchema,
-      due_date: dateSchema.optional().describe('安排日期 YYYY-MM-DD'),
-      start_time: z.string().nullable().optional().describe('开始时间 HH:MM，须同时填 end_time'),
-      end_time: z.string().nullable().optional().describe('结束时间 HH:MM，须晚于 start_time'),
-      tags: z.array(z.string()).optional(),
-    },
-    async ({ title, notes, priority, due_date, start_time, end_time, tags }) =>
-      wrap(() =>
-        core.todos.add({ title, notes, priority, due_date: due_date ?? null, start_time, end_time, tags, source: 'mcp' }),
-      )(),
-  );
+  'add_todo',
+  '新增一条待办事项。要加进「今日待办」就把 due_date 设为 today（或「今天」）；priority 支持 high/medium/low（也接受 P0/P1/P2、高/中/低等别名）；due_date 支持 today/明天 等别名或 YYYY-MM-DD；浮动时间允许只填开始时间，跨午夜使用 end_date；固定时刻使用 time_mode=instant 和带偏移的 scheduled_start_at/end_at，不能混入本地字段；tags 为字符串数组',
+  {
+    title: z.string().min(1).describe('待办标题'),
+    notes: z.string().optional().describe('备注详情'),
+    priority: prioritySchema,
+    due_date: dateSchema.optional().describe('安排日期 YYYY-MM-DD'),
+    start_time: z.string().nullable().optional().describe('开始时间 HH:MM，允许结束未知'),
+    end_time: z.string().nullable().optional().describe('结束时间 HH:MM，跨日须填 end_date'),
+    end_date: nullableDateSchema.optional(),
+    time_mode: z.enum(['floating','instant']).optional(),
+    scheduled_start_at: z.string().nullable().optional(),
+    scheduled_end_at: z.string().nullable().optional(),
+    tags: z.array(z.string()).optional(),
+  },
+  async ({ title, notes, priority, due_date, start_time, end_time, end_date, time_mode, scheduled_start_at, scheduled_end_at, tags }) =>
+    wrap(() =>
+      core.todos.add({ title, notes, priority, due_date: time_mode==='instant'?due_date:due_date ?? null, start_time, end_time, end_date, time_mode, scheduled_start_at, scheduled_end_at, tags, source: 'mcp' }),
+    )(),
+);
+
 
 
   server.tool(
-    'update_todo',
-    '修改待办事项（只传需要改的字段）。due_date 传 null 同时清除日期和时段；start_time/end_time 成对设为 null 切换为仅日期，或传 HH:MM 设置时段；status 传 done 等同完成并自动打卡',
-    {
-      id: z.number().int().positive(),
-      title: z.string().min(1).optional(),
-      notes: z.string().nullable().optional(),
-      priority: prioritySchema,
-      due_date: nullableDateSchema.optional(),
-      start_time: z.string().nullable().optional(),
-      end_time: z.string().nullable().optional(),
-      tags: z.array(z.string()).optional(),
-      status: z.enum(['open', 'done']).optional(),
-    },
-    async ({ id, title, notes, priority, due_date, start_time, end_time, tags, status }) =>
-      wrap(() => core.todos.update(id, { title, notes, priority, due_date, start_time, end_time, tags, status: status as TodoStatus }))(),
-  );
+  'update_todo',
+  '修改待办事项（只传需要改的字段）。due_date 传 null 同时清除日期和时段；允许仅开始时间或带 end_date 的跨日时段；固定时刻使用 UTC 字段；有效修改标题或排期会转手动跟随，expected_revision 防止覆盖并发修改；status 传 done 等同完成并自动打卡',
+  {
+    id: z.number().int().positive(),
+    expected_revision: z.number().int().positive().optional(),
+    title: z.string().min(1).optional(),
+    notes: z.string().nullable().optional(),
+    priority: prioritySchema.optional(),
+    due_date: nullableDateSchema.optional(),
+    start_time: z.string().nullable().optional(),
+    end_time: z.string().nullable().optional(),
+    end_date: nullableDateSchema.optional(),
+    time_mode: z.enum(['floating','instant']).optional(),
+    scheduled_start_at: z.string().nullable().optional(),
+    scheduled_end_at: z.string().nullable().optional(),
+    tags: z.array(z.string()).optional(),
+    status: z.enum(['open', 'done']).optional(),
+  },
+  async ({ id, expected_revision, title, notes, priority, due_date, start_time, end_time, end_date, time_mode, scheduled_start_at, scheduled_end_at, tags, status }) =>
+    wrap(() => core.todos.update(id, { expected_revision, title, notes, priority, due_date, start_time, end_time, end_date, time_mode, scheduled_start_at, scheduled_end_at, tags, status: status as TodoStatus }))(),
+);
+
 
 
   server.tool(
@@ -100,6 +112,18 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
           note,
         });
         return { checkin: record, streak: core.checkins.streak() };
+      })(),
+  );
+
+  server.tool(
+    'get_checkin_stats',
+    '打卡统计：连续天数、近 7/30 天活跃天数、总打卡数、最近打卡记录',
+    {},
+    async () =>
+      wrap(() => {
+        const stats = core.checkins.stats();
+        const recent = core.checkins.listDetailed({ limit: 20 });
+        return { ...stats, recent_checkins: recent };
       })(),
   );
 }

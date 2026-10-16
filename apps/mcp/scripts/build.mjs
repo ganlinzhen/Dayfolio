@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const result = await build({ absWorkingDir: root, entryPoints: ['apps/mcp/src/index.ts'], outfile: 'apps/mcp/dist/mcp-server.cjs', bundle: true, platform: 'node', format: 'cjs', target: 'node22', external: ['node:*'], loader: { '.md': 'text' }, metafile: true, logLevel: 'warning' });
-const paths = new Set([...Object.keys(result.metafile.inputs).filter(p => !p.includes('node_modules/')), 'apps/mcp/scripts/build.mjs', 'package-lock.json']);
+const validator = await build({ absWorkingDir: root, entryPoints: ['apps/mcp/src/extension-validator.ts'], outfile: 'apps/mcp/dist/extension-validator.cjs', bundle: true, platform: 'node', format: 'cjs', target: 'node22', external: ['node:*'], metafile: true, logLevel: 'warning' });
+const paths = new Set([...Object.keys(result.metafile.inputs), ...Object.keys(validator.metafile.inputs)].filter(p => !p.includes('node_modules/')).concat(['apps/mcp/scripts/build.mjs', 'package-lock.json']));
 const inputs = Object.fromEntries([...paths].sort().map(p => [p, createHash('sha256').update(readFileSync(join(root, p))).digest('hex')]));
 mkdirSync(join(root, 'apps/mcp/dist'), { recursive: true });
 writeFileSync(join(root, 'apps/mcp/dist/build-inputs.json'), JSON.stringify(inputs, null, 2) + '\n');

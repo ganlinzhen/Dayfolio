@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { parseDateInput, type Priority, type PlanItemType } from '../../../../packages/core/src/index';
+import { parseDateInput, type Priority, type PlanItemType, type TodoDeskCore } from '../../../../packages/core/src/index';
+
+import { dateInZone } from '../../../../packages/core/src/utils/schedule';
 
 const PRIORITY_ALIASES: Record<string, Priority> = {
   high: 'high', p0: 'high', '高': 'high', 紧急: 'high', 重要: 'high', urgent: 'high', 1: 'high',
@@ -23,11 +25,12 @@ export const prioritySchema = z
     return n;
   });
 
-export const dateSchema = z
+export function dateSchemas(core: TodoDeskCore) {
+const dateSchema = z
   .string()
   .transform((v, ctx) => {
     try {
-      return parseDateInput(v);
+      return parseDateInput(v, dateInZone(new Date(), core.runtime.getDisplayTimezone()));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       ctx.addIssue({
@@ -38,7 +41,8 @@ export const dateSchema = z
     }
   });
 
-export const nullableDateSchema = dateSchema.nullable();
+return { dateSchema, nullableDateSchema: dateSchema.nullable() };
+}
 
 const ITEM_TYPE_ALIASES: Record<string, PlanItemType> = {
   learn: 'learn', 学习: 'learn', 上课: 'learn', 新学: 'learn',

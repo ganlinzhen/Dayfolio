@@ -56,3 +56,6 @@ export const BUSINESS_LINKS: LinkSeed[] = [
   {"apiName": "news_item__media_material", "title": "news_item → media_material", "leftType": "news_item", "rightType": "media_material", "cardinality": "one_to_many", "fkColumn": "source_news_id", "leftLinkName": "media_materials", "rightLinkName": "news_item", "onDelete": "set_null", "isSystem": true, "sortOrder": 219, "referenceKind": "strong"},
   { apiName: 'media_content__media_material', title: '内容使用的素材', leftType: 'media_content', rightType: 'media_material', cardinality: 'many_to_many', leftLinkName: 'materials', rightLinkName: 'contents', backingTableName: 'media_content_materials', backingLeftProperty: 'content_id', backingRightProperty: 'material_id', isSystem: true, sortOrder: 230, referenceKind: 'strong', onDelete: 'cascade' },
 ];
+
+// 日历分类为兼容可空字段，旧日程默认归入本地日程。
+BUSINESS_OBJECTS.find(t=>t.apiName==='calendar_event')?.properties.push({apiName:'collection_id',dataType:'string',nullable:true,origin:'builtin'});

@@ -5,6 +5,7 @@ import { inTx, type DbAdapter } from '../db';
 import { nowIso } from '../utils/date';
 import { BOOT_ACTION_TYPES, BOOT_LINK_TYPES, BOOT_OBJECT_TYPES } from './bootstrap';
 import { BUSINESS_OBJECTS, BUSINESS_LINKS } from './catalog';
+import { RUNTIME_OBJECTS,RUNTIME_LINKS } from './runtime-catalog';
 import { COMMAND_DEFS, COMPOSABLE_COMMANDS, commandMetadata } from './commands';
 import { syncRelationConstraints, dropRelationConstraints } from './relations';
 import { objectPolicy, assertObjectWrite, OntologyError } from './policy';
@@ -196,7 +197,7 @@ export function createOntologyService(db: DbAdapter) {
           is_virtual=excluded.is_virtual, is_system=1, primary_key=excluded.primary_key, title_property=excluded.title_property,
           properties=excluded.properties, status=excluded.status, sort_order=excluded.sort_order, updated_at=excluded.updated_at
       `);
-      for (const t of [...BOOT_OBJECT_TYPES, ...BUSINESS_OBJECTS]) {
+      for (const t of [...BOOT_OBJECT_TYPES, ...BUSINESS_OBJECTS,...RUNTIME_OBJECTS]) {
         // 保留用户在系统类型上追加过的属性（origin=user 行不随代码覆盖）
         const conflict = db.prepare('SELECT is_system FROM ont_object_types WHERE api_name = ?').get(t.apiName);
         if (conflict && !Number(conflict.is_system)) throw new Error(`对象类型名称冲突：${t.apiName} 已被用户使用，升级未覆盖其定义`);
@@ -230,7 +231,7 @@ export function createOntologyService(db: DbAdapter) {
           backing_left_property=excluded.backing_left_property, backing_right_property=excluded.backing_right_property,
           is_system=1, sort_order=excluded.sort_order
       `);
-      for (const l of [...BOOT_LINK_TYPES, ...BUSINESS_LINKS]) {
+      for (const l of [...BOOT_LINK_TYPES, ...BUSINESS_LINKS,...RUNTIME_LINKS]) {
         upsertLink.run({
           api_name: l.apiName,
           title: l.title,

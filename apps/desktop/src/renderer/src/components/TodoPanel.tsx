@@ -1,5 +1,5 @@
 // 待办面板：搜索、日期分组、逾期横幅、行内编辑（Codex 风格）
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, call } from '../api';
 import EmptyState from './EmptyState';
 import { toast } from './Toast';
@@ -16,6 +16,13 @@ export interface Todo {
   due_date: string | null;
   start_time: string | null;
   end_time: string | null;
+  end_date: string | null;
+  time_mode: 'floating'|'instant';
+  scheduled_start_at: string|null;
+  scheduled_end_at: string|null;
+  revision: number;
+  source_status: string|null;
+  source_time_kind: string|null;
   tags: string[];
   source: string;
   completed_at: string | null;
@@ -32,12 +39,11 @@ function todayLocal(): string {
 }
 
 /** 按截止日期分组 */
-function groupOf(t: Todo): string {
+function groupOf(t: Todo,today:string): string {
   if (t.status === 'done') return '已完成';
   if (!t.due_date) return '无日期';
-  const today = todayLocal();
   if (t.is_overdue) return '已逾期';
-  if (t.due_date === today) return '今天';
+  if (t.due_date <= today && (t.end_date??t.due_date) >= today) return '今天';
   if (t.due_date <= addDays(today, 3)) return '未来 3 天';
   return '稍后';
 }
@@ -51,6 +57,8 @@ function addDays(dateStr: string, n: number): string {
 }
 
 export default function TodoPanel() {
+  const initializedDate=useRef(false);
+  const [displayToday,setDisplayToday]=useState(todayLocal());
   const [showRecords, setShowRecords] = useState(false);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [status, setStatus] = useState<StatusFilter>('open');
@@ -61,7 +69,7 @@ export default function TodoPanel() {
   const [schedule, setSchedule] = useState<TodoScheduleValue>({ due: todayLocal(), dateOnly: false, start: '', end: '' });
   const [tags, setTags] = useState('');
   const [error, setError] = useState('');
-  const [editing, setEditing] = useState<({ id: number; title: string } & TodoScheduleValue) | null>(null);
+  const [editing, setEditing] = useState<({ id: number; title: string; revision: number } & TodoScheduleValue) | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -73,6 +81,8 @@ export default function TodoPanel() {
         }),
       );
       setTodos(list);
+      const overview=await call<{date:string}>(()=>api.today.get());setDisplayToday(overview.date);
+      if(!initializedDate.current){initializedDate.current=true;setSchedule(prev=>({...prev,due:overview.date}));}
       setError('');
     } catch (e) {
       setError((e as Error).message);
@@ -90,8 +100,8 @@ export default function TodoPanel() {
   }, [refresh]);
 
   const scheduleInput = (value: TodoScheduleValue) => {
-    if (!value.dateOnly && (!value.due || !value.start || !value.end)) throw new Error('请选择日期并填写开始时间和结束时间，或切换为「仅日期」');
-    return { due_date: value.due || null, start_time: value.dateOnly ? null : value.start, end_time: value.dateOnly ? null : value.end };
+    if (!value.dateOnly && (!value.due || !value.start)) throw new Error('请选择日期并填写开始时间，结束未知可留空，或切换为「仅日期」');
+    return { due_date: value.due || null, end_date: value.endDate || null, start_time: value.dateOnly ? null : value.start, end_time: value.dateOnly ? null : value.end || null };
   };
 
   const add = async () => {
@@ -140,9 +150,7 @@ export default function TodoPanel() {
               title: t.title,
               notes: t.notes,
               priority: t.priority,
-              due_date: t.due_date,
-              start_time: t.start_time,
-              end_time: t.end_time,
+              ...(t.time_mode==='instant'?{time_mode:t.time_mode,scheduled_start_at:t.scheduled_start_at,scheduled_end_at:t.scheduled_end_at}:{due_date:t.due_date,end_date:t.end_date,start_time:t.start_time,end_time:t.end_time}),
               tags: t.tags,
             }),
           ).then(() => refresh());
@@ -155,7 +163,7 @@ export default function TodoPanel() {
     if (!editing) return;
     try {
       const timing = scheduleInput(editing);
-      await call(() => api.todos.update({ id: editing.id, title: editing.title, ...timing }));
+      await call(() => api.todos.update({ id: editing.id, expected_revision:editing.revision, title: editing.title, ...timing }));
       setEditing(null);
       await refresh();
     } catch (e) {
@@ -166,11 +174,11 @@ export default function TodoPanel() {
   const groups = useMemo(() => {
     const map = new Map<string, Todo[]>();
     for (const t of todos) {
-      const g = groupOf(t);
+      const g = groupOf(t,displayToday);
       map.set(g, [...(map.get(g) ?? []), t]);
     }
     return GROUP_ORDER.filter((g) => map.has(g)).map((g) => [g, map.get(g)!] as const);
-  }, [todos]);
+  }, [todos,displayToday]);
 
   if (showRecords) return <CheckinPanel onBack={() => { setShowRecords(false); void refresh(); }} />;
 
@@ -296,8 +304,8 @@ export default function TodoPanel() {
                   ) : (
                     <>
                       <span className="todo-title" role="button" tabIndex={0}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing({ id: t.id, title: t.title, due: t.due_date ?? '', dateOnly: !t.start_time, start: t.start_time ?? '', end: t.end_time ?? '' }); } }}
-                        onClick={() => setEditing({ id: t.id, title: t.title, due: t.due_date ?? '', dateOnly: !t.start_time, start: t.start_time ?? '', end: t.end_time ?? '' })}>
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing({ id: t.id, revision:t.revision,endDate:t.end_date??'',title: t.title, due: t.due_date ?? '', dateOnly: !t.start_time, start: t.start_time ?? '', end: t.end_time ?? '' }); } }}
+                        onClick={() => setEditing({ id: t.id, revision:t.revision,endDate:t.end_date??'',title: t.title, due: t.due_date ?? '', dateOnly: !t.start_time, start: t.start_time ?? '', end: t.end_time ?? '' })}>
                         {t.title}
                       </span>
                       <button className="icon-btn subtle" aria-label={`删除待办「${t.title.slice(0, 20)}」`} onClick={() => void remove(t)} title="删除">
@@ -316,10 +324,12 @@ export default function TodoPanel() {
                   <div className="todo-card-meta">
                     <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
                     {t.due_date && (
-                      <span className={`todo-meta mono ${t.is_overdue ? 'danger' : t.due_date === todayLocal() ? 'accent' : ''}`}>
-                        {t.due_date}{t.start_time ? ` ${t.start_time}–${t.end_time}` : ' · 仅日期'}
+                      <span className={`todo-meta mono ${t.is_overdue ? 'danger' : t.due_date === displayToday ? 'accent' : ''}`}>
+                        {t.due_date}{t.start_time ? ` ${t.start_time}${t.end_time?`–${t.end_date&&t.end_date!==t.due_date?t.end_date+' ':''}${t.end_time}`:' · 结束待定'}` : ` · 仅日期${t.end_date?' 至 '+t.end_date:''}`}
                       </span>
                     )}
+                    {t.source_status==='cancelled' && <span className="tag">来源已取消</span>}
+                    {t.source_time_kind==='tbd' && <span className="tag">来源时间待定</span>}
                     {t.tags.filter((tag) => !/^plan:\d+$/.test(tag)).map((tag) => (
                       <span key={tag} className="tag">{tag}</span>
                     ))}

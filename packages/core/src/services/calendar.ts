@@ -3,7 +3,7 @@
 import type { DbAdapter } from '../db';
 import { mapCalendarEvent } from '../db';
 import { CALENDAR_COLORS, type CalendarEvent, type CalendarEventPatch, type CalendarRangeAgenda, type NewCalendarEventInput } from '../types';
-import { ensureValidDateStr, nowIso } from '../utils/date';
+import { addDays, ensureValidDateStr, nowIso } from '../utils/date';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 /** 区间聚合一次允许的最大天数：防无界查询 */
@@ -128,7 +128,7 @@ export function createCalendarService(db: DbAdapter, queries?: import('../ontolo
     const events = list({ from, to });
     const days: CalendarRangeAgenda['days'] = {};
     const todoRows = db
-      .prepare('SELECT id, title, priority, status, due_date, start_time, end_time FROM todos WHERE due_date BETWEEN ? AND ? ORDER BY id')
+      .prepare('SELECT id, title, priority, status, due_date, end_date, start_time, end_time FROM todos WHERE COALESCE(end_date,due_date)>=? AND due_date<=? ORDER BY id')
       .all(from, to);
     const itemRows = db
       .prepare(
@@ -142,7 +142,7 @@ export function createCalendarService(db: DbAdapter, queries?: import('../ontolo
     );
     const dayOf = (d: string) => (days[d] ??= { todos: [], plan_items: [], checked_in: false });
     for (const t of todoRows) {
-      dayOf(String(t.due_date)).todos.push({
+      for(let day=String(t.due_date)<from?from:String(t.due_date);day<=String(t.end_date??t.due_date)&&day<=to;day=addDays(day,1))dayOf(day).todos.push({
         id: Number(t.id),
         title: String(t.title),
         priority: t.priority as 'high' | 'medium' | 'low',

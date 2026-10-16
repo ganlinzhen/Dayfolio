@@ -3,6 +3,7 @@
 import { inTx, type DbAdapter } from './db';
 import { ONTOLOGY_META_DDL } from './ontology/registry';
 import { newsDedupKey } from './utils/news-dedup';
+import { migrateRuntimeSchema } from './services/runtime-schema';
 import { randomBytes } from 'node:crypto';
 
 interface Migration {
@@ -627,12 +628,41 @@ export const MIGRATIONS: Migration[] = [
       db.prepare("INSERT OR IGNORE INTO ont_query_config(key,value) VALUES('cursor_key',?)").run(randomBytes(32).toString('hex'));
     },
   },
+  { version: 19, name: 'runtime_event_subscriptions', up: migrateRuntimeSchema },
+  {version:20,name:'calendar_action_revision',up:db=>{
+    db.exec(`CREATE TRIGGER IF NOT EXISTS revision_action_status AFTER UPDATE ON ont_action_types
+      WHEN NEW.status IS NOT OLD.status BEGIN UPDATE runtime_revision SET revision=revision+1 WHERE id=1; END;`);
+  }},
+  {version:21,name:'extension_install_authorization',up:db=>{
+    db.exec(`CREATE TABLE IF NOT EXISTS extension_authorizations (
+      id TEXT PRIMARY KEY,extension_id TEXT NOT NULL,package_digest TEXT NOT NULL,base_revision INTEGER,
+      permissions_json TEXT NOT NULL,network_json TEXT NOT NULL,expires_at TEXT NOT NULL,created_at TEXT NOT NULL
+    );CREATE INDEX IF NOT EXISTS idx_extension_authorization_expiry ON extension_authorizations(expires_at);`);
+  }},
 ];
+
+MIGRATIONS.push({version:22,name:'provider_refresh_runtime',up:db=>{
+  db.exec(`ALTER TABLE event_providers ADD COLUMN refresh_seconds INTEGER;
+    ALTER TABLE provider_sync_runs ADD COLUMN request_kind TEXT NOT NULL DEFAULT 'import';
+    ALTER TABLE provider_sync_runs ADD COLUMN context_json TEXT NOT NULL DEFAULT '{}';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_single_refresh ON provider_sync_runs(provider_id)
+      WHERE request_kind IN ('refresh','external') AND status IN ('queued','fetching','validating','committing');`);
+  for(const row of db.prepare('SELECT r.manifest_json FROM extensions e JOIN extension_releases r ON r.id=e.active_release_id').all()){
+    const manifest=JSON.parse(String(row.manifest_json)) as {id:string;providers:Array<{localId:string;refreshSeconds?:number}>};
+    for(const provider of manifest.providers)if(provider.refreshSeconds!==undefined)db.prepare('UPDATE event_providers SET refresh_seconds=? WHERE id=?').run(provider.refreshSeconds,`ext:${manifest.id}/${provider.localId}`);
+  }
+  for(const operation of ['INSERT','UPDATE','DELETE']){
+    const ref=operation==='DELETE'?'OLD':'NEW';
+    db.exec(`CREATE TRIGGER IF NOT EXISTS revision_provider_run_${operation} AFTER ${operation} ON provider_sync_runs
+      WHEN ${ref}.request_kind IN ('refresh','external') BEGIN UPDATE runtime_revision SET revision=revision+1 WHERE id=1; END;`);
+  }
+}});
 
 export function runMigrations(db: DbAdapter): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
   const current = Number(row?.user_version ?? 0);
-  for (const m of MIGRATIONS.filter((x) => x.version > current)) {
+  if(current>Math.max(...MIGRATIONS.map(m=>m.version)))throw new Error('SCHEMA_TOO_NEW：数据库版本高于当前程序，拒绝写入');
+  for (const m of MIGRATIONS.filter((x) => x.version > current).sort((a,b)=>a.version-b.version)) {
     inTx(db, () => {
       m.up(db);
       db.exec(`PRAGMA user_version = ${m.version}`);
