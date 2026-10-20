@@ -384,7 +384,19 @@ try {
     10000,
     '讲义进入应用内全屏',
   );
-  assert(await evalJs(`(() => { const frame = document.querySelector('.course-embed'); const sidebar = document.querySelector('.sidebar'); if (!frame || !sidebar) return false; const r = frame.getBoundingClientRect(); return Math.abs(r.left - sidebar.getBoundingClientRect().right) < 2 && r.top === 0 && Math.abs(r.bottom - window.innerHeight) < 2; })()`), '全屏讲义占满侧边栏右侧内容区');
+  // 持续滚动条会缩小布局视口；按实际可见视口验收，并等待缩放后的布局稳定。
+  let fullscreenBox;
+  try {
+    await waitFor(async () => {
+      fullscreenBox = await evalJs(`(() => { const r = document.querySelector('.course-embed').getBoundingClientRect(); return {left: r.left, top: r.top, right: r.right, bottom: r.bottom, sidebar: document.querySelector('.sidebar').getBoundingClientRect().right, width: document.documentElement.clientWidth, height: document.documentElement.clientHeight, innerWidth, innerHeight}; })()`);
+      return Math.abs(fullscreenBox.left - fullscreenBox.sidebar) < 2 && Math.abs(fullscreenBox.top) < 2
+        && Math.abs(fullscreenBox.right - fullscreenBox.width) < 2 && Math.abs(fullscreenBox.bottom - fullscreenBox.height) < 2;
+    }, 10000, '全屏讲义布局稳定');
+  } catch (error) {
+    console.error('[全屏布局诊断]', JSON.stringify(fullscreenBox));
+    throw error;
+  }
+  assert(true, `全屏讲义占满侧边栏右侧内容区 ${JSON.stringify(fullscreenBox)}`);
   await assertCourseLayout('讲义全屏');
   if (process.env.DAYFOLIO_COURSE_SCREENSHOTS) {
     mkdirSync(process.env.DAYFOLIO_COURSE_SCREENSHOTS, { recursive: true });

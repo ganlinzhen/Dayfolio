@@ -3,7 +3,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openNodeSqliteDb } from '../src/adapters/node-sqlite';
 import { createCore, type TodoDeskCore } from '../src/index';
 import { addDays, todayStr } from '../src/utils/date';
@@ -11,6 +11,7 @@ import { mkCore } from './helpers';
 
 let cleanups: Array<() => void> = [];
 afterEach(() => {
+  vi.useRealTimers();
   for (const fn of cleanups) fn();
   cleanups = [];
 });
@@ -303,7 +304,13 @@ describe('测评证据：来源显式、客观必须带判题依据、纠正历�
   });
 
   it('掌握度与完成率分离：打卡完成 ≠ 掌握，无证据为 unknown', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     const { core } = mkCore();
+    // 本例验证先后时刻的证据，不依赖机器速度使两次提交跨过毫秒边界。
+    const recordNextAssessment = (input: Parameters<typeof core.study.recordAssessment>[0]) => {
+      vi.setSystemTime(Date.now() + 1000);
+      return core.study.recordAssessment(input);
+    };
     const draft = core.study.draft({ title: '分离', daily_minutes: 60, start_date: todayStr(), knowledge_points: [{ key: 'vec', name: '向量' }] });
     const { plan } = core.study.confirmDraft(draft.id);
     const item = plan.items[0];
@@ -315,13 +322,13 @@ describe('测评证据：来源显式、客观必须带判题依据、纠正历�
     expect(report.entries[0].reason).toContain('未知');
 
     // 自评 40 → weak；再自评 85 → strong（被后续证据纠正）
-    core.study.recordAssessment({ plan_id: plan.id, knowledge_key: 'vec', question: 'Q', answer: 'A', source: 'self', score: 40 });
+    recordNextAssessment({ plan_id: plan.id, knowledge_key: 'vec', question: 'Q', answer: 'A', source: 'self', score: 40 });
     expect(core.study.getMastery({ plan_id: plan.id }).entries[0].mastery).toBe('weak');
-    core.study.recordAssessment({ plan_id: plan.id, knowledge_key: 'vec', question: 'Q2', answer: 'A2', source: 'self', score: 85 });
+    recordNextAssessment({ plan_id: plan.id, knowledge_key: 'vec', question: 'Q2', answer: 'A2', source: 'self', score: 85 });
     expect(core.study.getMastery({ plan_id: plan.id }).entries[0].mastery).toBe('strong');
 
     // 客观优先：存在客观测评时以最新客观结果判定（较新的自评不覆盖客观）
-    const obj = core.study.recordAssessment({
+    const obj = recordNextAssessment({
       plan_id: plan.id,
       knowledge_key: 'vec',
       question: '计算 [[1,2],[3,4]] 的行列式',
@@ -333,9 +340,9 @@ describe('测评证据：来源显式、客观必须带判题依据、纠正历�
     });
     expect(core.study.getMastery({ plan_id: plan.id }).entries[0].mastery).toBe('weak');
     expect(obj.objective_passed).toBe(false);
-    core.study.recordAssessment({ plan_id: plan.id, knowledge_key: 'vec', question: '更晚的自评', answer: '我又觉得会了', source: 'self', score: 90 });
+    recordNextAssessment({ plan_id: plan.id, knowledge_key: 'vec', question: '更晚的自评', answer: '我又觉得会了', source: 'self', score: 90 });
     expect(core.study.getMastery({ plan_id: plan.id }).entries[0].mastery).toBe('weak'); // 客观未通过仍为 weak
-    void core.study.recordAssessment({
+    void recordNextAssessment({
       plan_id: plan.id,
       knowledge_key: 'vec',
       question: '计算 [[1,2],[3,4]] 的行列式',
