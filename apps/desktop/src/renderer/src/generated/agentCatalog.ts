@@ -120,12 +120,20 @@ export const MCP_SECTIONS = [
         "section": "业务模块",
         "tools": [
           {
+            "name": "get_news_collection_settings",
+            "desc": "读取 App 当前保存的新闻采集提示词、收录上限和时间窗。什么场景调用我：每日采集开始前读取最新规则；不要把旧自动任务里的固定要求当作当前规则。读取不会创建任务或联网。"
+          },
+          {
+            "name": "update_news_collection_settings",
+            "desc": "保存新闻采集提示词，App 与 MCP 共用。什么场景调用我：用户明确要求调整以后的新闻内容、结构或采集范围时；先读取当前 revision，保存仅影响后续按提示词创建的请求，已有请求保留快照。"
+          },
+          {
             "name": "list_news",
-            "desc": "查看库内新闻（**只读，不联网**）：默认近 3 天，可按任务/来源/关键词过滤，或只看未读/收藏。每条含原始来源链接、摘要、发布时间、已读与收藏状态。App 面板同源展示。什么场景调用我：用户想看最近的新闻、查某条新闻的来源链接、找收藏的内容"
+            "desc": "查看库内新闻（**只读，不联网**）：默认近 3 天，可按任务/来源/关键词过滤，或只看未读/收藏。每条含原始来源链接、摘要、发布时间；专题简报还含 brief.overview 与 brief.items 逐条摘要和链接、已读与收藏状态。App 面板同源展示。什么场景调用我：用户想看最近的新闻、查某条新闻的来源链接、找收藏的内容"
           },
           {
             "name": "create_news_task",
-            "desc": "创建一个待执行的新闻任务（新闻生产的唯一入口；App 不抓取，任务由 agent 执行）。什么场景调用我：用户说「帮我收集/看看某方面的最新新闻」。任务创建后处于待执行，由你或下一次会话用 claim_news_task 认领执行。规则：每任务累计最多 10 条新入库（跨批次不重置）；只接受任务时间窗内发布、带原始来源链接与摘要、你亲自核实过的新闻"
+            "desc": "创建一个待执行的新闻任务（新闻生产的唯一入口；App 不抓取，任务由 agent 执行）。什么场景调用我：用户说「帮我收集/看看某方面的最新新闻」。任务创建后处于待执行，由你或下一次会话用 claim_news_task 认领执行。规则：每任务累计最多 11 条新入库（跨批次不重置）；只接受任务时间窗内发布、带原始来源链接与摘要、你亲自核实过的新闻"
           },
           {
             "name": "list_news_tasks",
@@ -181,6 +189,10 @@ export const MCP_SECTIONS = [
         "section": "业务模块",
         "tools": [
           {
+            "name": "delete_course",
+            "desc": "用户明确确认删除某门课程时调用。永久删除该课程的总览、全部讲义、阅读与自测记录、生成请求及课程资产，解除学习草案对课程的引用；保留学习计划及其待办，删除计划请另用 delete_study_plan。不可恢复，请先核对 list_courses 的 ID、slug、标题并与用户确认；expected_slug 必须匹配确认目标"
+          },
+          {
             "name": "import_course",
             "desc": "导入教学课程包（staging 目录根须含 course.json、独立总览 HTML 与 D1..Dn 讲义 HTML）。新包请声明 schema_version: 2 和 overview: {\"html\":\"overview.html\"}；v2 强制总览单独生成，D1 只写第一天教学内容，不要把总览塞进 D1。无 schema_version 的旧包仍可导入，缺总览时 App 显示待生成；补充总览时带 overview.html 重导样课包即可，不会改写已生成的其他天。安全：路径穿越与符号链接拒绝、HTML 消毒、包内相对 CSS 内联并移除外部资源；幂等（同内容且磁盘文件一致才无变更，缺文件自动修复）；样课变更会使既有确认过期。绑定既有 plan_id 只引用不创建计划（须已存在；已绑定课程不得改绑，省略表示沿用）。课程包必须恰好含一个 is_sample 样课标记（样课包仅样课一天；完整包保留标记）。完整包仅在用户已确认样课、生成请求已被认领且样课正文与确认版本逐字节一致时放行；已完成课程同内容重导可幂等修复"
           },
@@ -194,7 +206,7 @@ export const MCP_SECTIONS = [
           },
           {
             "name": "get_course_lessons",
-            "desc": "查询课程全部讲义元数据（day/标题/样课/概念/代码导读/答题状态）"
+            "desc": "查询课程全部讲义元数据（day/标题/revision 逐课版本号/样课/概念/代码导读/答题状态）。revision 从 1 开始，正文或教学资料实际更新才递增；重复导入与阅读答题不递增，由导入服务维护"
           },
           {
             "name": "get_lesson_html",
@@ -203,6 +215,10 @@ export const MCP_SECTIONS = [
           {
             "name": "submit_lesson_quiz",
             "desc": "提交某天自测答案（学习痕迹，非掌握证据——内容生成与答题不算掌握，掌握仍走 record_study_assessment）"
+          },
+          {
+            "name": "confirm_course_sample",
+            "desc": "仅当用户在对话中明确同意当前样课后，记录该确认。先通过 get_course_lessons 获取样课 content_hash，用户须已在 App 打开阅读；确认绑定该版本，内容变更后须重新阅读并询问。不得根据导入、已读或旧版同意自动确认。用户若同时要求生成完整版，确认成功后继续 create_course_request → claim → 生成 → import → complete，无需回 App 点击按钮"
           },
           {
             "name": "create_course_request",
@@ -247,6 +263,10 @@ export const MCP_SECTIONS = [
             "desc": "获取 Dayfolio 学习闭环的完整执行规范（目标澄清→先修诊断→草案（可先无日期保存）→排期预览与提交→每日学习会话→测评留证→复盘调整→知识卡片沉淀的 agent 操作规范与全部透明规则）。用户说「学习 X」「帮我安排学习」「这些专题先存着以后再学」时先读它，再按规范执行；内容与 App 帮助面板同源"
           },
           {
+            "name": "get_study_progress",
+            "desc": "读取学习计划及各条目的真实学习进度：课件已读、评测已做、笔记已输出。用于查看学习进展或检验前定位遗漏；完成与掌握分开，AI反馈和答题记录均不自动证明掌握。同日条目共用当天课件与自测，笔记及测评按具体条目隔离。省略plan_id返回所有计划，无记录时保留零值"
+          },
+          {
             "name": "draft_study_plan",
             "desc": "生成学习计划**草案**（预览载体）：输入目标、材料来源、每日时间预算与知识点分解，Dayfolio 按透明规则（依赖拓扑排序 + 每日预算装箱）排出逐日安排。此时不创建计划/待办/打卡——先把逐日安排与 assumptions（缺失信息假设）念给用户，用户同意后调 confirm_study_plan_draft 才生效。用户说「学习线性代数」等诉求在此工具完成计划编制"
           },
@@ -260,7 +280,7 @@ export const MCP_SECTIONS = [
           },
           {
             "name": "confirm_study_plan_draft",
-            "desc": "确认草案为正式学习计划（生成逐日条目与对应待办，进入今日面板/待办列表）。幂等：对已确认草案重复调用返回原计划不重复创建。必须先把预览念给用户并取得同意。**确认边界冲突硬校验**（经 schedule_study_draft 排期的草案）：排期后既有计划变动可能引入新的超预算冲突——确认时服务端重算，若存在超预算日期必须把用户确认的集合作为 confirmed_over_dates 传回且与重算精确一致，否则拒绝（须重新预览排期）。旧路径草案（draft_study_plan 创建即排期）不设此冲突门"
+            "desc": "确认草案为正式学习计划（生成逐日条目与对应待办，进入今日面板/待办列表）；草案有 course_id 时同步绑定课程。幂等：已确认草案返回原计划、不重复创建，仅补齐原课程尚未绑定的关系；课程已绑定其他计划时拒绝，不能改绑。必须先把预览念给用户并取得同意。**确认边界冲突硬校验**（经 schedule_study_draft 排期的草案）：排期后既有计划变动可能引入新的超预算冲突——确认时服务端重算，若存在超预算日期必须把用户确认的集合作为 confirmed_over_dates 传回且与重算精确一致，否则拒绝（须重新预览排期）。旧路径草案（draft_study_plan 创建即排期）不设此冲突门"
           },
           {
             "name": "cancel_study_plan_draft",
@@ -284,7 +304,7 @@ export const MCP_SECTIONS = [
           },
           {
             "name": "record_study_session",
-            "desc": "记录一次**独立学习会话**（当日学习完成的凭证）：实际用时、用自己的话写的解释/答案、疑问、材料来源。同一目标多次学习用 attempt 区分（1,2,3…）。幂等：重试请带同一稳定 id；不传 id 时按（目标条目 或 知识点+日期, attempt）复用"
+            "desc": "记录一次**独立学习会话**（当日学习完成的凭证）：用自己的话写的解释/答案、可选实际用时、疑问、材料来源。同一目标多次学习用 attempt 区分（1,2,3…）。幂等：重试请带同一稳定 id；不传 id 时按（目标条目 或 知识点+日期, attempt）复用"
           },
           {
             "name": "list_study_sessions",
@@ -756,46 +776,21 @@ export const MCP_SECTIONS = [
 ];
 export const AGENT_SKILLS = [
   {
-    "id": "tododesk",
-    "title": "Dayfolio 通用操作",
-    "description": "待办、日程、学习进度、新闻与工具箱操作，按任务进入专业技能。",
+    "id": "dayfolio",
+    "title": "Dayfolio",
+    "description": "待办、日程、学习课程、新闻、工具箱与自定义数据，内含教学和赛事页面流程。",
     "requires": {
       "tools": [
         "get_today",
         "list_todos",
         "list_tools",
-        "list_object_types"
-      ]
-    }
-  },
-  {
-    "id": "tododesk-teach",
-    "title": "Dayfolio 教学",
-    "description": "按学习闭环生成计划与讲义，记录学习和测评证据。",
-    "requires": {
-      "tools": [
+        "list_object_types",
         "get_study_workflow",
         "draft_study_plan",
         "import_course",
         "record_study_session",
         "record_study_assessment",
-        "list_course_requests"
-      ]
-    },
-    "licenseFile": "LICENSE",
-    "requiredNotices": [
-      "MIT License",
-      "Copyright (c) 2026 Matt Pocock",
-      "49dd158"
-    ]
-  },
-  {
-    "id": "tododesk-sports",
-    "title": "Dayfolio 赛事页面",
-    "description": "生成体育或电竞赛事页面，核实来源并更新既有页面数据。",
-    "requires": {
-      "tools": [
-        "list_tools",
+        "list_course_requests",
         "add_tool",
         "update_tool",
         "get_runtime_tool_contract",
@@ -806,12 +801,15 @@ export const AGENT_SKILLS = [
         "import_external_events",
         "list_external_events",
         "refresh_event_provider",
-        "get_provider_sync_run"
-      ],
-      "capabilities": [
-        "search",
-        "browser"
+        "get_provider_sync_run",
+        "delete_course"
       ]
-    }
+    },
+    "licenseFile": "LICENSE",
+    "requiredNotices": [
+      "MIT License",
+      "Copyright (c) 2026 Matt Pocock",
+      "49dd158"
+    ]
   }
 ];

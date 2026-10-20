@@ -3,8 +3,10 @@
   "slug": "tododesk-tour",
   "title": "Dayfolio 上手之旅",
   "goal": "五分钟认识 Dayfolio 的本地数据、学习闭环与 AI 协作方式",
-  "version": "1.2.0",
-  "overview": { "html": "overview.html" },
+  "version": "1.9.0",
+  "overview": {
+    "html": "overview.html"
+  },
   "lessons": [
     {
       "day": 1,
@@ -12,9 +14,22 @@
       "html": "lessons/0001-quick-tour.html",
       "estimated_minutes": 5,
       "concepts": [
-        { "name": "本地数据", "explanation": "App 与 MCP 指向同一数据库，讲义资产保存在数据库旁。" },
-        { "name": "学习闭环", "explanation": "计划、课程、学习记录与掌握证据分别承担不同职责。" },
-        { "name": "AI 协作", "explanation": "请求排队后需要外部助手认领并执行。" }
+        {
+          "name": "本地数据",
+          "explanation": "App 与 MCP 指向同一数据库，讲义资产保存在数据库旁。"
+        },
+        {
+          "name": "学习闭环",
+          "explanation": "计划、课程、学习记录与掌握证据分别承担不同职责。"
+        },
+        {
+          "name": "AI 协作",
+          "explanation": "请求排队后需要外部助手认领并执行。"
+        },
+        {
+          "name": "学习进度与 AI 检验",
+          "explanation": "在学习详情依次阅读课件、提交自测、使用 AI 检验并保存笔记，无需填写学习用时；底部可标记完成。复制提示词本身不自动完成。"
+        }
       ],
       "is_sample": true
     }

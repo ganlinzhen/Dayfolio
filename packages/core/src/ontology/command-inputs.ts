@@ -971,7 +971,11 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
           ]
         },
         "actual_minutes": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
         },
         "explanation": {
           "anyOf": [
@@ -996,8 +1000,7 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
         }
       },
       "required": [
-        "knowledge_key",
-        "actual_minutes"
+        "knowledge_key"
       ],
       "additionalProperties": false
     }
@@ -1208,6 +1211,12 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
               "type": "number"
             }
           ]
+        },
+        "use_collection_prompt": {
+          "enum": [
+            false,
+            true
+          ]
         }
       },
       "required": [
@@ -1243,6 +1252,57 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
       "items": {
         "type": "object",
         "properties": {
+          "brief": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "overview": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "source_url": {
+                          "type": "string"
+                        },
+                        "source_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "published_at": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "summary",
+                        "source_url",
+                        "published_at"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "overview",
+                  "items"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
           "title": {
             "type": "string"
           },
@@ -1365,7 +1425,41 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
       "type": "number"
     }
   ],
+  "update_news_collection_settings": [
+    {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string"
+        },
+        "max_items": {
+          "type": "number"
+        },
+        "window_hours": {
+          "type": "number"
+        },
+        "expected_revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "prompt",
+        "max_items",
+        "window_hours",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    }
+  ],
   "import_course": [
+    {
+      "type": "string"
+    }
+  ],
+  "delete_course": [
+    {
+      "type": "number"
+    },
     {
       "type": "string"
     }
@@ -1408,6 +1502,13 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
   "confirm_course_sample": [
     {
       "type": "number"
+    },
+    {
+      "anyOf": [
+        {
+          "type": "string"
+        }
+      ]
     }
   ],
   "create_course_request": [

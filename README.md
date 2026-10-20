@@ -124,4 +124,4 @@ Dayfolio 以 MIT 许可开源，无需注册 Dayfolio 账号。若使用第三�
 
 ---
 
-[MIT 开源许可](LICENSE) · 教学技能的上游许可见[对应说明](packages/agent-kit/skills/tododesk-teach/LICENSE)。
+[MIT 开源许可](LICENSE) · 教学技能的上游许可见[对应说明](packages/agent-kit/skills/dayfolio/LICENSE)。

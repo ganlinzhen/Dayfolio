@@ -4,46 +4,21 @@
   "serverId": "tododesk",
   "skills": [
     {
-      "id": "tododesk",
-      "title": "Dayfolio 通用操作",
-      "description": "待办、日程、学习进度、新闻与工具箱操作，按任务进入专业技能。",
+      "id": "dayfolio",
+      "title": "Dayfolio",
+      "description": "待办、日程、学习课程、新闻、工具箱与自定义数据，内含教学和赛事页面流程。",
       "requires": {
         "tools": [
           "get_today",
           "list_todos",
           "list_tools",
-          "list_object_types"
-        ]
-      }
-    },
-    {
-      "id": "tododesk-teach",
-      "title": "Dayfolio 教学",
-      "description": "按学习闭环生成计划与讲义，记录学习和测评证据。",
-      "requires": {
-        "tools": [
+          "list_object_types",
           "get_study_workflow",
           "draft_study_plan",
           "import_course",
           "record_study_session",
           "record_study_assessment",
-          "list_course_requests"
-        ]
-      },
-      "licenseFile": "LICENSE",
-      "requiredNotices": [
-        "MIT License",
-        "Copyright (c) 2026 Matt Pocock",
-        "49dd158"
-      ]
-    },
-    {
-      "id": "tododesk-sports",
-      "title": "Dayfolio 赛事页面",
-      "description": "生成体育或电竞赛事页面，核实来源并更新既有页面数据。",
-      "requires": {
-        "tools": [
-          "list_tools",
+          "list_course_requests",
           "add_tool",
           "update_tool",
           "get_runtime_tool_contract",
@@ -54,13 +29,16 @@
           "import_external_events",
           "list_external_events",
           "refresh_event_provider",
-          "get_provider_sync_run"
-        ],
-        "capabilities": [
-          "search",
-          "browser"
+          "get_provider_sync_run",
+          "delete_course"
         ]
-      }
+      },
+      "licenseFile": "LICENSE",
+      "requiredNotices": [
+        "MIT License",
+        "Copyright (c) 2026 Matt Pocock",
+        "49dd158"
+      ]
     }
   ]
 }

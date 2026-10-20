@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { buildAgentKit, digest, installAgentKit, verifyAgentKit, verifySourceFreshness } from '../scripts/package.mjs';
+import { buildAgentKit, digest, filesIn, installAgentKit, verifyAgentKit, verifySourceFreshness } from '../scripts/package.mjs';
+import { shouldSyncCodexSkill, syncCodexSkill } from '../scripts/sync-codex.mjs';
 
 let work: string;
 let root: string;
@@ -15,8 +16,8 @@ beforeEach(() => {
     const to = join(root, 'packages/agent-kit/scripts', script); mkdirSync(resolve(to, '..'), { recursive: true }); cpSync(new URL('../scripts/' + script, import.meta.url), to);
   }
   write(join(root, 'package.json'), JSON.stringify({ version: '0.20.0' }));
-  write(join(root, 'packages/agent-kit/manifest.json'), JSON.stringify({ schemaVersion: 1, name: 'dayfolio', serverId: 'tododesk', skills: [{ id: 'tododesk', requires: { tools: ['get_today'] } }] }));
-  write(join(root, 'packages/agent-kit/skills/tododesk/SKILL.md'), '---\nname: tododesk\ndescription: 读取今日任务\n---\n使用 get_today。');
+  write(join(root, 'packages/agent-kit/manifest.json'), JSON.stringify({ schemaVersion: 1, name: 'dayfolio', serverId: 'tododesk', skills: [{ id: 'dayfolio', requires: { tools: ['get_today'] } }] }));
+  write(join(root, 'packages/agent-kit/skills/dayfolio/SKILL.md'), '---\nname: dayfolio\ndescription: 读取今日任务\n---\n使用 get_today。');
   write(join(root, 'packages/agent-kit/runtime/call.mjs'), '// 隔离构建夹具\n');
   write(join(root, 'apps/mcp/dist/mcp-server.cjs'), '// 隔离构建夹具\n');
   write(join(root, 'apps/mcp/dist/agent-catalog.json'), JSON.stringify({ version: '0.20.0', serverId: 'tododesk', tools: [{ name: 'get_today' }] }));
@@ -25,6 +26,67 @@ beforeEach(() => {
 afterEach(() => rmSync(work, { recursive: true, force: true }));
 
 describe('统一能力包的构建与更新', () => {
+  it('只允许统一入口，内部参考缺失时保留旧产物', () => {
+    const source = make();
+    write(join(root, 'packages/agent-kit/skills/dayfolio/references/teaching.md'), '[赛事](sports.md)');
+    expect(() => make()).toThrow('引用');
+    expect(verifyAgentKit(source).version).toBe('0.20.0');
+    write(join(root, 'packages/agent-kit/manifest.json'), JSON.stringify({ schemaVersion: 1, name: 'dayfolio', serverId: 'tododesk', skills: [{ id: 'dayfolio', requires: { tools: [] } }, { id: 'tododesk-teach', requires: { tools: [] } }] }));
+    expect(() => make()).toThrow('一个 dayfolio');
+  });
+
+  it('同步 Codex 时备份旧入口，在异地安装完整包且重复执行只保留一个入口', () => {
+    const source = make(), home = join(work, 'home'), codexHome = join(home, '自选Codex');
+    write(join(home, '.agents/skills/tododesk/SKILL.md'), '我的旧技能');
+    mkdirSync(join(home, '.codex/skills'), { recursive: true });
+    symlinkSync(join(work, '不再存在的旧源码'), join(home, '.codex/skills/tododesk-sports'));
+    write(join(codexHome, 'skills/tododesk-teach/SKILL.md'), '旧教学');
+    write(join(codexHome, 'skills/other/SKILL.md'), '其他技能');
+    const first = syncCodexSkill({ source, home, codexHome });
+    expect(first.removedEntries).toHaveLength(3);
+    expect(readFileSync(join(first.backup!, '0-skills-tododesk/SKILL.md'), 'utf8')).toBe('我的旧技能');
+    expect(readlinkSync(first.skill)).toBe(join(first.target, 'skills/dayfolio'));
+    expect(verifyAgentKit(first.target).version).toBe('0.20.0');
+    expect(readFileSync(join(codexHome, 'skills/other/SKILL.md'), 'utf8')).toBe('其他技能');
+    expect(readdirSync(join(home, '.agents/skills'))).toEqual([]);
+    expect(readdirSync(join(home, '.codex/skills'))).toEqual([]);
+    expect(syncCodexSkill({ source, home, codexHome }).removedEntries).toEqual([]);
+    write(join(root, 'package.json'), JSON.stringify({ version: '0.21.0' }));
+    write(join(root, 'apps/mcp/dist/agent-catalog.json'), JSON.stringify({ version: '0.21.0', serverId: 'tododesk', tools: [{ name: 'get_today' }] }));
+    make();
+    expect(syncCodexSkill({ source, home, codexHome }).version).toBe('0.21.0');
+    expect(readFileSync(join(first.skill, 'SKILL.md'), 'utf8')).toContain('name: dayfolio');
+    expect(verifyAgentKit(first.target + '.previous').version).toBe('0.20.0');
+  });
+
+  it('同步失败不会移除旧技能；CI 与隔离验收可跳过自动同步', () => {
+    const source = make(), home = join(work, 'home'), codexHome = join(home, '.codex');
+    const result = syncCodexSkill({ source, home, codexHome });
+    write(join(result.target, 'skills/dayfolio/SKILL.md'), '我的改写');
+    write(join(home, '.agents/skills/tododesk/SKILL.md'), '必须保留');
+    expect(() => syncCodexSkill({ source, home, codexHome })).toThrow('摘要');
+    expect(readFileSync(join(home, '.agents/skills/tododesk/SKILL.md'), 'utf8')).toBe('必须保留');
+    expect(shouldSyncCodexSkill({})).toBe(true);
+    expect(shouldSyncCodexSkill({ CI: 'true' })).toBe(false);
+    expect(shouldSyncCodexSkill({ DAYFOLIO_SKIP_CODEX_SYNC: '1' })).toBe(false);
+  });
+
+  it('从三个旧技能的完整能力包更新时清理旧文件，保留可恢复上一版', () => {
+    const source = make(), target = join(work, 'legacy');
+    cpSync(source, target, { recursive: true });
+    rmSync(join(target, 'skills'), { recursive: true });
+    const skills = ['tododesk', 'tododesk-teach', 'tododesk-sports'].map(id => ({ id, requires: { tools: ['get_today'] } }));
+    write(join(target, 'manifest.json'), JSON.stringify({ schemaVersion: 1, name: 'dayfolio', serverId: 'tododesk', skills }));
+    for (const { id } of skills) write(join(target, `skills/${id}/SKILL.md`), `---\nname: ${id}\ndescription: 旧入口\n---\n读取 get_today。`);
+    const release = JSON.parse(readFileSync(join(target, 'release.json'), 'utf8'));
+    release.files = Object.fromEntries(filesIn(target).filter(file => file !== 'release.json').map(file => [file, digest(join(target, file))]));
+    write(join(target, 'release.json'), JSON.stringify(release));
+    expect(() => verifyAgentKit(target)).toThrow('一个 dayfolio');
+    installAgentKit(source, target);
+    expect(readdirSync(join(target, 'skills'))).toEqual(['dayfolio']);
+    expect(verifyAgentKit(target + '.previous', { allowLegacySkills: true }).version).toBe('0.20.0');
+  });
+
   it('作者校验器缺失时保留旧产物；合同或校验器变更使旧能力包失效', () => {
     const previous = make(), before = digest(join(previous, 'release.json'));
     write(join(root, 'packages/agent-kit/extension-tools/README.md'), '隔离作者夹具');
@@ -61,7 +123,7 @@ describe('统一能力包的构建与更新', () => {
 
   it('拒绝覆盖人工修改过的能力包，并保留修改', () => {
     const source = make(), target = join(work, 'installed'); installAgentKit(source, target);
-    const skill = join(target, 'skills/tododesk/SKILL.md'); writeFileSync(skill, '我的改写');
+    const skill = join(target, 'skills/dayfolio/SKILL.md'); writeFileSync(skill, '我的改写');
     expect(() => installAgentKit(source, target)).toThrow('摘要');
     expect(readFileSync(skill, 'utf8')).toBe('我的改写');
   });
@@ -86,7 +148,7 @@ describe('统一能力包的构建与更新', () => {
     write(join(root, 'apps/mcp/dist/agent-catalog.json'), JSON.stringify({ version: '0.20.0', serverId: 'tododesk', tools: [] }));
     expect(() => make()).toThrow('依赖'); expect(verifyAgentKit(source).version).toBe('0.20.0');
     write(join(root, 'apps/mcp/dist/agent-catalog.json'), JSON.stringify({ version: '0.20.0', serverId: 'tododesk', tools: [{ name: 'get_today' }] }));
-    write(join(root, 'packages/agent-kit/skills/tododesk/SKILL.md'), '---\nname: tododesk\ndescription: 读取今日任务\n---\n[参考](references/missing.md)');
+    write(join(root, 'packages/agent-kit/skills/dayfolio/SKILL.md'), '---\nname: dayfolio\ndescription: 读取今日任务\n---\n[参考](references/missing.md)');
     expect(() => make()).toThrow('引用'); expect(verifyAgentKit(source).version).toBe('0.20.0');
   });
 
@@ -94,7 +156,7 @@ describe('统一能力包的构建与更新', () => {
     const source = make();
     symlinkSync(source, join(work, 'alias'));
     expect(() => installAgentKit(source, join(work, 'alias'))).toThrow('符号链接');
-    symlinkSync(join(work, '外部文件'), join(root, 'packages/agent-kit/skills/tododesk/external'));
+    symlinkSync(join(work, '外部文件'), join(root, 'packages/agent-kit/skills/dayfolio/external'));
     expect(() => make()).toThrow('符号链接');
   });
 

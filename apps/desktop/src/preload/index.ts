@@ -1,7 +1,7 @@
 // 预加载脚本：把 IPC 能力安全暴露给渲染进程（window.tododesk）
 import { contextBridge, ipcRenderer } from 'electron';
 
-const WRITE_CHANNEL = /^(?:todos:(?:add|update|complete|reopen|delete)|plans:(?:create|update|updateItemStatus|delete)|calendar:(?:add|update|delete|setVisibility)|runtime:setTimezone|events:(?:refresh|import|updateProvider|archive|deleteUnused)|subscriptions:(?:subscribe|unsubscribe|resumeFollowing)|data:(?:invokeAction|updateObject|createLink|deleteLink|updateActionType)|extensions:(?:install|setEnabled|rollback|uninstall))$/;
+const WRITE_CHANNEL = /^(?:todos:(?:add|update|complete|reopen|delete)|study:recordSession|plans:(?:create|update|updateItemStatus|delete)|calendar:(?:add|update|delete|setVisibility)|runtime:setTimezone|events:(?:refresh|import|updateProvider|archive|deleteUnused)|subscriptions:(?:subscribe|unsubscribe|resumeFollowing)|data:(?:invokeAction|updateObject|createLink|deleteLink|updateActionType)|extensions:(?:install|setEnabled|rollback|uninstall))$/;
 const invoke = (channel: string) => async (payload?: unknown) => {
   const result = await ipcRenderer.invoke(channel, payload);
   if (result?.ok && WRITE_CHANNEL.test(channel)) window.dispatchEvent(new Event('dayfolio:changed'));
@@ -57,6 +57,9 @@ const api = {
     cancelDraft: invoke('study:cancelDraft'),
     previewSchedule: invoke('study:previewSchedule'),
     scheduleDraft: invoke('study:scheduleDraft'),
+    getProgress: invoke('study:getProgress'),
+    recordSession: invoke('study:recordSession'),
+    copyPrompt: invoke('study:copyPrompt'),
     listSessions: invoke('study:listSessions'),
     listAssessments: invoke('study:listAssessments'),
     getMastery: invoke('study:getMastery'),
@@ -70,6 +73,7 @@ const api = {
   courses: {
     import: invoke('courses:import'),
     list: invoke('courses:list'),
+    remove: invoke('courses:remove'),
     lessons: invoke('courses:lessons'),
     overviewHtml: invoke('courses:overviewHtml'),
     lessonHtml: invoke('courses:lessonHtml'),
@@ -80,6 +84,8 @@ const api = {
     listRequests: invoke('courses:listRequests'),
   },
   news: {
+    collectionSettings: invoke('news:collectionSettings'),
+    updateCollectionSettings: invoke('news:updateCollectionSettings'),
     list: invoke('news:list'),
     tasks: invoke('news:tasks'),
     createTask: invoke('news:createTask'),

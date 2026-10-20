@@ -4,7 +4,7 @@
 // 红线：
 // 1. 不登录、不自动发布任何外部平台——排期只是本地计划，published 状态由用户人工回填；
 // 2. 平台版本必须经人工审核（in_review → approved）才能排期；审核通过与撤回是用户在 App 内的
-//    亲自动作，MCP 不暴露 approve（与课程样课确认同一红线）；本服务层的 review 仅提供动作原语；
+//    亲自动作，MCP 不暴露 approve（课程样课另有专用对话确认工具）；本服务层的 review 仅提供动作原语；
 // 3. 素材包导出到用户显式指定的目录，且拒绝任何位于已注册知识库 vault 内的目标目录（草稿不进 vault）；
 // 4. 指标全部手动录入（同排期同日唯一，重复录入覆盖），没有任何自动抓取。
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';

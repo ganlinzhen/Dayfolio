@@ -25,20 +25,26 @@ function arg(result: unknown): any {
   return JSON.parse(text);
 }
 
-/** 模拟用户在 App 内「阅读并确认样课」：MCP 不暴露确认工具（agent 不得代用户确认），
- *  e2e 直接写临时库标记，语义与 App IPC confirmSample 一致（样课置已读 + 绑定当前内容哈希） */
-const confirmSampleAsApp = (courseId: number) => {
-  const id = Number(courseId);
-  const db = new DatabaseSync(join(dbDir, 'e2e.db'));
+/** 临时库模拟 App 阅读，确认本身走真实 MCP 对话确认工具。 */
+const readSampleAsApp = (courseId: number) => {
+  const db = openNodeSqliteDb(join(dbDir, 'e2e.db'));
   try {
-    db.exec(`UPDATE course_lessons SET status = 'read' WHERE course_id = ${id} AND is_sample = 1`);
-    db.exec(`UPDATE courses SET status = 'sample_confirmed',
-      sample_content_hash = (SELECT content_hash FROM course_lessons WHERE course_id = ${id} AND is_sample = 1),
-      sample_confirmed_at = '2026-10-10T00:00:00.000Z',
-      updated_at = '2026-10-10T00:00:00.000Z' WHERE id = ${id}`);
+    const core = createCore(db, { dbPath: join(dbDir, 'e2e.db') });
+    const sample = core.courses.listLessons(courseId).find((lesson) => lesson.is_sample)!;
+    core.courses.markLessonRead(courseId, sample.day);
+    return sample.content_hash;
   } finally {
     db.close();
   }
+};
+
+const confirmSampleInChat = async (courseId: number) => {
+  const hash = readSampleAsApp(courseId);
+  const result = arg(await client.callTool({ name: 'confirm_course_sample', arguments: {
+    course_id: courseId, sample_content_hash: hash, confirmed: true,
+  } }));
+  expect(result.ok).toBe(true);
+  return result.data;
 };
 
 beforeAll(async () => {
@@ -80,7 +86,7 @@ describe('MCP 端到端主流程', () => {
     expect(catalog.version).toBe(version);
     expect(catalog.tools.find((t: { name: string }) => t.name === 'get_checkin_stats').group.id).toBe('todos');
     expect(catalog.tools.filter((t: { group: { id: string } }) => t.group.id === 'calendar')).toHaveLength(4);
-    expect(catalog.skills.map((s: { id: string }) => s.id)).toEqual(['tododesk', 'tododesk-teach', 'tododesk-sports']);
+    expect(catalog.skills.map((s: { id: string }) => s.id)).toEqual(['dayfolio']);
   });
 
   it('阅读组合、幂等重放、修订冲突与只读执行记录通过真实 MCP 链路', async () => {
@@ -202,7 +208,7 @@ describe('MCP 端到端主流程', () => {
       'mark_news_read', 'mark_news_starred', 'mark_all_news_read', 'delete_news_item', 'read_news_html',
       'get_study_workflow', 'draft_study_plan', 'list_study_drafts', 'get_study_draft',
       'confirm_study_plan_draft', 'cancel_study_plan_draft',
-      'record_study_session', 'list_study_sessions',
+      'record_study_session', 'list_study_sessions', 'get_study_progress',
       'record_study_assessment', 'list_study_assessments', 'get_mastery',
       'suggest_plan_adjustments', 'apply_plan_adjustments',
       'preview_study_cards', 'export_study_cards', 'list_card_exports',
@@ -560,6 +566,30 @@ describe('MCP 端到端主流程', () => {
     expect(done.completed_note).toBe('e2e 收录 2 条');
     const tasks = arg(await client.callTool({ name: 'list_news_tasks', arguments: { status: 'completed' } })).data.tasks;
     expect(tasks.map((t: any) => t.id)).toContain(task.id);
+  });
+
+  it('新闻提示词：MCP 与 App 共用配置；动态快照与结构化简报回读', async () => {
+    const current = arg(await client.callTool({ name: 'get_news_collection_settings', arguments: {} })).data;
+    const saved = arg(await client.callTool({ name: 'update_news_collection_settings', arguments: {
+      prompt: '国际 3–5 条，国内 3–5 条，加一份 AI 简报', max_items: 11, window_hours: 24, expected_revision: current.revision,
+    } })).data;
+    expect(saved.revision).toBe(current.revision + 1);
+    const task = arg(await client.callTool({ name: 'create_news_task', arguments: { title: 'e2e：动态采集提示词', use_collection_prompt: true } })).data;
+    expect(task.instructions).toBe(saved.prompt);
+    expect(task.max_items).toBe(11);
+    const claim = arg(await client.callTool({ name: 'claim_news_task', arguments: { task_id: task.id } })).data;
+    const entries = [1, 2].map(i => ({ title: `e2e 简报动态消息 ${i}`, summary: `消息 ${i} 的核实摘要`, source_url: `https://example.com/dynamic-brief/${i}`, published_at: new Date(Date.now() - 3600000).toISOString() }));
+    const result = arg(await client.callTool({ name: 'submit_news_items', arguments: {
+      task_id: task.id, claim_token: claim.claim_token, items: [{ ...entries[0], title: 'e2e AI 专题简报', brief: { overview: '本期总览', items: entries } }],
+    } })).data;
+    expect(result.inserted).toBe(1);
+    expect(result.task.remaining).toBe(10);
+    const read = arg(await client.callTool({ name: 'list_news', arguments: { task_id: task.id } })).data.news;
+    expect(read).toHaveLength(1);
+    expect(read[0].brief.items.map((entry: any) => entry.source_url)).toEqual(entries.map(entry => entry.source_url));
+    expect(arg(await client.callTool({ name: 'complete_news_task', arguments: { task_id: task.id, claim_token: claim.claim_token } })).data.status).toBe('completed');
+    const stale = await client.callTool({ name: 'update_news_collection_settings', arguments: { ...saved, expected_revision: current.revision } });
+    expect(stale.isError).toBe(true);
   });
 
   it('新闻本地快照：submit 带 html 落盘消毒 → list/read 回读 → 删除随行清理', async () => {
@@ -997,10 +1027,14 @@ describe('学习闭环主链路（agent 视角：学习线性代数）', () => {
     const s2 = arg(
       await client.callTool({
         name: 'record_study_session',
-        arguments: { plan_item_id: todayItem.id, knowledge_key: 'linalg-vectors', attempt: 2, actual_minutes: 20, explanation: '第二次：给同学讲了一遍基变换' },
+        arguments: { plan_item_id: todayItem.id, knowledge_key: 'linalg-vectors', attempt: 2, explanation: '第二次：给同学讲了一遍基变换' },
       }),
     ).data;
     expect(s2.attempt).toBe(2);
+    expect(s2.session.actual_minutes).toBe(0);
+    const progress = arg(await client.callTool({ name: 'get_study_progress', arguments: { plan_id: planId } })).data[0];
+    expect(progress).toMatchObject({ plan_id: planId, noted_items: 1, assessed_items: 0 });
+    expect(progress.items.find((item: any) => item.item_id === todayItem.id).note_count).toBe(2);
 
     // 自评 40 → weak；同 id 纠正到 85 → strong，历史保留
     const a1 = arg(
@@ -1210,13 +1244,20 @@ describe('无日期专题草案（agent 视角：专题文稿先存后排期）'
     expect(confirmed.item_count).toBe(2);
     expect(confirmed.todos_created).toBe(2);
     expect(arg(await client.callTool({ name: 'list_study_plans', arguments: {} })).data.count).toBe(plansBefore + 1);
+    const boundCourse = arg(await client.callTool({ name: 'list_courses', arguments: {} })).data.find((c: any) => c.id === course.course_id);
+    expect(boundCourse.plan_id).toBe(confirmed.plan_id);
+    expect(boundCourse.status).toBe('imported'); // 绑定计划不代替用户确认样课
+    const retried = arg(await client.callTool({ name: 'confirm_study_plan_draft', arguments: { draft_id: d.draft_id } })).data;
+    expect(retried.plan_id).toBe(confirmed.plan_id);
+    expect(arg(await client.callTool({ name: 'list_study_plans', arguments: {} })).data.count).toBe(plansBefore + 1);
+    expect(arg(await client.callTool({ name: 'list_todos', arguments: { status: 'all' } })).data.count).toBe(todosBefore + 2);
     // 确认后拒绝再排期
     const badSched = arg(await client.callTool({ name: 'schedule_study_draft', arguments: { draft_id: d.draft_id, start_date: D0, daily_minutes: 60 } }));
     expect(badSched.ok).toBe(false);
 
-    // 样课确认门禁不变：MCP 工具列表里没有确认样课的工具（只有 App 用户可确认）
+    // 对话中的明确确认由专用工具承接。
     const toolNames = (await client.listTools()).tools.map((t) => t.name);
-    expect(toolNames.filter((n) => n.includes('sample'))).toEqual([]);
+    expect(toolNames.filter((n) => n.includes('sample'))).toEqual(['confirm_course_sample']);
   });
 
   it('预算冲突硬校验全链路：预览 → 不带确认集被拒 → 带集排期 → 确认被拒 → 带集确认', async () => {
@@ -1535,6 +1576,65 @@ describe('新闻任务边界（租约接管与预算累计）', () => {
 });
 
 describe('教学课程（MCP 主链路）', () => {
+  it('删除课程通过专用工具清理从属数据和资产，保留关联计划及其待办', async () => {
+    const plan = arg(await client.callTool({ name: 'create_study_plan', arguments: { title: '删除课程后保留的计划', start_date: todayStr(), items: [{ date: todayStr(), content: '保留的学习待办' }] } })).data;
+    const stage = mkdtempSync(join(dbDir, 'td-delete-course-'));
+    mkdirSync(join(stage, 'lessons'));
+    writeFileSync(join(stage, 'lessons/d1.html'), '<h1>待删除课程</h1>');
+    writeFileSync(join(stage, 'course.json'), JSON.stringify({ slug: 'delete-course-e2e', title: '待删除课程', version: '1.0.0', plan_id: plan.plan_id, lessons: [{ day: 1, title: '样课', html: 'lessons/d1.html', is_sample: true }] }));
+    const imported = arg(await client.callTool({ name: 'import_course', arguments: { staging_dir: stage } })).data;
+    await confirmSampleInChat(imported.course_id);
+    arg(await client.callTool({ name: 'create_course_request', arguments: { course_id: imported.course_id } }));
+    const rejected = arg(await client.callTool({ name: 'delete_course', arguments: { course_id: imported.course_id, expected_slug: 'other-course' } }));
+    expect(rejected.ok).toBe(false);
+    const result = arg(await client.callTool({ name: 'delete_course', arguments: { course_id: imported.course_id, expected_slug: 'delete-course-e2e' } }));
+    expect(result.ok).toBe(true);
+    expect(result.data).toMatchObject({ deleted_lessons: 1, deleted_requests: 1, assets_removed: true });
+    expect(arg(await client.callTool({ name: 'list_courses', arguments: {} })).data.some((c: { id: number }) => c.id === imported.course_id)).toBe(false);
+    expect(arg(await client.callTool({ name: 'get_course_lessons', arguments: { course_id: imported.course_id } })).data).toEqual([]);
+    expect(arg(await client.callTool({ name: 'list_course_requests', arguments: { course_id: imported.course_id } })).data).toEqual([]);
+    expect(existsSync(join(dbDir, 'courses/delete-course-e2e'))).toBe(false);
+    expect(arg(await client.callTool({ name: 'get_study_plan', arguments: { id: plan.plan_id } })).data.items).toHaveLength(1);
+    const todos = arg(await client.callTool({ name: 'list_todos', arguments: { status: 'all', search: '保留的学习待办' } })).data.todos;
+    expect(todos).toHaveLength(1);
+    expect(arg(await client.callTool({ name: 'delete_study_plan', arguments: { id: plan.plan_id } })).ok).toBe(true);
+    rmSync(stage, { recursive: true, force: true });
+  });
+
+  it('对话确认要求明确同意和当前版本：缺失或否认拒绝，旧哈希拒绝，重读新版本后可确认', async () => {
+    const stage = mkdtempSync(join(dbDir, 'td-chat-confirm-'));
+    mkdirSync(join(stage, 'lessons'));
+    const lessonPath = join(stage, 'lessons', 'd1.html');
+    writeFileSync(lessonPath, '<h1>对话确认样课 v1</h1>');
+    writeFileSync(join(stage, 'course.json'), JSON.stringify({
+      slug: 'chat-confirm-gates', title: '对话确认门槛', version: '1.0.0',
+      lessons: [{ day: 1, title: '样课', html: 'lessons/d1.html', is_sample: true }],
+    }));
+    const cid = arg(await client.callTool({ name: 'import_course', arguments: { staging_dir: stage } })).data.course_id;
+    const hash = readSampleAsApp(cid);
+    for (const flag of [{}, { confirmed: false }]) {
+      const result = await client.callTool({ name: 'confirm_course_sample', arguments: { course_id: cid, sample_content_hash: hash, ...flag } });
+      expect(result.isError).toBe(true);
+    }
+    const courses = arg(await client.callTool({ name: 'list_courses', arguments: {} })).data;
+    expect(courses.find((c: { id: number }) => c.id === cid).sample_confirmed_at).toBeNull();
+    await confirmSampleInChat(cid);
+    writeFileSync(lessonPath, '<h1>对话确认样课 v2</h1>');
+    const updated = arg(await client.callTool({ name: 'import_course', arguments: { staging_dir: stage } })).data;
+    expect(updated.confirmation_expired).toBe(true);
+    expect(updated.lessons[0].revision).toBe(2);
+    const stale = arg(await client.callTool({ name: 'confirm_course_sample', arguments: { course_id: cid, sample_content_hash: hash, confirmed: true } }));
+    expect(stale.ok).toBe(false);
+    expect(stale.error).toContain('版本已变更');
+    const lessons = arg(await client.callTool({ name: 'get_course_lessons', arguments: { course_id: cid } })).data;
+    const unread = arg(await client.callTool({ name: 'confirm_course_sample', arguments: { course_id: cid, sample_content_hash: lessons[0].content_hash, confirmed: true } }));
+    expect(unread.error).toContain('尚未阅读');
+    expect((await confirmSampleInChat(cid)).sample_content_hash).not.toBe(hash);
+    const requests = arg(await client.callTool({ name: 'list_course_requests', arguments: { course_id: cid } })).data;
+    expect(requests).toEqual([]); // 只确认样课不会暗中创建生成请求。
+    rmSync(stage, { recursive: true, force: true });
+  });
+
   it('import → lessons → quiz → 确认前置拒绝 → 确认 → 请求 → claim → 完整包 → complete', async () => {
     const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
     // d1 引用包内样式表：导入时应内联为消毒 <style>（离线自包含，排版保留）；完整包逐字节一致防哈希漂移
@@ -1556,6 +1656,7 @@ describe('教学课程（MCP 主链路）', () => {
     const imp = arg(await client.callTool({ name: 'import_course', arguments: { staging_dir: stage } })).data;
     expect(imp.slug).toBe('e2e-course');
     expect(imp.lessons[0].is_sample).toBe(true);
+    expect(imp.lessons[0].revision).toBe(1);
     expect(imp.lessons).toHaveLength(1); // 样课包只含样课一天，不会多生成其他天
     expect(imp.has_overview).toBe(true);
     const cid = imp.course_id;
@@ -1570,14 +1671,21 @@ describe('教学课程（MCP 主链路）', () => {
     expect(html.html).not.toContain('<link');
     expect(html.html).toContain('内联自课程包 assets/style.css');
     expect(html.html).toContain('--e2e-ink');
+    expect(html.lesson.revision).toBe(1);
     // 3. 答题
     const quiz = arg(await client.callTool({ name: 'submit_lesson_quiz', arguments: { course_id: cid, day: 1, answers: [{ question_id: 'q1', picked: 1 }] } })).data;
     expect(quiz.quiz_answers).toHaveLength(1);
     // 4. 未确认 → 创建请求被拒
     const denied = arg(await client.callTool({ name: 'create_course_request', arguments: { course_id: cid } }));
     expect(denied.ok).toBe(false);
-    // 5. 用户在 App 确认（MCP 无确认工具——此处直写临时库模拟 App 动作）→ 请求 → 认领
-    confirmSampleAsApp(cid);
+    // 5. 用户在 App 阅读后，通过对话确认 → 请求 → 认领。
+    const hash = html.lesson.content_hash;
+    const unread = arg(await client.callTool({ name: 'confirm_course_sample', arguments: { course_id: cid, sample_content_hash: hash, confirmed: true } }));
+    expect(unread.ok).toBe(false);
+    expect(unread.error).toContain('尚未阅读');
+    const confirmed = await confirmSampleInChat(cid);
+    expect(confirmed.sample_content_hash).toBe(hash);
+    expect((await confirmSampleInChat(cid)).sample_confirmed_at).toBe(confirmed.sample_confirmed_at);
     const req = arg(await client.callTool({ name: 'create_course_request', arguments: { course_id: cid, requested_by: 'e2e' } })).data;
     expect(req.status).toBe('pending');
     const claimed = arg(await client.callTool({ name: 'claim_course_request', arguments: { request_id: req.id, claimed_by: 'e2e-agent' } })).data;
@@ -1607,11 +1715,11 @@ describe('教学课程（MCP 主链路）', () => {
     rmSync(full, { recursive: true, force: true });
   });
 
-  it('完整包不绕过确认与请求：首导/未认领导入被拒；确认工具不暴露；quiz 选项越界拒绝；plan_id 不存在拒绝', async () => {
+  it('完整包不绕过确认与请求：首导/未认领导入被拒；确认工具可用；quiz 选项越界拒绝；plan_id 不存在拒绝', async () => {
     const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
-    // 工具清单不得暴露样课确认（用户亲自动作，agent 不得代确认）
+    // 专用确认工具承接用户对话确认。
     const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names).not.toContain('confirm_sample_lesson');
+    expect(names).toContain('confirm_course_sample');
 
     // 首导完整包（无既有课程，无论是否带样课标记）→ 拒绝：课程必须从样课包开始
     const mkFreshFull = (slug: string, withSample: boolean) => {
@@ -1649,7 +1757,7 @@ describe('教学课程（MCP 主链路）', () => {
     expect(arg(await client.callTool({ name: 'get_course_overview', arguments: { course_id: cid } })).data).toBeNull();
 
     // 已确认但未认领 → 直接导完整包仍被拒（不能绕过请求队列）
-    confirmSampleAsApp(cid);
+    await confirmSampleInChat(cid);
     const mkFull = (v: string) => {
       const full = mkdtempSync(join(dbDir, 'td-course-gate-full-'));
       mkdirSync(join(full, 'lessons'), { recursive: true });

@@ -23,6 +23,13 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
     wrap(() => ({ spec_version: '2026-10-v2', tool_chain: STUDY_TOOL_CHAIN, spec_markdown: studyWorkflowSpec })),
   );
 
+  server.tool(
+    'get_study_progress',
+    '读取学习计划及各条目的真实学习进度：课件已读、评测已做、笔记已输出。用于查看学习进展或检验前定位遗漏；完成与掌握分开，AI反馈和答题记录均不自动证明掌握。同日条目共用当天课件与自测，笔记及测评按具体条目隔离。省略plan_id返回所有计划，无记录时保留零值',
+    { plan_id: z.number().int().positive().optional() },
+    async ({ plan_id }) => wrap(() => core.study.getProgress(plan_id))(),
+  );
+
   const knowledgePointSchema = z.object({
     key: z.string().min(1).describe('知识点稳定标识，小写 slug（如 matrix-multiply），卡片与会话靠它关联'),
     name: z.string().min(1).describe('知识点名称（如 矩阵乘法）'),
@@ -73,7 +80,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
 
   server.tool(
     'confirm_study_plan_draft',
-    '确认草案为正式学习计划（生成逐日条目与对应待办，进入今日面板/待办列表）。幂等：对已确认草案重复调用返回原计划不重复创建。必须先把预览念给用户并取得同意。**确认边界冲突硬校验**（经 schedule_study_draft 排期的草案）：排期后既有计划变动可能引入新的超预算冲突——确认时服务端重算，若存在超预算日期必须把用户确认的集合作为 confirmed_over_dates 传回且与重算精确一致，否则拒绝（须重新预览排期）。旧路径草案（draft_study_plan 创建即排期）不设此冲突门',
+    '确认草案为正式学习计划（生成逐日条目与对应待办，进入今日面板/待办列表）；草案有 course_id 时同步绑定课程。幂等：已确认草案返回原计划、不重复创建，仅补齐原课程尚未绑定的关系；课程已绑定其他计划时拒绝，不能改绑。必须先把预览念给用户并取得同意。**确认边界冲突硬校验**（经 schedule_study_draft 排期的草案）：排期后既有计划变动可能引入新的超预算冲突——确认时服务端重算，若存在超预算日期必须把用户确认的集合作为 confirmed_over_dates 传回且与重算精确一致，否则拒绝（须重新预览排期）。旧路径草案（draft_study_plan 创建即排期）不设此冲突门',
     {
       draft_id: z.number().int().positive(),
       confirmed_over_dates: z.array(dateSchema).optional().describe('用户确认接受的超预算日期：与当下重算结果完全一致；无冲突则不传'),
@@ -83,6 +90,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
         const { draft, plan } = core.study.confirmDraft(draft_id, { confirmed_over_dates });
         return {
           draft_status: draft.status,
+          course_id: draft.course_id,
           plan_id: plan.id,
           title: plan.title,
           date_range: `${plan.start_date} ~ ${plan.end_date}`,
@@ -197,7 +205,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
 
   server.tool(
     'record_study_session',
-    '记录一次**独立学习会话**（当日学习完成的凭证）：实际用时、用自己的话写的解释/答案、疑问、材料来源。同一目标多次学习用 attempt 区分（1,2,3…）。幂等：重试请带同一稳定 id；不传 id 时按（目标条目 或 知识点+日期, attempt）复用',
+    '记录一次**独立学习会话**（当日学习完成的凭证）：用自己的话写的解释/答案、可选实际用时、疑问、材料来源。同一目标多次学习用 attempt 区分（1,2,3…）。幂等：重试请带同一稳定 id；不传 id 时按（目标条目 或 知识点+日期, attempt）复用',
     {
       id: z.string().optional().describe('稳定会话 id（重试/更新同一会话时传同一个，如 sess-matrix-mult-a1）'),
       plan_id: z.number().int().positive().optional(),
@@ -206,7 +214,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
       topic: z.string().optional().describe('主题名称，缺省用知识点名'),
       attempt: z.number().int().positive().optional().describe('第几次尝试；不传 = 该目标的下一次尝试'),
       date: dateSchema.optional().describe('会话日期，缺省今天'),
-      actual_minutes: z.number().int().min(1).max(1440).describe('实际用时（分钟）'),
+      actual_minutes: z.number().int().min(1).max(1440).optional().describe('可选实际用时（分钟），仅用户主动提供时记录，不估算或补填'),
       explanation: z.string().optional().describe('自己的解释/答案（费曼式输出，越具体越好）'),
       questions: z.string().optional().describe('没解决的疑问'),
       material_source: z.string().optional().describe('本次用的材料（章节/链接）'),

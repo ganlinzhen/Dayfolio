@@ -21,10 +21,11 @@
 // 8. 重导保留进度：同哈希天保留已读状态与答题记录；样课包重导只更新样课天，不删除
 //    已生成的其他天；幂等判定除哈希外还核磁盘文件存在且内容一致（缺失/失配自动修复）；
 // 9. 内容生成不算掌握：quiz_answers 仅学习痕迹，与 study_assessments/get_mastery 完全分离。
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import type { DbAdapter } from '../db';
+import { inTx } from '../db';
 import type {
   Course,
   CourseOverview,
@@ -41,6 +42,21 @@ export const COURSES_DIR_NAME = 'courses';
 const SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 /** 相对路径安全：无 ..、无绝对、无反斜杠、无前导 / */
 const SAFE_REL_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:html|css|png|jpg|jpeg|svg|gif|webp)$/i;
+
+/** 按教学内容比较版本，排除阅读、答题记录和文件路径，规范默认值及对象键顺序。 */
+function lessonContentKey(lesson: CoursePackageManifest['lessons'][number] | CourseLesson): string {
+  return JSON.stringify({
+    title: lesson.title,
+    is_sample: lesson.is_sample === true,
+    estimated_minutes: lesson.estimated_minutes ?? 45,
+    concepts: (lesson.concepts ?? []).map((c) => ({ name: c.name, explanation: c.explanation })),
+    code_refs: (lesson.code_refs ?? []).map((c, i) => ({ path: c.path, symbol: c.symbol, role: c.role, order: c.order ?? i + 1 })),
+    quiz: (lesson.quiz ?? []).map((q) => ({ question: q.question, options: q.options, answer_index: q.answer_index, explanation: q.explanation })),
+  });
+}
+
+const sameLessonContent = (old: CourseLesson, lesson: CoursePackageManifest['lessons'][number], hash: string): boolean =>
+  old.content_hash === hash && lessonContentKey(old) === lessonContentKey(lesson);
 
 /** 课程资产根目录：dirname(db)/courses（与 tools 同一应用数据推导规则） */
 export function coursesRootForDb(dbPath: string): string {
@@ -235,6 +251,7 @@ export function createCourseService(deps: CourseServiceDeps) {
     title: String(r.title),
     html_rel: String(r.html_rel),
     content_hash: String(r.content_hash),
+    revision: Number(r.revision ?? 1),
     is_sample: Number(r.is_sample) === 1,
     status: r.status as CourseLesson['status'],
     estimated_minutes: Number(r.estimated_minutes ?? 45),
@@ -375,7 +392,7 @@ export function createCourseService(deps: CourseServiceDeps) {
       prevLessons.length === prepared.length &&
       prevLessons.every((pl) => {
         const m = prepared.find((p) => p.lesson.day === pl.day);
-        return m != null && m.hash === pl.content_hash && pl.is_sample === (m.lesson.is_sample === true);
+        return m != null && sameLessonContent(pl, m.lesson, m.hash);
       }) && (preparedOverview == null || (prevOverview?.content_hash === preparedOverview.hash));
 
     if (prev && !sampleOnly) {
@@ -393,7 +410,7 @@ export function createCourseService(deps: CourseServiceDeps) {
           String(claimed.sample_content_hash) === prev.sample_content_hash;
         if (!okClaimed) {
           throw new Error(
-            '完整包导入被拒：该课程走样课流程，须先由用户在 App 确认样课、创建生成请求并由 agent 认领（claim_course_request）后，才能导入完整包',
+            '完整包导入被拒：该课程走样课流程，须先由用户在 App 阅读后在对话中确认样课、创建生成请求并由 agent 认领（claim_course_request）后，才能导入完整包',
           );
         }
         // 完整包样课正文须与用户确认版本逐字节一致：请求哈希只证明「认领有效」，
@@ -410,7 +427,7 @@ export function createCourseService(deps: CourseServiceDeps) {
         prevLessons.length === prepared.length &&
         prevLessons.every((pl) => {
           const match = prepared.find((p) => p.lesson.day === pl.day);
-          if (!match || match.hash !== pl.content_hash) return false;
+          if (!match || !sameLessonContent(pl, match.lesson, match.hash)) return false;
           const abs = resolve(root, pl.html_rel);
           if (!existsSync(abs)) return false;
           try {
@@ -653,12 +670,13 @@ export function createCourseService(deps: CourseServiceDeps) {
         // 重导保留进度：同哈希天保留已读状态与答题记录；内容变更的天从 generated 重新开始
         const old = oldByDay.get(p.lesson.day);
         const sameContent = old != null && old.content_hash === p.hash;
+        const revision = old ? old.revision + (sameLessonContent(old, p.lesson, p.hash) ? 0 : 1) : 1;
         const status = sameContent && old.status === 'read' ? 'read' : 'generated';
         const carriedAnswers = sameContent ? JSON.stringify(old.quiz_answers) : '[]';
         const oldRow = sampleOnly ? db.prepare('SELECT id FROM course_lessons WHERE course_id = ? AND day = ?').get(id, p.lesson.day) : null;
         if (sampleOnly && oldRow) {
           db.prepare(
-            `UPDATE course_lessons SET title = ?, html_rel = ?, content_hash = ?, is_sample = ?, status = ?, estimated_minutes = ?, concepts = ?, code_refs = ?, quiz = ?, quiz_answers = ?, updated_at = ? WHERE id = ?`,
+            `UPDATE course_lessons SET title = ?, html_rel = ?, content_hash = ?, is_sample = ?, status = ?, estimated_minutes = ?, concepts = ?, code_refs = ?, quiz = ?, quiz_answers = ?, revision = ?, updated_at = ? WHERE id = ?`,
           ).run(
             p.lesson.title,
             `${manifest.slug}/${p.lesson.html}`,
@@ -670,13 +688,14 @@ export function createCourseService(deps: CourseServiceDeps) {
             JSON.stringify(codeRefs),
             JSON.stringify(quiz),
             carriedAnswers,
+            revision,
             now,
             Number(oldRow.id),
           );
         } else {
           db.prepare(
-            `INSERT INTO course_lessons (course_id, day, title, html_rel, content_hash, is_sample, status, estimated_minutes, concepts, code_refs, quiz, quiz_answers, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO course_lessons (course_id, day, title, html_rel, content_hash, is_sample, status, estimated_minutes, concepts, code_refs, quiz, quiz_answers, revision, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           ).run(
             id,
             p.lesson.day,
@@ -690,6 +709,7 @@ export function createCourseService(deps: CourseServiceDeps) {
             JSON.stringify(codeRefs),
             JSON.stringify(quiz),
             carriedAnswers,
+            revision,
             now,
             now,
           );
@@ -723,11 +743,11 @@ export function createCourseService(deps: CourseServiceDeps) {
       } else {
         for (const pl of prevLessons) {
           db.prepare(
-            `INSERT INTO course_lessons (course_id, day, title, html_rel, content_hash, is_sample, status, estimated_minutes, concepts, code_refs, quiz, quiz_answers, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO course_lessons (course_id, day, title, html_rel, content_hash, is_sample, status, estimated_minutes, concepts, code_refs, quiz, quiz_answers, revision, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           ).run(
             pl.course_id, pl.day, pl.title, pl.html_rel, pl.content_hash, pl.is_sample ? 1 : 0, pl.status, pl.estimated_minutes,
-            JSON.stringify(pl.concepts), JSON.stringify(pl.code_refs), JSON.stringify(pl.quiz), JSON.stringify(pl.quiz_answers), pl.created_at, pl.updated_at,
+            JSON.stringify(pl.concepts), JSON.stringify(pl.code_refs), JSON.stringify(pl.quiz), JSON.stringify(pl.quiz_answers), pl.revision, pl.created_at, pl.updated_at,
           );
         }
         db.prepare(
@@ -772,13 +792,16 @@ export function createCourseService(deps: CourseServiceDeps) {
 
   // ---------- 样课确认（版本绑定） ----------
 
-  /** 用户在 App 显式确认样课：须已阅读样课；绑定当前样课 content_hash，变更后确认过期须重新确认。
-   *  仅用户可确认（App IPC）——MCP 不暴露确认工具，agent 不得代用户确认 */
-  const confirmSample = (courseId: number): Course => {
+  /** 记录用户的明确确认：须已在 App 阅读；绑定当前样课 content_hash，变更后须重新阅读确认。
+   *  对话确认由专用 MCP 工具承接，通用本体动作不能自动代确认。 */
+  const confirmSample = (courseId: number, expectedHash?: string): Course => {
     const course = getCourse(courseId);
     const sampleRow = db.prepare('SELECT * FROM course_lessons WHERE course_id = ? AND is_sample = 1').get(courseId);
     if (!sampleRow) throw new Error('课程没有样课：课程包必须以样课（is_sample）开头导入');
     const sample = mapLesson(sampleRow);
+    if (expectedHash != null && expectedHash !== sample.content_hash) {
+      throw new Error('样课版本已变更：请在 App 阅读当前样课后，在对话中重新确认');
+    }
     if (sample.status !== 'read') {
       throw new Error('样课尚未阅读：请先在 App 打开样课讲义阅读（自动记录已读），再确认绑定版本');
     }
@@ -796,7 +819,7 @@ export function createCourseService(deps: CourseServiceDeps) {
   const createGenerationRequest = (courseId: number, requestedBy = 'app'): CourseRequest => {
     const course = getCourse(courseId);
     if (!course.sample_confirmed_at || !course.sample_content_hash) {
-      throw new Error('样课尚未确认：用户须先在 App 阅读并确认样课，才能请求完整版');
+      throw new Error('样课尚未确认：用户须先在 App 阅读样课，再在对话中确认，才能请求完整版');
     }
     const pending = db.prepare("SELECT * FROM course_requests WHERE course_id = ? AND status IN ('pending','claimed') ORDER BY id LIMIT 1").get(courseId);
     if (pending) return mapReq(pending); // 幂等
@@ -844,7 +867,7 @@ export function createCourseService(deps: CourseServiceDeps) {
     const course = getCourse(req.course_id);
     if (!course.sample_confirmed_at || course.sample_content_hash !== req.sample_content_hash) {
       db.prepare("UPDATE course_requests SET status = 'failed', error = '样课已变更，确认过期：请求拒绝执行，请用户重新确认', completed_at = ? WHERE id = ?").run(nowIso(), requestId);
-      throw new Error('样课已变更（确认过期）：拒绝执行；请让用户在 App 重新确认样课后重新发起');
+      throw new Error('样课已变更（确认过期）：拒绝执行；请让用户在 App 重新阅读后，在对话中确认并重新发起');
     }
     db.prepare("UPDATE course_requests SET status = 'claimed', claimed_by = ?, claimed_at = ? WHERE id = ? AND status = 'pending'").run(claimedBy, nowIso(), requestId);
     return mapReq(db.prepare('SELECT * FROM course_requests WHERE id = ?').get(requestId)!);
@@ -896,6 +919,42 @@ export function createCourseService(deps: CourseServiceDeps) {
     return mapReq(db.prepare('SELECT * FROM course_requests WHERE id = ?').get(requestId)!);
   };
 
+  /** 删除课程及其从属数据；资产先隔离，数据库失败则归还，提交后再清理隔离目录。 */
+  const remove = (courseId: number, expectedSlug: string) => {
+    let assets: string | null = null;
+    let isolated: string | null = null;
+    let result: { course_id: number; slug: string; title: string; deleted_lessons: number; deleted_requests: number; detached_drafts: number };
+    try {
+      result = inTx(db, () => {
+        const course = getCourse(courseId);
+        if (course.slug !== expectedSlug) throw new Error('课程标识与确认目标不一致，拒绝删除');
+        if (!SLUG_RE.test(course.slug)) throw new Error('课程标识不安全，拒绝删除');
+        assertDirNotSymlink(root, '课程资产根目录');
+        assets = resolve(root, course.slug);
+        assertDirNotSymlink(assets, '课程资产目录');
+        const deletedLessons = listLessons(courseId).length;
+        const deletedRequests = listRequests({ course_id: courseId }).length;
+        if (existsSync(assets)) {
+          isolated = join(root, `.deleted-${courseId}-${randomUUID()}`);
+          renameSync(assets, isolated);
+        }
+        const detached = db.prepare('UPDATE study_plan_drafts SET course_id = NULL WHERE course_id = ?').run(courseId);
+        // 讲义（含已读、自测）、总览和请求经外键级联删除，计划与待办有独立删除入口。
+        db.prepare('DELETE FROM courses WHERE id = ?').run(courseId);
+        return { course_id: courseId, slug: course.slug, title: course.title, deleted_lessons: deletedLessons, deleted_requests: deletedRequests, detached_drafts: detached.changes };
+      });
+    } catch (error) {
+      if (isolated && assets && existsSync(isolated)) renameSync(isolated, assets);
+      throw error;
+    }
+    let cleanupWarning: string | undefined;
+    if (isolated) {
+      try { rmSync(isolated, { recursive: true, force: true }); }
+      catch { cleanupWarning = `课程记录已删除，隔离资产暂未清理：${isolated}`; }
+    }
+    return { ...result, assets_removed: !cleanupWarning, cleanup_warning: cleanupWarning };
+  };
+
   return {
     importCourse,
     listCourses,
@@ -912,6 +971,7 @@ export function createCourseService(deps: CourseServiceDeps) {
     listRequests,
     claimRequest,
     completeRequest,
+    remove,
     coursesRoot: root,
   };
 }

@@ -7265,7 +7265,7 @@ var manifest_schema_default = {
 var package_default = {
   name: "tododesk-monorepo",
   private: true,
-  version: "0.21.0",
+  version: "0.28.0",
   license: "MIT",
   engines: {
     node: "^22.13.0 || ^24.0.0"

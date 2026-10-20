@@ -271,7 +271,7 @@ try {
   };
   // 本轮功能：导航与时段输入走真实界面，读回走 IPC，所有写入仅在临时库。
   const navItems = await evalJs(`[...document.querySelectorAll('.nav .nav-item')].map(b => b.textContent.trim())`);
-  assert(navItems.join('/') === '今日/待办/学习/知识库/新闻/自媒体/工具箱', '导航顺序与学习命名正确，无独立打卡菜单');
+  assert(navItems.join('/') === '今日/待办/新闻/学习/知识库/自媒体/工具箱', '导航顺序与学习命名正确，无独立打卡菜单');
   await clickUntil(nav('待办'), () => evalJs(`!!document.querySelector('.todo-toolbar')`), 10000, '待办时段验收');
   const setField = async (label, value, select = false) => {
     await evalJs(`(() => { const el = document.querySelector('[aria-label="${label}"]');
@@ -351,14 +351,14 @@ try {
         const expectedCount = JSON.parse(readFileSync(join(repo, 'apps/mcp/dist/agent-catalog.json'), 'utf8')).tools.length;
         await waitFor(() => evalJs(`document.querySelector('.content').textContent.includes(${JSON.stringify('随包 ' + expectedVersion)})`), 10000, '能力包版本检查');
         assert(await evalJs(`document.querySelectorAll('.mcp-tools li').length === ${expectedCount}`), 'App 工具目录数量与实际 MCP 注册一致');
-        assert(await evalJs(`['tododesk','tododesk-teach','tododesk-sports'].every(id => [...document.querySelectorAll('.mcp-group p.mono')].some(p => p.textContent === id))`), '通用、教学与赛事三个技能同时展示');
+        assert(await evalJs(`[...document.querySelectorAll('.mcp-group p.mono')].map(p => p.textContent).join(',') === 'dayfolio'`), '只展示一个统一 Dayfolio 技能');
         const kitStatus = await evalJs('window.tododesk.agent.status()');
         assert(kitStatus.ok && kitStatus.data.bundledVersion === expectedVersion && kitStatus.data.exportedVersion === null, '隔离 IPC 读回随包版本，未导出不冒称已安装');
         const search = async value => { await evalJs(`(() => { const el = document.querySelector('.mcp-search input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`); await sleep(100); };
         await search('get_today');
         assert(await evalJs("document.querySelectorAll('.mcp-tools li').length === 1 && document.querySelectorAll('.mcp-group p.mono').length === 0"), '按工具名筛选只显示匹配工具');
-        await search('tododesk-sports');
-        assert(await evalJs("document.querySelectorAll('.mcp-tools li').length === 0 && document.querySelectorAll('.mcp-group p.mono').length === 1 && !document.querySelector('.empty')"), '按专业技能筛选不会显示错误空态');
+        await search('赛事');
+        assert(await evalJs("document.querySelectorAll('.mcp-tools li').length === 0 && document.querySelectorAll('.mcp-group p.mono').length === 1 && !document.querySelector('.empty')"), '按内含赛事能力筛选可找到统一技能');
         await search('');
         if (width === 1360 && process.env.TODODESK_AGENT_SCREENSHOT) {
           const capture = await send('Page.captureScreenshot', { format: 'png' });

@@ -285,6 +285,26 @@ export interface UpdateToolInput {
 
 export type NewsSource = 'x' | 'zhihu_daily' | 'hacker_news' | 'agent' | `rss/${string}`;
 
+/** 专题简报中的一则新闻，逐条核实来源和发布时间。 */
+export interface NewsBriefEntry {
+  title: string;
+  summary: string;
+  source_url: string;
+  source_name?: string;
+  published_at: string;
+}
+export interface NewsBrief {
+  overview: string;
+  items: NewsBriefEntry[];
+}
+export interface NewsCollectionSettings {
+  prompt: string;
+  max_items: number;
+  window_hours: number;
+  revision: number;
+  updated_at: string | null;
+}
+
 export interface NewsItem {
   id: number;
   source: NewsSource;
@@ -307,7 +327,9 @@ export interface NewsItem {
   /** agent 提交的来源站点名（如「TechCrunch」；历史数据为 null） */
   source_name: string | null;
   /** 内容形态：'url'=详情页直接内嵌来源网页（默认）；'html'=用本地 HTML 快照展示 */
-  content_kind: 'url' | 'html';
+  content_kind: 'url' | 'html' | 'brief';
+  /** 专题简报整体作为一条新闻，子新闻不单独入库。 */
+  brief: NewsBrief | null;
   /** 本地快照相对路径（相对 dirname(db)/news；仅 content_kind='html' 时非空） */
   html_rel: string | null;
 }
@@ -322,7 +344,7 @@ export interface NewsTask {
   title: string;
   /** 规则/补充要求（agent 执行时阅读；App 展示） */
   instructions: string;
-  /** 新入库条数硬上限（跨批次与重试累计，1~10） */
+  /** 新入库条数硬上限（跨批次与重试累计，1~11） */
   max_items: number;
   /** 任务时间窗（小时）：只接受最近 N 小时内发布的新闻 */
   window_hours: number;
@@ -349,6 +371,8 @@ export interface NewsTask {
 
 /** agent 提交的一条新闻（提交前校验：标题/摘要/来源 URL/发布时间） */
 export interface NewsSubmissionItem {
+  /** 多条已核实新闻组成的一份专题简报，列表只占一条。不能与 html 同传。 */
+  brief?: NewsBrief;
   title: string;
   summary: string;
   /** 原始来源网页链接（http(s)，须为 agent 亲自核实过的公开页面） */
@@ -552,6 +576,7 @@ export interface StudySession {
   attempt: number;
   /** 会话归属日 YYYY-MM-DD */
   date: string;
+  /** 0 表示未记录用时，正整数表示用户实际提供的分钟数。 */
   actual_minutes: number;
   /** 自己的解释 / 答案（费曼式输出） */
   explanation: string;
@@ -571,7 +596,8 @@ export interface StudySessionInput {
   topic?: string;
   attempt?: number;
   date?: string;
-  actual_minutes: number;
+  /** 可选实际用时；未提供时保留旧值，新记录以 0 表示未记录。 */
+  actual_minutes?: number;
   explanation?: string;
   questions?: string;
   material_source?: string;
@@ -746,6 +772,8 @@ export interface CourseLesson {
   /** 讲义 HTML 相对课程目录的安全相对路径（导入时已防穿越+消毒） */
   html_rel: string;
   content_hash: string;
+  /** 本课内容修订号：从 1 开始，仅实际内容更新时递增，由导入服务维护。 */
+  revision: number;
   is_sample: boolean;
   status: LessonStatus;
   estimated_minutes: number;

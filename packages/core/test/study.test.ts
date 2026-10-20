@@ -203,6 +203,20 @@ describe('学习会话：稳定 ID、多次尝试、重复提交幂等、重启�
     ).toThrow('不一致');
   });
 
+  it('学习笔记无需用时，省略时不虚构且更新保留历史用时', () => {
+    const { core } = mkPersistentCore();
+    const session = core.study.recordSession({ id: 'note-without-time', knowledge_key: 'note', explanation: '用自己的话解释学习内容' });
+    expect(session.actual_minutes).toBe(0);
+    expect(core.study.listSessions({ knowledge_key: 'note' })).toHaveLength(1);
+    core.study.recordSession({ id: session.id, knowledge_key: 'note', actual_minutes: 15 });
+    const updated = core.study.recordSession({ id: session.id, knowledge_key: 'note', explanation: '补充例子' });
+    expect(updated.actual_minutes).toBe(15);
+    expect(updated.explanation).toBe('补充例子');
+    for (const actual_minutes of [0, -1, 1.5, 1441, NaN]) {
+      expect(() => core.study.recordSession({ knowledge_key: 'bad-time', actual_minutes })).toThrow('actual_minutes');
+    }
+  });
+
   it('重启（重开数据库）后会话/测评/草案/导出记录全部持久化', () => {
     const { core, reopen, dir } = mkPersistentCore();
     const draft = core.study.draft({ title: '持久化草案', daily_minutes: 60, start_date: todayStr(), knowledge_points: [{ key: 'kp', name: 'K' }] });

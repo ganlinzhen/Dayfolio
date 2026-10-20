@@ -73,8 +73,8 @@ describe('新闻任务：生命周期与参数校验', () => {
     try {
       expect(() => core.news.createTask({ title: '  ' })).toThrow('标题不能为空');
       expect(() => core.news.createTask({ title: 'x'.repeat(201) })).toThrow('过长');
-      expect(() => core.news.createTask({ title: 'x', max_items: 11 })).toThrow('1~10');
-      expect(() => core.news.createTask({ title: 'x', max_items: 0 })).toThrow('1~10');
+      expect(() => core.news.createTask({ title: 'x', max_items: 12 })).toThrow('1~11');
+      expect(() => core.news.createTask({ title: 'x', max_items: 0 })).toThrow('1~11');
       expect(() => core.news.createTask({ title: 'x', window_hours: 0 })).toThrow('时间窗');
       expect(() => core.news.createTask({ title: 'x', window_hours: 721 })).toThrow('时间窗');
       expect(core.news.createTask({ title: '窄预算', max_items: 3 }).max_items).toBe(3);
@@ -793,5 +793,51 @@ describe('本地 HTML 快照（content_kind=html）：提交 / 消毒 / 读取 /
     } finally {
       cleanup();
     }
+  });
+});
+
+
+describe('新闻提示词与专题简报', () => {
+  it('保存版本跨重启共享；后续请求读取最新提示词，已有请求保留快照', () => {
+    const { core, dbPath, cleanup } = mkCore();
+    try {
+      const defaults = core.news.getCollectionSettings();
+      expect(defaults.prompt).toContain('国际新闻 3–5 条');
+      expect(defaults.max_items).toBe(11);
+      const saved = core.news.updateCollectionSettings({ prompt: '只看国内与 AI；AI 合成一条简报', max_items: 11, window_hours: 48, expected_revision: 0 });
+      const old = core.news.createTask({ title: '旧请求', use_collection_prompt: true });
+      expect(old.instructions).toBe(saved.prompt);
+      expect(old.max_items).toBe(11);
+      expect(old.window_hours).toBe(48);
+      expect(() => core.news.updateCollectionSettings({ prompt: saved.prompt, max_items: saved.max_items, window_hours: saved.window_hours, expected_revision: 0 })).toThrow('已被其他窗口更新');
+      core.news.updateCollectionSettings({ prompt: '新的关注方向', max_items: 7, window_hours: 24, expected_revision: 1 });
+      expect(core.news.getTask(old.id).instructions).toBe(saved.prompt);
+      expect(core.news.createTask({ title: '新请求', use_collection_prompt: true }).instructions).toBe('新的关注方向');
+      const reopened = createCore(openNodeSqliteDb(dbPath), { dbPath });
+      try { expect(reopened.news.getCollectionSettings().revision).toBe(2); } finally { reopened.db.close(); }
+    } finally { cleanup(); }
+  });
+
+  it('一份多来源简报只占一个名额，子条目时间与来源校验、去重和删除指纹均生效', () => {
+    const { core, cleanup } = mkCore();
+    try {
+      const task = core.news.createTask({ title: '简报任务', max_items: 11 });
+      const claim = core.news.claimTask(task.id);
+      const entries = [item({ title: 'AI 第一则' }), item({ title: 'AI 第二则', source_url: 'https://example.com/brief/2' })];
+      const brief = item({ title: '今日 AI 简报', published_at: entries[0].published_at, brief: { overview: '今天的 AI 看点', items: entries } });
+      const invalid = { ...brief, brief: { ...brief.brief!, items: [entries[0], { ...entries[1], source_url: 'http://127.0.0.1/internal' }] } };
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [invalid])).toThrow();
+      expect(core.news.getTask(task.id).accepted_count).toBe(0);
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [{ ...brief, brief: { ...brief.brief!, items: [entries[0], { ...entries[1], published_at: iso(-50 * H) }] } }])).toThrow('时间窗');
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [brief, entries[1]])).toThrow('重复');
+      const submitted = core.news.submitItems(task.id, claim.claim_token, [brief]);
+      expect(submitted.task.remaining).toBe(10);
+      expect(submitted.items[0].content_kind).toBe('brief');
+      expect(core.news.list({ task_id: task.id })[0].brief?.items).toHaveLength(2);
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [entries[1]])).toThrow('已在库中');
+      core.news.deleteItem(submitted.items[0].id);
+      expect(() => core.news.submitItems(task.id, claim.claim_token, [entries[1]])).toThrow('已被用户删除');
+      expect(core.news.getTask(task.id).accepted_count).toBe(1);
+    } finally { cleanup(); }
   });
 });

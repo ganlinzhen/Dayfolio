@@ -16,7 +16,7 @@ describe('GitHub 发布合同', () => {
   });
 
   it('覆盖 App、MCP、帮助、依赖和能力包，排除纯测试与仓库说明', () => {
-    for (const path of ['apps/desktop/src/main/index.ts', 'apps/help/docs/01-todo.md', 'apps/mcp/src/server.ts', 'packages/agent-kit/skills/tododesk/SKILL.md', 'package-lock.json', 'scripts/generate-command-inputs.cjs']) expect(affectsApp(path)).toBe(true);
+    for (const path of ['apps/desktop/src/main/index.ts', 'apps/help/docs/01-todo.md', 'apps/mcp/src/server.ts', 'packages/agent-kit/skills/dayfolio/SKILL.md', 'package-lock.json', 'scripts/generate-command-inputs.cjs']) expect(affectsApp(path)).toBe(true);
     for (const path of ['README.md', 'AGENTS.md', '.github/workflows/release.yml', 'scripts/release.mjs', 'packages/core/test/todo.test.ts']) expect(affectsApp(path)).toBe(false);
   });
 

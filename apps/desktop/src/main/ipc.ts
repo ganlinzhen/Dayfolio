@@ -1,5 +1,5 @@
 // IPC 通道注册：渲染进程与核心服务之间的桥梁
-import { dialog, ipcMain, shell } from 'electron';
+import { clipboard, dialog, ipcMain, shell } from 'electron';
 import {
   defaultDbPath,
   runtimeErrorInfo,
@@ -103,6 +103,14 @@ export function registerIpc(core: TodoDeskCore): void {
       { confirmed_over_dates: (p as { confirmed_over_dates?: string[] }).confirmed_over_dates },
     ),
   );
+  handle('study:getProgress', (p) => core.study.getProgress((p as { plan_id?: number } | undefined)?.plan_id));
+  handle('study:recordSession', (p) => core.study.recordSession(p as never));
+  handle('study:copyPrompt', (p) => {
+    const text = (p as { text: string }).text;
+    if (typeof text !== 'string' || text.length > 100000) throw new Error('提示词内容无效');
+    clipboard.writeText(text);
+    return true;
+  });
   handle('study:listSessions', (p) => core.study.listSessions((p as never) ?? {}));
   handle('study:listAssessments', (p) => core.study.listAssessments((p as never) ?? {}));
   handle('study:getMastery', (p) => core.study.getMastery((p as never) ?? {}));
@@ -129,6 +137,8 @@ export function registerIpc(core: TodoDeskCore): void {
   // 新闻生产由 agent 经 MCP 认领任务后提交（core 层硬校验）。
   // 用户可在 App 发起任务（createTask，同一 core 硬校验）与取消待执行任务；
   // 认领/提交/完成/释放不暴露给 App——执行是 agent 经 MCP 的专属动作，离线不会自动唤醒。
+  handle('news:collectionSettings', () => core.news.getCollectionSettings());
+  handle('news:updateCollectionSettings', (p) => core.news.updateCollectionSettings(p as never));
   handle('news:list', (p) => core.news.list((p as never) ?? {}));
   handle('news:tasks', (p) => core.news.listTasks((p as never) ?? {}));
   handle('news:createTask', (p) => core.news.createTask(p as never, 'app'));
@@ -154,6 +164,10 @@ export function registerIpc(core: TodoDeskCore): void {
   // 教学课程（v6）：导入/列表/阅读/答题/样课确认/生成请求——入口统一走 core 校验
   handle('courses:import', (p) => core.courses.importCourse(String((p as { staging_dir: string }).staging_dir)));
   handle('courses:list', () => core.courses.listCourses());
+  handle('courses:remove', (p) => {
+    const { course_id, expected_slug } = p as { course_id: number; expected_slug: string };
+    return core.courses.remove(course_id, expected_slug);
+  });
   handle('courses:lessons', (p) => core.courses.listLessons((p as { course_id: number }).course_id));
   handle('courses:overviewHtml', (p) => {
     const overview = core.courses.getOverview((p as { course_id: number }).course_id);

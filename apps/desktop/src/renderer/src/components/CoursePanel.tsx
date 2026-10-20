@@ -2,26 +2,20 @@
 // 独立课程总览（不计入日课）→ 每日卡片（日期/第几天/主题/概要/时长/状态）
 // → 讲义阅读（消毒 HTML iframe sandbox + CSP 渲染）+ 源码导读 + 自测答题 + 样课确认。
 // 绑定计划的课程按计划大纲补齐未生成天（「待生成」卡，显示当日计划安排），总数为计划天数。
-// 样课确认后出现「请求完整版」按钮（生成排队，agent 经 MCP 处理）；未确认不可请求。
+// App 负责阅读；样课确认与完整版生成意愿在对话中表达，agent 经 MCP 记录并处理。
 // 支持从计划详情的每日摘要卡直达某天讲义：该天返回按钮直接退出到上层（不经过总览）。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, call } from '../api';
 import EmbeddedFrame from './EmbeddedFrame';
 import { IconChevronLeft } from './icons';
 import { toast } from './Toast';
+import { courseHtmlDocument } from './courseHtmlDocument';
+import { LessonMaterial, LessonQuiz, type LessonRow } from './StudyLesson';
 
 interface CourseRow {
   id: number; slug: string; title: string; goal: string;
   status: 'imported' | 'sample_confirmed' | 'generating' | 'complete';
   plan_id: number | null; sample_content_hash: string | null; sample_confirmed_at: string | null; version: string;
-}
-interface LessonRow {
-  id: number; day: number; title: string; is_sample: boolean;
-  status: 'pending' | 'generated' | 'read'; estimated_minutes: number;
-  concepts: Array<{ name: string; explanation: string }>;
-  code_refs: Array<{ path: string; symbol: string; role: string; order: number }>;
-  quiz: Array<{ id: string; question: string; options: string[]; answer_index: number; explanation: string }>;
-  quiz_answers: Array<{ question_id: string; picked: number; at: string }>;
 }
 interface RequestRow { id: number; course_id: number; status: string; created_at: string; error: string | null }
 /** 绑定计划的逐日大纲（用于渲染未生成天的「待生成」卡：第 N 天 = 计划第 N 个日期） */
@@ -35,10 +29,6 @@ export const COURSE_STATUS_LABEL: Record<string, string> = {
 };
 const STATUS_LABEL = COURSE_STATUS_LABEL;
 const LESSON_STATUS: Record<string, string> = { pending: '待生成', generated: '可阅读', read: '已读' };
-// 讲义正文 CSP：外部资源一律不加载（default-src 'none'，仅放行内联样式）——
-// 与导入消毒（中和 http/https/协议相对 src、删 srcset）构成双保险
-const LESSON_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`;
-const courseHtmlDocument = (html: string) => `<!doctype html><html><head><meta charset="utf-8">${LESSON_CSP}<style>body{font-family:-apple-system,'PingFang SC',sans-serif;line-height:1.8;padding:24px;max-width:76ch;margin:0 auto;color:#1a1a19}h1,h2,h3{line-height:1.4}pre{background:#f5f4f0;padding:12px;border-radius:8px;overflow-x:auto}table{border-collapse:collapse}td,th{border:1px solid #e8e7e3;padding:6px 10px}</style></head><body>${html}</body></html>`;
 
 export default function CoursePanel({ target, exitLabel, onExit }: { target: CourseNavTarget; exitLabel: string; onExit: () => void }) {
   const [courses, setCourses] = useState<CourseRow[]>([]);
@@ -48,10 +38,8 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [reading, setReading] = useState<{ lesson: LessonRow; html: string } | null>(null);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [showAnswers, setShowAnswers] = useState(false);
   const [error, setError] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   // 目标课程不存在（已被删除等）：给可返回的兜底视图，不影响计划数据
   const [missing, setMissing] = useState(false);
   // 直达讲义标记：正在阅读的这一天若来自上层直达，返回按钮直接退出到上层（不回总览）
@@ -133,13 +121,46 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
     }
   };
 
+  // 用户在对话中确认或生成后，切回 App 即同步状态，不打断当前阅读和答题。
+  useEffect(() => {
+    let cancelled = false;
+    let loading = false;
+    const sync = async () => {
+      if (document.hidden || loading) return;
+      loading = true;
+      try {
+        const [list, reqs, currentLessons, currentOverview] = await Promise.all([
+          call<CourseRow[]>(() => api.courses.list()),
+          call<RequestRow[]>(() => api.courses.listRequests({})),
+          call<LessonRow[]>(() => api.courses.lessons({ course_id: target.courseId })),
+          call<{ html: string } | null>(() => api.courses.overviewHtml({ course_id: target.courseId })),
+        ]);
+        if (cancelled) return;
+        const current = list.find((c) => c.id === target.courseId);
+        if (!current) { setMissing(true); return; }
+        setCourses(list);
+        setRequests(reqs);
+        setSelected(current);
+        setLessons(currentLessons);
+        setOverview(currentOverview);
+      } catch (e) {
+        if (!cancelled) setError(`课程状态同步失败：${(e as Error).message}`);
+      } finally {
+        loading = false;
+      }
+    };
+    window.addEventListener('focus', sync);
+    document.addEventListener('visibilitychange', sync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', sync);
+      document.removeEventListener('visibilitychange', sync);
+    };
+  }, [target.courseId]);
+
   const openLesson = async (courseId: number, day: number) => {
     const r = await call<{ lesson: LessonRow; html: string }>(() => api.courses.lessonHtml({ course_id: courseId, day }));
     setReading(r);
-    setShowAnswers(false);
-    const prev: Record<string, number> = {};
-    for (const a of r.lesson.quiz_answers) prev[a.question_id] = a.picked;
-    setAnswers(prev);
     void call(() => api.courses.markRead({ course_id: courseId, day })).then(() => {
       setLessons((prevLessons) => prevLessons.map((l) => (l.day === day ? { ...l, status: 'read' } : l)));
     }).catch(() => { /* 已读标记失败不阻塞阅读 */ });
@@ -174,40 +195,18 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
     setOverviewOpen(false);
   };
 
-  const submitQuiz = async () => {
-    if (!reading || !selected) return;
-    const arr = Object.entries(answers).map(([question_id, picked]) => ({ question_id, picked }));
-    if (arr.length === 0) { toast('请先作答'); return; }
-    await call(() => api.courses.submitQuiz({ course_id: selected.id, day: reading.lesson.day, answers: arr }));
-    toast('答案已记录（学习痕迹，非掌握证据）');
-    setShowAnswers(true);
-  };
-
-  const confirmSample = async () => {
-    if (!selected) return;
-    if (!window.confirm(`确认样课「${lessons.find((l) => l.is_sample)?.title ?? ''}」？\n确认将绑定当前样课内容版本；样课内容变更后确认过期，需重新确认。确认后才能请求完整版课程。`)) return;
-    setConfirming(true);
+  const deleteCourse = async () => {
+    if (!selected || deleting) return;
+    if (!window.confirm(`永久删除课程「${selected.title}」？\n将删除总览、${lessons.length} 节讲义、阅读与自测记录、生成请求和课程资产，不可恢复。学习计划和待办需单独删除。`)) return;
+    setDeleting(true);
     try {
-      await call(() => api.courses.confirmSample({ course_id: selected.id }));
-      await refresh();
-      await openCourse({ ...selected, status: 'sample_confirmed' });
-      toast('样课已确认（绑定内容版本）——现在可以请求完整版了');
+      const result = await call<{ assets_removed: boolean; cleanup_warning?: string }>(() => api.courses.remove({ course_id: selected.id, expected_slug: selected.slug }));
+      toast(result.cleanup_warning ?? '课程已删除');
+      onExit();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setConfirming(false);
-    }
-  };
-
-  const requestFull = async () => {
-    if (!selected) return;
-    if (!window.confirm('请求生成完整版课程？\n请求将进入待执行队列，由 AI agent 认领处理（App 本身不生成内容）；生成完成后再导入。')) return;
-    try {
-      await call(() => api.courses.createRequest({ course_id: selected.id }));
-      await refresh();
-      toast('完整版生成请求已排队（待 agent 处理）');
-    } catch (e) {
-      setError((e as Error).message);
+      setDeleting(false);
     }
   };
 
@@ -233,81 +232,19 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
   // ---------- 讲义阅读视图 ----------
   if (reading && selected) {
     const l = reading.lesson;
-    const answeredCount = Object.keys(answers).length;
     return (
       <div className="panel">
         <button className="backlink" onClick={backFromLesson}>
           <IconChevronLeft width={14} height={14} /> {directDay != null ? exitLabel : '返回课程总览'}
         </button>
-        {l.is_sample && <div className="notice">这是样课：阅读并确认后才能请求完整版课程（确认绑定当前内容版本）</div>}
+        {l.is_sample && !selected.sample_confirmed_at && <div className="notice course-sample-notice">这是样课：看完后回到对话，告诉助手「样课确认，继续生成完整版」即可。确认绑定当前内容版本。</div>}
 
-        {/* 消毒 HTML 正文：iframe sandbox + CSP 双保险（导入时已剥 script/事件/危险协议并中和外部资源） */}
-        <EmbeddedFrame
-          label={`${l.title}讲义`}
-          className="course-embed"
-          title={l.title}
-          meta={`第 ${l.day} 天 · ${l.estimated_minutes} 分钟 · ${LESSON_STATUS[l.status]}`}
-        >
-          <iframe
-            className="course-lesson-frame"
-            sandbox=""
-            title={l.title}
-            srcDoc={courseHtmlDocument(reading.html)}
-          />
-        </EmbeddedFrame>
+        <LessonMaterial lesson={l} html={reading.html} />
+        {l.quiz.length > 0 && <section className="group">
+          <div className="group-label mono">自测</div>
+          <LessonQuiz key={`${l.id}-${l.revision}`} courseId={selected.id} lesson={l} />
+        </section>}
 
-        {l.concepts.length > 0 && (
-          <section className="group">
-            <div className="group-label mono">核心概念</div>
-            {l.concepts.map((c) => (
-              <div key={c.name} className="session-row">
-                <strong>{c.name}</strong>
-                <div className="session-body">{c.explanation}</div>
-              </div>
-            ))}
-          </section>
-        )}
-
-        {l.code_refs.length > 0 && (
-          <section className="group">
-            <div className="group-label mono">源码导读（文本参考，不执行任何命令）</div>
-            {l.code_refs.sort((a, b) => a.order - b.order).map((c) => (
-              <div key={`${c.path}:${c.symbol}`} className="session-row">
-                <span className="mono">{c.path}</span>
-                <strong>{c.symbol}</strong>
-                <span className="session-body">{c.role}</span>
-              </div>
-            ))}
-          </section>
-        )}
-
-        {l.quiz.length > 0 && (
-          <section className="group">
-            <div className="group-label mono">自测（{answeredCount}/{l.quiz.length} 已作答 · 学习痕迹，非掌握证据）</div>
-            {l.quiz.map((q, qi) => (
-              <div key={q.id} className="course-quiz">
-                <div className="course-quiz-q">{qi + 1}. {q.question}</div>
-                {q.options.map((opt, oi) => (
-                  <label key={oi} className={`course-quiz-opt ${showAnswers && oi === q.answer_index ? 'correct' : ''} ${showAnswers && answers[q.id] === oi && oi !== q.answer_index ? 'wrong' : ''}`}>
-                    <input
-                      type="radio"
-                      name={q.id}
-                      checked={answers[q.id] === oi}
-                      onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: oi }))}
-                    />
-                    {opt}
-                    {showAnswers && oi === q.answer_index && ' ✓'}
-                  </label>
-                ))}
-                {showAnswers && <div className="course-quiz-expl">解析：{q.explanation}</div>}
-              </div>
-            ))}
-            <div className="row-gap">
-              <button className="btn primary" onClick={() => void submitQuiz()}>提交答案</button>
-              <button className="btn ghost" onClick={() => setShowAnswers((v) => !v)}>{showAnswers ? '隐藏解析' : '显示解析（提交后）'}</button>
-            </div>
-          </section>
-        )}
       </div>
     );
   }
@@ -332,6 +269,7 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
           <div className="head-meta mono">
             {STATUS_LABEL[selected.status]} · 已读讲义 {readCount}/{lessons.length}
             {planOutline ? ` · 计划 ${planOutline.length} 天` : ''}
+            <button className="btn ghost slim course-delete-button" disabled={deleting} onClick={() => void deleteCourse()}>{deleting ? '删除中…' : '删除课程'}</button>
           </div>
         </header>
         <p className="sub">{selected.goal}</p>
@@ -340,22 +278,19 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
 
         {selected.status === 'imported' && lessons.some((l) => l.is_sample) && (
           <div className="notice course-confirm-bar">
-            <span>样课待确认：请先阅读样课（标有「样课」的卡片），确认后才能请求完整版。</span>
-            <button className="btn primary slim" disabled={confirming || !lessons.find((l) => l.is_sample && l.status === 'read')} onClick={() => void confirmSample()}>
-              {confirming ? '确认中…' : '确认样课（绑定版本）'}
-            </button>
-            {!lessons.find((l) => l.is_sample && l.status === 'read') && <span className="mono">（先阅读样课后解锁确认）</span>}
+            <span>{lessons.some((l) => l.is_sample && l.status === 'read')
+              ? '看完样课后，在对话中告诉助手「样课确认，继续生成完整版」即可。'
+              : '请先打开标有「样课」的讲义阅读，看完后回到对话确认。'}</span>
           </div>
         )}
         {selected.status === 'sample_confirmed' && !pendingReq && (
           <div className="notice course-confirm-bar">
-            <span>样课已确认（{selected.sample_confirmed_at?.slice(0, 10)} 绑定版本 {selected.sample_content_hash?.slice(0, 8)}…）。可请求完整版：</span>
-            <button className="btn primary slim" onClick={() => void requestFull()}>请求完整版（排队待生成）</button>
+            <span>样课已确认。需要完整版时，在对话中告诉助手「继续生成完整版」即可。</span>
           </div>
         )}
         {pendingReq && (
           <div className="notice course-confirm-bar">
-            完整版生成请求 #{pendingReq.id} · {pendingReq.status === 'pending' ? '待执行（等待 AI agent 认领处理，App 不自带生成模型）' : `agent 处理中`}
+            {pendingReq.status === 'pending' ? '完整版待生成：在对话中告诉助手「继续生成完整版」即可。' : '助手正在生成完整版，完成后可在这里阅读。'}
             {pendingReq.error && ` · ${pendingReq.error}`}
           </div>
         )}
@@ -396,10 +331,10 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
               <button key={`l-${card.lesson.id}`} className={`course-card ${card.lesson.status === 'read' ? 'read' : ''}`} onClick={() => void openLessonFromCard(card.lesson.day)}>
                 <span className="course-card-day mono">{card.lesson.day === 0 ? '样' : `D${card.lesson.day}`}</span>
                 <span className="course-card-main">
-                  <span className="course-card-title">{card.lesson.title}{card.lesson.is_sample && <em className="course-sample-badge">样课</em>}</span>
+                  <span className="course-card-title">{card.lesson.title}{card.lesson.is_sample && !selected.sample_confirmed_at && <em className="course-sample-badge">样课</em>}</span>
                   <span className="course-card-summary">{card.lesson.concepts.map((c) => c.name).join(' · ') || '点击进入阅读'}</span>
                 </span>
-                <span className="course-card-meta mono">{card.lesson.estimated_minutes}m · {LESSON_STATUS[card.lesson.status]}</span>
+                <span className="course-card-meta mono"><span className="course-lesson-version">v{card.lesson.revision}</span> · {card.lesson.estimated_minutes}m · {LESSON_STATUS[card.lesson.status]}</span>
               </button>
             ) : (
               /* 未生成的天：从绑定计划的大纲推导，按 day 位置混排，显示当日安排与「待生成」 */

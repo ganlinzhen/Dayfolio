@@ -13819,7 +13819,8 @@ function mapNews(row) {
     is_starred: Number(row.is_starred ?? 0) === 1,
     task_id: row.task_id == null ? null : Number(row.task_id),
     source_name: row.source_name ?? null,
-    content_kind: row.content_kind === "html" ? "html" : "url",
+    content_kind: row.content_kind === "brief" ? "brief" : row.content_kind === "html" ? "html" : "url",
+    brief: row.brief_json ? JSON.parse(String(row.brief_json)) : null,
     html_rel: row.html_rel ?? null
   };
 }
@@ -13976,7 +13977,8 @@ var BOOT_OBJECT_TYPES = [
       { apiName: "is_starred", dataType: I, nullable: false, origin: "builtin", description: "\u6536\u85CF\u72B6\u6001\uFF08\u7528\u6237\u64CD\u4F5C\u6301\u4E45\u5316\uFF09" },
       { apiName: "task_id", dataType: I, nullable: true, origin: "builtin", description: "\u4EA7\u751F\u672C\u6761\u7684\u65B0\u95FB\u4EFB\u52A1\uFF08\u5386\u53F2\u6570\u636E\u4E3A\u7A7A\uFF09" },
       { apiName: "source_name", dataType: S, nullable: true, origin: "builtin", description: "agent \u63D0\u4EA4\u7684\u6765\u6E90\u7AD9\u70B9\u540D\uFF08\u5386\u53F2\u6570\u636E\u4E3A\u7A7A\uFF09" },
-      { apiName: "content_kind", dataType: "enum", nullable: false, enumValues: ["url", "html"], origin: "builtin", description: "\u5185\u5BB9\u5F62\u6001\uFF1Aurl=\u5185\u5D4C\u6765\u6E90\u7F51\u9875\uFF1Bhtml=\u672C\u5730\u5FEB\u7167\uFF08X \u7B49\u65E0\u6CD5\u5185\u5D4C\u7684\u6765\u6E90\uFF09" },
+      { apiName: "content_kind", dataType: "enum", nullable: false, enumValues: ["url", "html", "brief"], origin: "builtin", description: "\u5185\u5BB9\u5F62\u6001\uFF1Aurl=\u5185\u5D4C\u6765\u6E90\u7F51\u9875\uFF1Bhtml=\u672C\u5730\u5FEB\u7167\uFF08X \u7B49\u65E0\u6CD5\u5185\u5D4C\u7684\u6765\u6E90\uFF09" },
+      { apiName: "brief_json", dataType: J, nullable: true, origin: "builtin", description: "\u4E13\u9898\u7B80\u62A5\u603B\u89C8\u4E0E\u9010\u6761\u6458\u8981\u548C\u6765\u6E90" },
       { apiName: "html_rel", dataType: S, nullable: true, origin: "builtin", description: "\u672C\u5730\u5FEB\u7167\u76F8\u5BF9\u8DEF\u5F84\uFF08dirname(db)/news \u4E0B\uFF1B\u4EC5 html \u5F62\u6001\u975E\u7A7A\uFF09" }
     ]
   },
@@ -14266,7 +14268,7 @@ var BOOT_LINK_TYPES = [
 var BUSINESS_OBJECTS = [
   { "apiName": "news_task", "title": "\u65B0\u95FB\u4EFB\u52A1", "description": "\u65B0\u95FB\u4EFB\u52A1\uFF1A\u6CBF\u7528\u73B0\u6709\u4E1A\u52A1\u670D\u52A1\u8BFB\u5199\uFF0C\u7CFB\u7EDF\u5B57\u6BB5\u4EC5\u901A\u8FC7\u4E1A\u52A1\u52A8\u4F5C\u7EF4\u62A4\u3002", "tableName": "news_tasks", "isVirtual": false, "isSystem": true, "primaryKey": "id", "titleProperty": "title", "status": "active", "sortOrder": 200, "properties": [{ "apiName": "id", "dataType": "integer", "nullable": false, "origin": "builtin", "isPrimaryKey": true }, { "apiName": "title", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "instructions", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "max_items", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "window_hours", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "status", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "created_by", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "claim_token", "dataType": "string", "nullable": true, "origin": "builtin", "readable": false }, { "apiName": "claimed_by", "dataType": "string", "nullable": true, "origin": "builtin" }, { "apiName": "claim_expires_at", "dataType": "date", "nullable": true, "origin": "builtin" }, { "apiName": "attempts", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "accepted_count", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "completed_at", "dataType": "date", "nullable": true, "origin": "builtin" }, { "apiName": "completed_note", "dataType": "string", "nullable": true, "origin": "builtin" }, { "apiName": "last_error", "dataType": "string", "nullable": true, "origin": "builtin" }, { "apiName": "created_at", "dataType": "date", "nullable": false, "origin": "builtin" }, { "apiName": "updated_at", "dataType": "date", "nullable": false, "origin": "builtin" }] },
   { "apiName": "course", "title": "\u8BFE\u7A0B", "description": "\u8BFE\u7A0B\uFF1A\u6CBF\u7528\u73B0\u6709\u4E1A\u52A1\u670D\u52A1\u8BFB\u5199\uFF0C\u7CFB\u7EDF\u5B57\u6BB5\u4EC5\u901A\u8FC7\u4E1A\u52A1\u52A8\u4F5C\u7EF4\u62A4\u3002", "tableName": "courses", "isVirtual": false, "isSystem": true, "primaryKey": "id", "titleProperty": "title", "status": "active", "sortOrder": 201, "properties": [{ "apiName": "id", "dataType": "integer", "nullable": false, "origin": "builtin", "isPrimaryKey": true }, { "apiName": "slug", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "title", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "goal", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "status", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "plan_id", "dataType": "integer", "nullable": true, "origin": "builtin" }, { "apiName": "sample_content_hash", "dataType": "string", "nullable": true, "origin": "builtin" }, { "apiName": "sample_confirmed_at", "dataType": "date", "nullable": true, "origin": "builtin" }, { "apiName": "version", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "created_at", "dataType": "date", "nullable": false, "origin": "builtin" }, { "apiName": "updated_at", "dataType": "date", "nullable": false, "origin": "builtin" }] },
-  { "apiName": "course_lesson", "title": "\u8BFE\u7A0B\u8BB2\u4E49", "description": "\u8BFE\u7A0B\u8BB2\u4E49\uFF1A\u6CBF\u7528\u73B0\u6709\u4E1A\u52A1\u670D\u52A1\u8BFB\u5199\uFF0C\u7CFB\u7EDF\u5B57\u6BB5\u4EC5\u901A\u8FC7\u4E1A\u52A1\u52A8\u4F5C\u7EF4\u62A4\u3002", "tableName": "course_lessons", "isVirtual": false, "isSystem": true, "primaryKey": "id", "titleProperty": "title", "status": "active", "sortOrder": 202, "properties": [{ "apiName": "id", "dataType": "integer", "nullable": false, "origin": "builtin", "isPrimaryKey": true }, { "apiName": "course_id", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "day", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "title", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "html_rel", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "content_hash", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "is_sample", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "status", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "estimated_minutes", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "concepts", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "code_refs", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "quiz", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "quiz_answers", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "created_at", "dataType": "date", "nullable": false, "origin": "builtin" }, { "apiName": "updated_at", "dataType": "date", "nullable": false, "origin": "builtin" }] },
+  { "apiName": "course_lesson", "title": "\u8BFE\u7A0B\u8BB2\u4E49", "description": "\u8BFE\u7A0B\u8BB2\u4E49\uFF1A\u6CBF\u7528\u73B0\u6709\u4E1A\u52A1\u670D\u52A1\u8BFB\u5199\uFF0C\u7CFB\u7EDF\u5B57\u6BB5\u4EC5\u901A\u8FC7\u4E1A\u52A1\u52A8\u4F5C\u7EF4\u62A4\u3002", "tableName": "course_lessons", "isVirtual": false, "isSystem": true, "primaryKey": "id", "titleProperty": "title", "status": "active", "sortOrder": 202, "properties": [{ "apiName": "id", "dataType": "integer", "nullable": false, "origin": "builtin", "isPrimaryKey": true }, { "apiName": "course_id", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "day", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "title", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "html_rel", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "content_hash", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "revision", "dataType": "integer", "nullable": false, "origin": "builtin", "description": "\u9010\u8BFE\u5185\u5BB9\u4FEE\u8BA2\u53F7\uFF0C\u4ECE 1 \u5F00\u59CB\uFF0C\u7531\u8BFE\u7A0B\u5BFC\u5165\u7EF4\u62A4" }, { "apiName": "is_sample", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "status", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "estimated_minutes", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "concepts", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "code_refs", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "quiz", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "quiz_answers", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "created_at", "dataType": "date", "nullable": false, "origin": "builtin" }, { "apiName": "updated_at", "dataType": "date", "nullable": false, "origin": "builtin" }] },
   { "apiName": "course_overview", "title": "\u8BFE\u7A0B\u603B\u89C8", "description": "\u8BFE\u7A0B\u603B\u89C8\uFF1A\u6CBF\u7528\u73B0\u6709\u4E1A\u52A1\u670D\u52A1\u8BFB\u5199\uFF0C\u7CFB\u7EDF\u5B57\u6BB5\u4EC5\u901A\u8FC7\u4E1A\u52A1\u52A8\u4F5C\u7EF4\u62A4\u3002", "tableName": "course_overviews", "isVirtual": false, "isSystem": true, "primaryKey": "course_id", "titleProperty": "course_id", "status": "active", "sortOrder": 203, "properties": [{ "apiName": "course_id", "dataType": "integer", "nullable": false, "origin": "builtin", "isPrimaryKey": true }, { "apiName": "html_rel", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "content_hash", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "created_at", "dataType": "date", "nullable": false, "origin": "builtin" }, { "apiName": "updated_at", "dataType": "date", "nullable": false, "origin": "builtin" }] },
   { "apiName": "course_request", "title": "\u8BFE\u7A0B\u751F\u6210\u8BF7\u6C42", "description": "\u8BFE\u7A0B\u751F\u6210\u8BF7\u6C42\uFF1A\u6CBF\u7528\u73B0\u6709\u4E1A\u52A1\u670D\u52A1\u8BFB\u5199\uFF0C\u7CFB\u7EDF\u5B57\u6BB5\u4EC5\u901A\u8FC7\u4E1A\u52A1\u52A8\u4F5C\u7EF4\u62A4\u3002", "tableName": "course_requests", "isVirtual": false, "isSystem": true, "primaryKey": "id", "titleProperty": "kind", "status": "active", "sortOrder": 204, "properties": [{ "apiName": "id", "dataType": "integer", "nullable": false, "origin": "builtin", "isPrimaryKey": true }, { "apiName": "course_id", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "kind", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "status", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "sample_content_hash", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "requested_by", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "claimed_by", "dataType": "string", "nullable": true, "origin": "builtin" }, { "apiName": "error", "dataType": "string", "nullable": true, "origin": "builtin" }, { "apiName": "created_at", "dataType": "date", "nullable": false, "origin": "builtin" }, { "apiName": "claimed_at", "dataType": "date", "nullable": true, "origin": "builtin" }, { "apiName": "completed_at", "dataType": "date", "nullable": true, "origin": "builtin" }] },
   { "apiName": "vault", "title": "\u77E5\u8BC6\u5E93", "description": "\u77E5\u8BC6\u5E93\uFF1A\u6CBF\u7528\u73B0\u6709\u4E1A\u52A1\u670D\u52A1\u8BFB\u5199\uFF0C\u7CFB\u7EDF\u5B57\u6BB5\u4EC5\u901A\u8FC7\u4E1A\u52A1\u52A8\u4F5C\u7EF4\u62A4\u3002", "tableName": "vaults", "isVirtual": false, "isSystem": true, "primaryKey": "id", "titleProperty": "name", "status": "active", "sortOrder": 205, "properties": [{ "apiName": "id", "dataType": "integer", "nullable": false, "origin": "builtin", "isPrimaryKey": true }, { "apiName": "name", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "root_path", "dataType": "string", "nullable": false, "origin": "builtin" }, { "apiName": "include_dirs", "dataType": "json", "nullable": false, "origin": "builtin" }, { "apiName": "include_raw", "dataType": "integer", "nullable": false, "origin": "builtin" }, { "apiName": "created_at", "dataType": "date", "nullable": false, "origin": "builtin" }, { "apiName": "updated_at", "dataType": "date", "nullable": false, "origin": "builtin" }, { "apiName": "last_scan_at", "dataType": "date", "nullable": true, "origin": "builtin" }, { "apiName": "last_scan_stats", "dataType": "json", "nullable": true, "origin": "builtin" }] },
@@ -15320,7 +15322,11 @@ var COMMAND_INPUTS = {
           ]
         },
         "actual_minutes": {
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
         },
         "explanation": {
           "anyOf": [
@@ -15345,8 +15351,7 @@ var COMMAND_INPUTS = {
         }
       },
       "required": [
-        "knowledge_key",
-        "actual_minutes"
+        "knowledge_key"
       ],
       "additionalProperties": false
     }
@@ -15557,6 +15562,12 @@ var COMMAND_INPUTS = {
               "type": "number"
             }
           ]
+        },
+        "use_collection_prompt": {
+          "enum": [
+            false,
+            true
+          ]
         }
       },
       "required": [
@@ -15592,6 +15603,57 @@ var COMMAND_INPUTS = {
       "items": {
         "type": "object",
         "properties": {
+          "brief": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "overview": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "source_url": {
+                          "type": "string"
+                        },
+                        "source_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "published_at": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "summary",
+                        "source_url",
+                        "published_at"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "overview",
+                  "items"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
           "title": {
             "type": "string"
           },
@@ -15714,7 +15776,41 @@ var COMMAND_INPUTS = {
       "type": "number"
     }
   ],
+  "update_news_collection_settings": [
+    {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string"
+        },
+        "max_items": {
+          "type": "number"
+        },
+        "window_hours": {
+          "type": "number"
+        },
+        "expected_revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "prompt",
+        "max_items",
+        "window_hours",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    }
+  ],
   "import_course": [
+    {
+      "type": "string"
+    }
+  ],
+  "delete_course": [
+    {
+      "type": "number"
+    },
     {
       "type": "string"
     }
@@ -15757,6 +15853,13 @@ var COMMAND_INPUTS = {
   "confirm_course_sample": [
     {
       "type": "number"
+    },
+    {
+      "anyOf": [
+        {
+          "type": "string"
+        }
+      ]
     }
   ],
   "create_course_request": [
@@ -17635,10 +17738,12 @@ for (const [name, title, method, params] of [
   ["mark_all_news_read", "\u6279\u91CF\u6807\u8BB0\u5DF2\u8BFB", "markAllRead", [["filter", "json", false]]],
   ["delete_news_item", "\u5220\u9664\u65B0\u95FB", "deleteItem", [id("news_item")]]
 ]) command(name, title, "news", method, name.includes("task") || name === "submit_news_items" ? ["news_task", "news_item"] : ["news_item"], params);
+command("update_news_collection_settings", "\u66F4\u65B0\u65B0\u95FB\u91C7\u96C6\u63D0\u793A\u8BCD", "news", "updateCollectionSettings", [], [input]);
 command("import_course", "\u5BFC\u5165\u8BFE\u7A0B", "courses", "importCourse", ["course", "course_lesson", "course_overview"], [["staging_dir", "string"]]);
+command("delete_course", "\u5220\u9664\u8BFE\u7A0B", "courses", "remove", ["course", "course_lesson", "course_overview", "course_request"], [id("course"), ["expected_slug", "string"]]);
 command("mark_lesson_read", "\u6807\u8BB0\u8BB2\u4E49\u5DF2\u8BFB", "courses", "markLessonRead", ["course", "course_lesson"], [["course_id", "integer", true, "course"], ["day", "integer"]]);
 command("submit_lesson_quiz", "\u63D0\u4EA4\u8BB2\u4E49\u81EA\u6D4B", "courses", "submitQuiz", ["course", "course_lesson"], [["course_id", "integer", true, "course"], ["day", "integer"], ["answers", "json"]]);
-command("confirm_course_sample", "\u786E\u8BA4\u6837\u8BFE", "courses", "confirmSample", ["course"], [id("course")], "args", true);
+command("confirm_course_sample", "\u786E\u8BA4\u6837\u8BFE", "courses", "confirmSample", ["course"], [id("course"), ["expected_hash", "string", false]], "args", true, true);
 command("create_course_request", "\u8BF7\u6C42\u751F\u6210\u8BFE\u7A0B", "courses", "createGenerationRequest", ["course", "course_request"], [["course_id", "integer", true, "course"], ["requested_by", "string", false]]);
 command("claim_course_request", "\u8BA4\u9886\u8BFE\u7A0B\u751F\u6210", "courses", "claimRequest", ["course_request"], [id("course_request"), ["claimed_by", "string"]]);
 command("complete_course_request", "\u5B8C\u6210\u8BFE\u7A0B\u751F\u6210", "courses", "completeRequest", ["course_request"], [id("course_request"), ["claimed_by", "string"]]);
@@ -17717,7 +17822,7 @@ var paramSchema = (d, index) => {
 var commandMetadata = (d) => ({
   apiName: d.apiName,
   title: d.title,
-  description: `${d.title}\uFF1A\u8C03\u7528\u65E2\u6709\u4E1A\u52A1\u670D\u52A1\u5E76\u9075\u5B88\u7EDF\u4E00\u5199\u5165\u89C4\u5219\u3002${d.human ? "\u4EBA\u5DE5\u5BA1\u6838\u8BF7\u5230\u5BF9\u5E94\u4E1A\u52A1\u9762\u677F\u64CD\u4F5C\u3002" : ""}`,
+  description: `${d.title}\uFF1A\u8C03\u7528\u65E2\u6709\u4E1A\u52A1\u670D\u52A1\u5E76\u9075\u5B88\u7EDF\u4E00\u5199\u5165\u89C4\u5219\u3002${d.apiName === "confirm_course_sample" ? "\u6837\u8BFE\u5728 App \u9605\u8BFB\u540E\uFF0C\u7531\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u786E\u8BA4\u5E76\u901A\u8FC7\u4E13\u7528\u5DE5\u5177\u8BB0\u5F55\u3002" : d.human ? "\u4EBA\u5DE5\u5BA1\u6838\u8BF7\u5230\u5BF9\u5E94\u4E1A\u52A1\u9762\u677F\u64CD\u4F5C\u3002" : ""}`,
   isBuiltin: true,
   status: "active",
   parameters: d.parameters.map((p, i) => ({ ...p, jsonSchema: paramSchema(d, i), description: p.dataType === "json" ? "\u7ED3\u6784\u5316 JSON\uFF0C\u5177\u4F53\u5B57\u6BB5\u89C1 jsonSchema" : p.description })),
@@ -17743,7 +17848,7 @@ function createCommandService(db, ontology, services) {
       if (!db.prepare(`SELECT 1 FROM "${type.tableName}" WHERE "${type.primaryKey}"=?`).get(value) && !["delete_tool", "delete_news_item"].includes(d.apiName)) throw new OntologyError("REFERENCE_NOT_FOUND", `${p.objectType}#${value} \u4E0D\u5B58\u5728`);
     }
     if (d.human && !human2) {
-      throw new OntologyError("ACTION_CHANNEL_DENIED", "\u8BF7\u5230\u8BFE\u7A0B\u6216\u521B\u4F5C\u9762\u677F\u5B8C\u6210\u4EBA\u5DE5\u786E\u8BA4");
+      throw new OntologyError("ACTION_CHANNEL_DENIED", d.apiName === "confirm_course_sample" ? "\u8BF7\u5728 App \u9605\u8BFB\u6837\u8BFE\u540E\uFF0C\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u786E\u8BA4\uFF0C\u7531\u4E13\u7528\u6837\u8BFE\u786E\u8BA4\u5DE5\u5177\u8BB0\u5F55" : "\u8BF7\u5230\u5BF9\u5E94\u4E1A\u52A1\u9762\u677F\u5B8C\u6210\u4EBA\u5DE5\u786E\u8BA4");
     }
     if (d.apiName === "update_todo") {
       const state = args[1]?.status;
@@ -17793,7 +17898,7 @@ function createCommandService(db, ontology, services) {
   };
   const human = {
     authorizeExtensionInstall: (input2) => invoke(defs.find((d) => d.apiName === "authorize_extension_install"), [input2], true),
-    confirmCourseSample: (id2) => invoke(defs.find((d) => d.apiName === "confirm_course_sample"), [id2], true),
+    confirmCourseSample: (id2, expectedHash) => invoke(defs.find((d) => d.apiName === "confirm_course_sample"), [id2, expectedHash], true),
     reviewMediaVersion: (id2, action, note) => invoke(defs.find((d) => d.apiName === "review_media_version"), [id2, action, note], true)
   };
   return { execute, wrap: wrap2, guard, human };
@@ -19497,6 +19602,17 @@ MIGRATIONS.push({ version: 22, name: "provider_refresh_runtime", up: (db) => {
       WHEN ${ref}.request_kind IN ('refresh','external') BEGIN UPDATE runtime_revision SET revision=revision+1 WHERE id=1; END;`);
   }
 } });
+MIGRATIONS.push({ version: 23, name: "course_lesson_revision", up: (db) => {
+  db.exec("ALTER TABLE course_lessons ADD COLUMN revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)");
+} });
+MIGRATIONS.push({ version: 24, name: "news_collection_prompt_and_brief", up: (db) => {
+  db.exec(`CREATE TABLE IF NOT EXISTS news_collection_settings (
+    id INTEGER PRIMARY KEY CHECK(id=1), prompt TEXT NOT NULL,
+    max_items INTEGER NOT NULL, window_hours INTEGER NOT NULL,
+    revision INTEGER NOT NULL, updated_at TEXT NOT NULL
+  );
+  ALTER TABLE news ADD COLUMN brief_json TEXT;`);
+} });
 function runMigrations(db) {
   const row = db.prepare("PRAGMA user_version").get();
   const current = Number(row?.user_version ?? 0);
@@ -21181,7 +21297,7 @@ function createCalendarService(db, queries) {
 var import_node_crypto10 = require("node:crypto");
 var import_node_fs = require("node:fs");
 var import_node_path = require("node:path");
-var NEWS_TASK_MAX_ITEMS = 10;
+var NEWS_TASK_MAX_ITEMS = 11;
 var NEWS_SUBMIT_BATCH_MAX = 10;
 var NEWS_TASK_LEASE_MS = 30 * 6e4;
 var NEWS_TASK_MAX_OPEN = 50;
@@ -21189,6 +21305,12 @@ var NEWS_TASK_WINDOW_DEFAULT_HOURS = 24;
 var NEWS_TASK_WINDOW_MIN_HOURS = 1;
 var NEWS_TASK_WINDOW_MAX_HOURS = 720;
 var NEWS_HTML_MAX_CHARS = 1e6;
+var DEFAULT_NEWS_COLLECTION_PROMPT = `\u8BF7\u751F\u6210\u4ECA\u5929\u7684\u4E2D\u6587\u65B0\u95FB\uFF1A
+1. \u56FD\u9645\u65B0\u95FB 3\u20135 \u6761\uFF0C\u6BCF\u6761\u72EC\u7ACB\u5165\u5E93\uFF0C\u6807\u9898\u6807\u6CE8\u300C\u56FD\u9645\u300D\uFF0C\u9644\u4E8B\u5B9E\u6458\u8981\u3001\u539F\u59CB\u6765\u6E90\u94FE\u63A5\u548C\u771F\u5B9E\u53D1\u5E03\u65F6\u95F4\u3002
+2. \u56FD\u5185\u65B0\u95FB 3\u20135 \u6761\uFF0C\u6BCF\u6761\u72EC\u7ACB\u5165\u5E93\uFF0C\u6807\u9898\u6807\u6CE8\u300C\u56FD\u5185\u300D\uFF0C\u9644\u4E8B\u5B9E\u6458\u8981\u3001\u539F\u59CB\u6765\u6E90\u94FE\u63A5\u548C\u771F\u5B9E\u53D1\u5E03\u65F6\u95F4\u3002
+3. AI \u4E13\u9898\u7B80\u62A5 1 \u4EFD\uFF0C\u4F5C\u4E3A\u4E00\u6761\u65B0\u95FB\u5165\u5E93\uFF0C\u6807\u9898\u5305\u542B\u65E5\u671F\u3002\u7B80\u62A5\u5305\u542B\u603B\u4F53\u770B\u70B9\u548C 3\u20135 \u5219 AI \u65B0\u95FB\uFF0C\u6BCF\u5219\u5305\u542B\u6807\u9898\u3001\u4E8B\u5B9E\u6458\u8981\u3001\u6765\u6E90\u540D\u79F0\u3001\u539F\u59CB\u94FE\u63A5\u53CA\u771F\u5B9E\u53D1\u5E03\u65F6\u95F4\uFF1B\u4F7F\u7528 brief \u5B57\u6BB5\uFF0C\u4E0D\u628A\u7B80\u62A5\u5B50\u65B0\u95FB\u62C6\u6210\u72EC\u7ACB\u6761\u76EE\u3002
+AI \u5173\u6CE8\u5927\u6A21\u578B\u3001Agent\u3001AI \u7F16\u7A0B\u3001Codex/Claude Code\u3001\u5F00\u6E90\u4E0E\u91CD\u8981\u7814\u7A76\u3002\u4F18\u5148\u5B98\u65B9\u53D1\u5E03\u548C\u53EF\u4FE1\u4E00\u624B\u62A5\u9053\u3002
+\u6309\u5F53\u524D\u65F6\u95F4\u7A97\u9010\u6761\u6253\u5F00\u6765\u6E90\u6838\u5B9E\uFF1B\u4E0D\u4F7F\u7528\u65E7\u95FB\u3001\u4F20\u95FB\u6216\u641C\u7D22\u6458\u8981\u51D1\u6570\u3002\u540C\u4E00\u4E8B\u4EF6\u4E0D\u5728\u56FD\u9645\u3001\u56FD\u5185\u4E0E AI \u4E2D\u91CD\u590D\u51FA\u73B0\u3002\u6570\u91CF\u4E0D\u8DB3\u65F6\u8BF4\u660E\u7F3A\u53E3\uFF0C\u4E0D\u7F16\u9020\u5185\u5BB9\u3002`;
 var NEWS_DIR_NAME = "news";
 function newsRootForDb(dbPath) {
   return (0, import_node_path.join)((0, import_node_path.resolve)(dbPath, ".."), NEWS_DIR_NAME);
@@ -21278,6 +21400,27 @@ function createNewsService(db, opts = {}) {
   const LEASE_MS2 = Math.max(opts.leaseMs ?? NEWS_TASK_LEASE_MS, 1);
   const leaseUntil = () => isoAfter(LEASE_MS2);
   const htmlRoot = opts.dbPath ? newsRootForDb(opts.dbPath) : null;
+  const getCollectionSettings = () => {
+    const row = db.prepare("SELECT * FROM news_collection_settings WHERE id=1").get();
+    return row ? {
+      prompt: String(row.prompt),
+      max_items: Number(row.max_items),
+      window_hours: Number(row.window_hours),
+      revision: Number(row.revision),
+      updated_at: String(row.updated_at)
+    } : { prompt: DEFAULT_NEWS_COLLECTION_PROMPT, max_items: 11, window_hours: 24, revision: 0, updated_at: null };
+  };
+  const updateCollectionSettings = (input2) => immediateTx(db, () => {
+    const prompt = sanitizeText(input2.prompt);
+    if (!prompt || prompt.length > 12e3) throw new Error("\u91C7\u96C6\u63D0\u793A\u8BCD\u987B\u4E3A 1~12000 \u5B57");
+    if (!Number.isInteger(input2.max_items) || input2.max_items < 1 || input2.max_items > NEWS_TASK_MAX_ITEMS) throw new Error("\u6700\u591A\u6536\u5F55\u987B\u4E3A 1~11 \u7684\u6574\u6570");
+    if (!Number.isInteger(input2.window_hours) || input2.window_hours < 1 || input2.window_hours > 720) throw new Error("\u65F6\u95F4\u7A97\u987B\u4E3A 1~720 \u5C0F\u65F6\u7684\u6574\u6570");
+    if (getCollectionSettings().revision !== input2.expected_revision) throw new Error("\u91C7\u96C6\u63D0\u793A\u8BCD\u5DF2\u88AB\u5176\u4ED6\u7A97\u53E3\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u52A0\u8F7D\u540E\u518D\u4FDD\u5B58");
+    db.prepare(`INSERT INTO news_collection_settings (id,prompt,max_items,window_hours,revision,updated_at)
+      VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET prompt=excluded.prompt,max_items=excluded.max_items,
+      window_hours=excluded.window_hours,revision=excluded.revision,updated_at=excluded.updated_at`).run(prompt, input2.max_items, input2.window_hours, input2.expected_revision + 1, nowIso());
+    return getCollectionSettings();
+  });
   const taskRow = (id2) => db.prepare("SELECT * FROM news_tasks WHERE id = ?").get(id2);
   const mapTask = (r) => {
     const inserted = Number(
@@ -21311,13 +21454,14 @@ function createNewsService(db, opts = {}) {
     const title = sanitizeText(input2.title);
     if (!title) throw new Error("\u4EFB\u52A1\u6807\u9898\u4E0D\u80FD\u4E3A\u7A7A");
     if (title.length > 200) throw new Error("\u4EFB\u52A1\u6807\u9898\u8FC7\u957F\uFF08\u2264200 \u5B57\uFF09");
-    const instructions = sanitizeText(input2.instructions ?? "");
-    if (instructions.length > 2e3) throw new Error("\u4EFB\u52A1\u89C4\u5219\u8BF4\u660E\u8FC7\u957F\uFF08\u22642000 \u5B57\uFF09");
-    const maxItems = input2.max_items ?? NEWS_TASK_MAX_ITEMS;
+    const settings = input2.use_collection_prompt ? getCollectionSettings() : null;
+    const instructions = sanitizeText([settings?.prompt, input2.instructions].filter(Boolean).join("\n\n\u8865\u5145\u8981\u6C42\uFF1A\n"));
+    if (instructions.length > (settings ? 14e3 : 2e3)) throw new Error(`\u4EFB\u52A1\u89C4\u5219\u8BF4\u660E\u8FC7\u957F\uFF08\u2264${settings ? 14e3 : 2e3} \u5B57\uFF09`);
+    const maxItems = input2.max_items ?? settings?.max_items ?? 10;
     if (!Number.isInteger(maxItems) || maxItems < 1 || maxItems > NEWS_TASK_MAX_ITEMS) {
       throw new Error(`\u6BCF\u4EFB\u52A1\u65B0\u5165\u5E93\u4E0A\u9650\u987B\u4E3A 1~${NEWS_TASK_MAX_ITEMS} \u7684\u6574\u6570`);
     }
-    const windowHours = input2.window_hours ?? NEWS_TASK_WINDOW_DEFAULT_HOURS;
+    const windowHours = input2.window_hours ?? settings?.window_hours ?? NEWS_TASK_WINDOW_DEFAULT_HOURS;
     if (!Number.isInteger(windowHours) || windowHours < NEWS_TASK_WINDOW_MIN_HOURS || windowHours > NEWS_TASK_WINDOW_MAX_HOURS) {
       throw new Error(`\u4EFB\u52A1\u65F6\u95F4\u7A97\u987B\u4E3A ${NEWS_TASK_WINDOW_MIN_HOURS}~${NEWS_TASK_WINDOW_MAX_HOURS} \u5C0F\u65F6\u7684\u6574\u6570`);
     }
@@ -21399,7 +21543,40 @@ function createNewsService(db, opts = {}) {
       if (rawHtml.length > NEWS_HTML_MAX_CHARS) throw new Error(`${label}\uFF1Ahtml \u5FEB\u7167\u8FC7\u957F\uFF08>${NEWS_HTML_MAX_CHARS} \u5B57\u7B26\uFF09`);
       html = ensureStandaloneNewsHtml(sanitizeNewsHtml(rawHtml), title);
     }
-    return { title, summary, url, sourceName, publishedAt: new Date(ts).toISOString(), html };
+    let brief = null;
+    if (raw.brief != null) {
+      if (raw.html != null) throw new Error(`${label}\uFF1A\u7B80\u62A5\u4E0D\u80FD\u540C\u65F6\u63D0\u4EA4 html`);
+      const overview = sanitizeText(raw.brief.overview);
+      if (!overview || overview.length > 2e3) throw new Error(`${label}\uFF1A\u7B80\u62A5\u603B\u89C8\u987B\u4E3A 1~2000 \u5B57`);
+      if (!Array.isArray(raw.brief.items) || raw.brief.items.length < 1 || raw.brief.items.length > 20) throw new Error(`${label}\uFF1A\u7B80\u62A5\u987B\u542B 1~20 \u5219\u65B0\u95FB`);
+      const seenUrls = /* @__PURE__ */ new Set();
+      const seenTitles = /* @__PURE__ */ new Set();
+      const entries = raw.brief.items.map((entry, i) => {
+        const clean = validateItem({
+          title: entry?.title,
+          summary: entry?.summary,
+          source_url: entry?.source_url,
+          source_name: entry?.source_name,
+          published_at: entry?.published_at
+        }, windowHours, now, i);
+        const key = newsDedupKey("generic", clean.url, "");
+        const event2 = normalizeNewsEventTitle(clean.title);
+        if (seenUrls.has(key) || seenTitles.has(event2)) throw new Error(`${label}\uFF1A\u7B80\u62A5\u5305\u542B\u91CD\u590D\u65B0\u95FB`);
+        seenUrls.add(key);
+        seenTitles.add(event2);
+        return {
+          title: clean.title,
+          summary: clean.summary,
+          source_url: clean.url,
+          source_name: clean.sourceName,
+          published_at: clean.publishedAt
+        };
+      });
+      if (newsDedupKey("generic", url, "") !== newsDedupKey("generic", entries[0].source_url, "")) throw new Error(`${label}\uFF1A\u7B80\u62A5\u6765\u6E90\u94FE\u63A5\u987B\u4F7F\u7528\u7B2C\u4E00\u5219\u65B0\u95FB\u7684\u539F\u59CB\u94FE\u63A5`);
+      if (new Date(ts).toISOString() !== entries[0].published_at) throw new Error(`${label}\uFF1A\u7B80\u62A5\u53D1\u5E03\u65F6\u95F4\u987B\u4F7F\u7528\u7B2C\u4E00\u5219\u65B0\u95FB\u7684\u771F\u5B9E\u53D1\u5E03\u65F6\u95F4`);
+      brief = { overview, items: entries };
+    }
+    return { title, summary, url, sourceName, publishedAt: new Date(ts).toISOString(), html, brief };
   };
   const submitItems = (taskId, claimToken, items) => {
     if (!Array.isArray(items) || items.length === 0) throw new Error("\u63D0\u4EA4\u5185\u5BB9\u4E0D\u80FD\u4E3A\u7A7A");
@@ -21409,38 +21586,37 @@ function createNewsService(db, opts = {}) {
       const task = mapTask(row);
       const now = Date.now();
       const cleaned = items.map((it, i) => validateItem(it, task.window_hours, now, i));
-      const batchUrlKeys = /* @__PURE__ */ new Set();
-      const batchTitleKeys = /* @__PURE__ */ new Set();
-      for (let i = 0; i < cleaned.length; i++) {
-        const urlKey = newsDedupKey("generic", cleaned[i].url, "");
-        if (batchUrlKeys.has(urlKey)) throw new Error(`\u7B2C ${i + 1} \u6761\u4E0E\u672C\u6279\u524D\u9762\u7684\u6761\u76EE\u91CD\u590D\uFF08\u76F8\u540C\u6765\u6E90\u94FE\u63A5\uFF09`);
-        batchUrlKeys.add(urlKey);
-        const tKey = normalizeNewsEventTitle(cleaned[i].title);
-        if (tKey && batchTitleKeys.has(tKey)) throw new Error(`\u7B2C ${i + 1} \u6761\u4E0E\u672C\u6279\u524D\u9762\u7684\u6761\u76EE\u91CD\u590D\uFF08\u540C\u4E8B\u4EF6\uFF1A\u5F52\u4E00\u5316\u6807\u9898\u4E00\u81F4\uFF09`);
-        if (tKey) batchTitleKeys.add(tKey);
-      }
+      const identities = (entry) => [
+        { title: entry.title, url: entry.url },
+        ...(entry.brief?.items ?? []).map((it) => ({ title: it.title, url: it.source_url }))
+      ];
+      const existingUrls = /* @__PURE__ */ new Set();
       const existingTitles = /* @__PURE__ */ new Set();
-      for (const r of db.prepare("SELECT title FROM news").all()) {
-        const k = normalizeNewsEventTitle(String(r.title));
-        if (k) existingTitles.add(k);
+      for (const stored of db.prepare("SELECT * FROM news").all()) {
+        const mapped = mapNews(stored);
+        for (const entry of identities(mapped)) {
+          existingUrls.add(newsDedupKey("generic", entry.url, ""));
+          existingTitles.add(normalizeNewsEventTitle(entry.title));
+        }
       }
-      for (let i = 0; i < cleaned.length; i++) {
-        const urlKey = newsDedupKey("generic", cleaned[i].url, "");
-        const dup = db.prepare("SELECT id FROM news WHERE dedup_key = ?").get(urlKey);
-        if (dup) throw new Error(`\u7B2C ${i + 1} \u6761\u5DF2\u5728\u5E93\u4E2D\uFF08\u76F8\u540C\u6765\u6E90\u94FE\u63A5\uFF0Cnews id=${dup.id}\uFF09\uFF0C\u4E0D\u8981\u91CD\u590D\u63D0\u4EA4`);
-        const tKey = normalizeNewsEventTitle(cleaned[i].title);
-        if (tKey && existingTitles.has(tKey)) throw new Error(`\u7B2C ${i + 1} \u6761\u4E0E\u5E93\u5185\u5DF2\u6709\u65B0\u95FB\u540C\u4E8B\u4EF6\uFF08\u5F52\u4E00\u5316\u6807\u9898\u4E00\u81F4\uFF09\uFF0C\u4E0D\u8981\u91CD\u590D\u63D0\u4EA4`);
-      }
+      const batchUrls = /* @__PURE__ */ new Set();
+      const batchTitles = /* @__PURE__ */ new Set();
       const fpHit = db.prepare("SELECT 1 FROM news_deleted_fingerprints WHERE fingerprint = ?");
-      for (let i = 0; i < cleaned.length; i++) {
-        const urlKey = newsDedupKey("generic", cleaned[i].url, "");
-        if (fpHit.get(deletedFingerprint("link", urlKey))) {
-          throw new Error(`\u7B2C ${i + 1} \u6761\u5BF9\u5E94\u7684\u65B0\u95FB\u5DF2\u88AB\u7528\u6237\u5220\u9664\uFF0C\u4E0D\u63A5\u53D7\u76F8\u540C\u6765\u6E90\u94FE\u63A5\u91CD\u65B0\u63D0\u4EA4`);
+      for (const [i, clean] of cleaned.entries()) {
+        const localUrls = /* @__PURE__ */ new Set();
+        const localTitles = /* @__PURE__ */ new Set();
+        for (const entry of identities(clean)) {
+          const urlKey = newsDedupKey("generic", entry.url, "");
+          const titleKey = normalizeNewsEventTitle(entry.title);
+          if (batchUrls.has(urlKey) || titleKey && batchTitles.has(titleKey)) throw new Error(`\u7B2C ${i + 1} \u6761\u4E0E\u672C\u6279\u524D\u9762\u7684\u6761\u76EE\u91CD\u590D\uFF08\u76F8\u540C\u6765\u6E90\u94FE\u63A5\u6216\u540C\u4E8B\u4EF6\uFF09`);
+          if (existingUrls.has(urlKey) || titleKey && existingTitles.has(titleKey)) throw new Error(`\u7B2C ${i + 1} \u6761\u5DF2\u5728\u5E93\u4E2D\u6216\u4E0E\u5E93\u5185\u65B0\u95FB\u540C\u4E8B\u4EF6\uFF0C\u4E0D\u8981\u91CD\u590D\u63D0\u4EA4`);
+          if (fpHit.get(deletedFingerprint("link", urlKey))) throw new Error(`\u7B2C ${i + 1} \u6761\u5BF9\u5E94\u7684\u65B0\u95FB\u5DF2\u88AB\u7528\u6237\u5220\u9664\uFF0C\u4E0D\u63A5\u53D7\u91CD\u65B0\u63D0\u4EA4`);
+          if (titleKey && fpHit.get(deletedFingerprint("event", titleKey))) throw new Error(`\u7B2C ${i + 1} \u6761\u4E0E\u7528\u6237\u5DF2\u5220\u9664\u7684\u65B0\u95FB\u4E3A\u540C\u4E00\u4E8B\u4EF6\uFF0C\u4E0D\u63A5\u53D7\u91CD\u65B0\u63D0\u4EA4`);
+          localUrls.add(urlKey);
+          if (titleKey) localTitles.add(titleKey);
         }
-        const tKey = normalizeNewsEventTitle(cleaned[i].title);
-        if (tKey && fpHit.get(deletedFingerprint("event", tKey))) {
-          throw new Error(`\u7B2C ${i + 1} \u6761\u4E0E\u7528\u6237\u5DF2\u5220\u9664\u7684\u65B0\u95FB\u4E3A\u540C\u4E00\u4E8B\u4EF6\uFF0C\u4E0D\u63A5\u53D7\u91CD\u65B0\u63D0\u4EA4`);
-        }
+        for (const key of localUrls) batchUrls.add(key);
+        for (const key of localTitles) batchTitles.add(key);
       }
       if (task.accepted_count + cleaned.length > task.max_items) {
         throw new Error(
@@ -21452,23 +21628,23 @@ function createNewsService(db, opts = {}) {
       }
       const nowStr = nowIso();
       const insert = db.prepare(
-        `INSERT INTO news (source, title, url, summary, published_date, published_at, fetched_at, dedup_key, is_read, is_starred, task_id, source_name, content_kind, html_rel)
-         VALUES ('agent', ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`
+        `INSERT INTO news (source, title, url, summary, published_date, published_at, fetched_at, dedup_key, is_read, is_starred, task_id, source_name, content_kind, html_rel, brief_json)
+         VALUES ('agent', ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)`
       );
       const inserted = [];
       const written = [];
       try {
-        (0, import_node_fs.mkdirSync)(htmlRoot, { recursive: true });
+        if (cleaned.some((c) => c.html)) (0, import_node_fs.mkdirSync)(htmlRoot, { recursive: true });
         for (const c of cleaned) {
           const htmlRel = c.html ? `${(0, import_node_crypto10.randomUUID)()}.html` : null;
           if (c.html && htmlRel) {
             const abs = htmlAbsPath(htmlRoot, htmlRel);
             (0, import_node_fs.writeFileSync)(abs, c.html, "utf8");
             written.push(abs);
-            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey("generic", c.url, ""), Number(task.id), c.sourceName || null, "html", htmlRel);
+            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey("generic", c.url, ""), Number(task.id), c.sourceName || null, "html", htmlRel, null);
             inserted.push(mapNews(db.prepare("SELECT * FROM news WHERE id = ?").get(res.lastInsertRowid)));
           } else {
-            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey("generic", c.url, ""), Number(task.id), c.sourceName || null, "url", null);
+            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey("generic", c.url, ""), Number(task.id), c.sourceName || null, c.brief ? "brief" : "url", null, c.brief ? JSON.stringify(c.brief) : null);
             inserted.push(mapNews(db.prepare("SELECT * FROM news WHERE id = ?").get(res.lastInsertRowid)));
           }
         }
@@ -21603,6 +21779,12 @@ function createNewsService(db, opts = {}) {
       const fps = /* @__PURE__ */ new Set([deletedFingerprint("link", String(row.dedup_key ?? ""))]);
       const tKey = normalizeNewsEventTitle(String(row.title ?? ""));
       if (tKey) fps.add(deletedFingerprint("event", tKey));
+      const brief = mapNews(row).brief;
+      for (const entry of brief?.items ?? []) {
+        fps.add(deletedFingerprint("link", newsDedupKey("generic", entry.source_url, "")));
+        const event2 = normalizeNewsEventTitle(entry.title);
+        if (event2) fps.add(deletedFingerprint("event", event2));
+      }
       const insFp = db.prepare("INSERT OR IGNORE INTO news_deleted_fingerprints (fingerprint, deleted_at) VALUES (?, ?)");
       let fingerprintsKept = 0;
       for (const fp of fps) fingerprintsKept += insFp.run(fp, now).changes;
@@ -21633,7 +21815,7 @@ function createNewsService(db, opts = {}) {
     const row = db.prepare("SELECT * FROM news WHERE id = ?").get(Number(id2));
     if (!row) throw new Error(`\u65B0\u95FB ${id2} \u4E0D\u5B58\u5728`);
     const htmlRel = row.html_rel ?? null;
-    if (row.content_kind !== "html" || !htmlRel) return { id: Number(id2), content_kind: "url", html_rel: null, html: null, missing: false };
+    if (row.content_kind !== "html" || !htmlRel) return { id: Number(id2), content_kind: row.content_kind === "brief" ? "brief" : "url", html_rel: null, html: null, missing: false };
     if (!htmlRoot) throw new Error("\u672C\u5730\u5FEB\u7167\u672A\u914D\u7F6E\u5B58\u50A8\u76EE\u5F55\uFF08dbPath\uFF09\uFF0C\u65E0\u6CD5\u8BFB\u53D6");
     let html = null;
     let missing = true;
@@ -21649,6 +21831,8 @@ function createNewsService(db, opts = {}) {
     return { id: Number(id2), content_kind: "html", html_rel: htmlRel, html, missing };
   };
   return {
+    getCollectionSettings,
+    updateCollectionSettings,
     createTask,
     getTask,
     listTasks,
@@ -21897,6 +22081,17 @@ var import_node_path2 = require("node:path");
 var COURSES_DIR_NAME = "courses";
 var SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 var SAFE_REL_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:html|css|png|jpg|jpeg|svg|gif|webp)$/i;
+function lessonContentKey(lesson) {
+  return JSON.stringify({
+    title: lesson.title,
+    is_sample: lesson.is_sample === true,
+    estimated_minutes: lesson.estimated_minutes ?? 45,
+    concepts: (lesson.concepts ?? []).map((c) => ({ name: c.name, explanation: c.explanation })),
+    code_refs: (lesson.code_refs ?? []).map((c, i) => ({ path: c.path, symbol: c.symbol, role: c.role, order: c.order ?? i + 1 })),
+    quiz: (lesson.quiz ?? []).map((q) => ({ question: q.question, options: q.options, answer_index: q.answer_index, explanation: q.explanation }))
+  });
+}
+var sameLessonContent = (old, lesson, hash) => old.content_hash === hash && lessonContentKey(old) === lessonContentKey(lesson);
 function coursesRootForDb(dbPath) {
   return (0, import_node_path2.join)((0, import_node_path2.resolve)(dbPath, ".."), COURSES_DIR_NAME);
 }
@@ -22031,6 +22226,7 @@ function createCourseService(deps) {
     title: String(r.title),
     html_rel: String(r.html_rel),
     content_hash: String(r.content_hash),
+    revision: Number(r.revision ?? 1),
     is_sample: Number(r.is_sample) === 1,
     status: r.status,
     estimated_minutes: Number(r.estimated_minutes ?? 45),
@@ -22131,7 +22327,7 @@ function createCourseService(deps) {
     const pkgSample = prepared.find((p) => p.lesson.is_sample) ?? null;
     const completedSameContent = prev != null && !sampleOnly && prev.status === "complete" && prev.version === manifest.version && prev.sample_confirmed_at != null && prev.sample_content_hash != null && pkgSample != null && pkgSample.hash === prev.sample_content_hash && prevLessons.length === prepared.length && prevLessons.every((pl) => {
       const m = prepared.find((p) => p.lesson.day === pl.day);
-      return m != null && m.hash === pl.content_hash && pl.is_sample === (m.lesson.is_sample === true);
+      return m != null && sameLessonContent(pl, m.lesson, m.hash);
     }) && (preparedOverview == null || prevOverview?.content_hash === preparedOverview.hash);
     if (prev && !sampleOnly) {
       if (!prevLessons.some((l) => l.is_sample)) {
@@ -22142,7 +22338,7 @@ function createCourseService(deps) {
         const okClaimed = claimed && prev.sample_confirmed_at != null && prev.sample_content_hash != null && String(claimed.sample_content_hash) === prev.sample_content_hash;
         if (!okClaimed) {
           throw new Error(
-            "\u5B8C\u6574\u5305\u5BFC\u5165\u88AB\u62D2\uFF1A\u8BE5\u8BFE\u7A0B\u8D70\u6837\u8BFE\u6D41\u7A0B\uFF0C\u987B\u5148\u7531\u7528\u6237\u5728 App \u786E\u8BA4\u6837\u8BFE\u3001\u521B\u5EFA\u751F\u6210\u8BF7\u6C42\u5E76\u7531 agent \u8BA4\u9886\uFF08claim_course_request\uFF09\u540E\uFF0C\u624D\u80FD\u5BFC\u5165\u5B8C\u6574\u5305"
+            "\u5B8C\u6574\u5305\u5BFC\u5165\u88AB\u62D2\uFF1A\u8BE5\u8BFE\u7A0B\u8D70\u6837\u8BFE\u6D41\u7A0B\uFF0C\u987B\u5148\u7531\u7528\u6237\u5728 App \u9605\u8BFB\u540E\u5728\u5BF9\u8BDD\u4E2D\u786E\u8BA4\u6837\u8BFE\u3001\u521B\u5EFA\u751F\u6210\u8BF7\u6C42\u5E76\u7531 agent \u8BA4\u9886\uFF08claim_course_request\uFF09\u540E\uFF0C\u624D\u80FD\u5BFC\u5165\u5B8C\u6574\u5305"
           );
         }
         if (!pkgSample || pkgSample.hash !== prev.sample_content_hash) {
@@ -22153,7 +22349,7 @@ function createCourseService(deps) {
     if (prev) {
       const sameLessons = prevLessons.length === prepared.length && prevLessons.every((pl) => {
         const match = prepared.find((p) => p.lesson.day === pl.day);
-        if (!match || match.hash !== pl.content_hash) return false;
+        if (!match || !sameLessonContent(pl, match.lesson, match.hash)) return false;
         const abs = (0, import_node_path2.resolve)(root, pl.html_rel);
         if (!(0, import_node_fs2.existsSync)(abs)) return false;
         try {
@@ -22363,12 +22559,13 @@ function createCourseService(deps) {
         const codeRefs = (p.lesson.code_refs ?? []).map((c, i) => ({ path: c.path, symbol: c.symbol, role: c.role, order: c.order ?? i + 1 }));
         const old = oldByDay.get(p.lesson.day);
         const sameContent = old != null && old.content_hash === p.hash;
+        const revision = old ? old.revision + (sameLessonContent(old, p.lesson, p.hash) ? 0 : 1) : 1;
         const status = sameContent && old.status === "read" ? "read" : "generated";
         const carriedAnswers = sameContent ? JSON.stringify(old.quiz_answers) : "[]";
         const oldRow = sampleOnly ? db.prepare("SELECT id FROM course_lessons WHERE course_id = ? AND day = ?").get(id2, p.lesson.day) : null;
         if (sampleOnly && oldRow) {
           db.prepare(
-            `UPDATE course_lessons SET title = ?, html_rel = ?, content_hash = ?, is_sample = ?, status = ?, estimated_minutes = ?, concepts = ?, code_refs = ?, quiz = ?, quiz_answers = ?, updated_at = ? WHERE id = ?`
+            `UPDATE course_lessons SET title = ?, html_rel = ?, content_hash = ?, is_sample = ?, status = ?, estimated_minutes = ?, concepts = ?, code_refs = ?, quiz = ?, quiz_answers = ?, revision = ?, updated_at = ? WHERE id = ?`
           ).run(
             p.lesson.title,
             `${manifest.slug}/${p.lesson.html}`,
@@ -22380,13 +22577,14 @@ function createCourseService(deps) {
             JSON.stringify(codeRefs),
             JSON.stringify(quiz),
             carriedAnswers,
+            revision,
             now,
             Number(oldRow.id)
           );
         } else {
           db.prepare(
-            `INSERT INTO course_lessons (course_id, day, title, html_rel, content_hash, is_sample, status, estimated_minutes, concepts, code_refs, quiz, quiz_answers, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO course_lessons (course_id, day, title, html_rel, content_hash, is_sample, status, estimated_minutes, concepts, code_refs, quiz, quiz_answers, revision, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).run(
             id2,
             p.lesson.day,
@@ -22400,6 +22598,7 @@ function createCourseService(deps) {
             JSON.stringify(codeRefs),
             JSON.stringify(quiz),
             carriedAnswers,
+            revision,
             now,
             now
           );
@@ -22431,8 +22630,8 @@ function createCourseService(deps) {
       } else {
         for (const pl of prevLessons) {
           db.prepare(
-            `INSERT INTO course_lessons (course_id, day, title, html_rel, content_hash, is_sample, status, estimated_minutes, concepts, code_refs, quiz, quiz_answers, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO course_lessons (course_id, day, title, html_rel, content_hash, is_sample, status, estimated_minutes, concepts, code_refs, quiz, quiz_answers, revision, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).run(
             pl.course_id,
             pl.day,
@@ -22446,6 +22645,7 @@ function createCourseService(deps) {
             JSON.stringify(pl.code_refs),
             JSON.stringify(pl.quiz),
             JSON.stringify(pl.quiz_answers),
+            pl.revision,
             pl.created_at,
             pl.updated_at
           );
@@ -22483,11 +22683,14 @@ function createCourseService(deps) {
     db.prepare("UPDATE course_lessons SET quiz_answers = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(merged), nowIso(), lesson.id);
     return getLesson(courseId, day);
   };
-  const confirmSample = (courseId) => {
+  const confirmSample = (courseId, expectedHash) => {
     const course = getCourse(courseId);
     const sampleRow = db.prepare("SELECT * FROM course_lessons WHERE course_id = ? AND is_sample = 1").get(courseId);
     if (!sampleRow) throw new Error("\u8BFE\u7A0B\u6CA1\u6709\u6837\u8BFE\uFF1A\u8BFE\u7A0B\u5305\u5FC5\u987B\u4EE5\u6837\u8BFE\uFF08is_sample\uFF09\u5F00\u5934\u5BFC\u5165");
     const sample = mapLesson(sampleRow);
+    if (expectedHash != null && expectedHash !== sample.content_hash) {
+      throw new Error("\u6837\u8BFE\u7248\u672C\u5DF2\u53D8\u66F4\uFF1A\u8BF7\u5728 App \u9605\u8BFB\u5F53\u524D\u6837\u8BFE\u540E\uFF0C\u5728\u5BF9\u8BDD\u4E2D\u91CD\u65B0\u786E\u8BA4");
+    }
     if (sample.status !== "read") {
       throw new Error("\u6837\u8BFE\u5C1A\u672A\u9605\u8BFB\uFF1A\u8BF7\u5148\u5728 App \u6253\u5F00\u6837\u8BFE\u8BB2\u4E49\u9605\u8BFB\uFF08\u81EA\u52A8\u8BB0\u5F55\u5DF2\u8BFB\uFF09\uFF0C\u518D\u786E\u8BA4\u7ED1\u5B9A\u7248\u672C");
     }
@@ -22501,7 +22704,7 @@ function createCourseService(deps) {
   const createGenerationRequest = (courseId, requestedBy = "app") => {
     const course = getCourse(courseId);
     if (!course.sample_confirmed_at || !course.sample_content_hash) {
-      throw new Error("\u6837\u8BFE\u5C1A\u672A\u786E\u8BA4\uFF1A\u7528\u6237\u987B\u5148\u5728 App \u9605\u8BFB\u5E76\u786E\u8BA4\u6837\u8BFE\uFF0C\u624D\u80FD\u8BF7\u6C42\u5B8C\u6574\u7248");
+      throw new Error("\u6837\u8BFE\u5C1A\u672A\u786E\u8BA4\uFF1A\u7528\u6237\u987B\u5148\u5728 App \u9605\u8BFB\u6837\u8BFE\uFF0C\u518D\u5728\u5BF9\u8BDD\u4E2D\u786E\u8BA4\uFF0C\u624D\u80FD\u8BF7\u6C42\u5B8C\u6574\u7248");
     }
     const pending = db.prepare("SELECT * FROM course_requests WHERE course_id = ? AND status IN ('pending','claimed') ORDER BY id LIMIT 1").get(courseId);
     if (pending) return mapReq(pending);
@@ -22543,7 +22746,7 @@ function createCourseService(deps) {
     const course = getCourse(req.course_id);
     if (!course.sample_confirmed_at || course.sample_content_hash !== req.sample_content_hash) {
       db.prepare("UPDATE course_requests SET status = 'failed', error = '\u6837\u8BFE\u5DF2\u53D8\u66F4\uFF0C\u786E\u8BA4\u8FC7\u671F\uFF1A\u8BF7\u6C42\u62D2\u7EDD\u6267\u884C\uFF0C\u8BF7\u7528\u6237\u91CD\u65B0\u786E\u8BA4', completed_at = ? WHERE id = ?").run(nowIso(), requestId);
-      throw new Error("\u6837\u8BFE\u5DF2\u53D8\u66F4\uFF08\u786E\u8BA4\u8FC7\u671F\uFF09\uFF1A\u62D2\u7EDD\u6267\u884C\uFF1B\u8BF7\u8BA9\u7528\u6237\u5728 App \u91CD\u65B0\u786E\u8BA4\u6837\u8BFE\u540E\u91CD\u65B0\u53D1\u8D77");
+      throw new Error("\u6837\u8BFE\u5DF2\u53D8\u66F4\uFF08\u786E\u8BA4\u8FC7\u671F\uFF09\uFF1A\u62D2\u7EDD\u6267\u884C\uFF1B\u8BF7\u8BA9\u7528\u6237\u5728 App \u91CD\u65B0\u9605\u8BFB\u540E\uFF0C\u5728\u5BF9\u8BDD\u4E2D\u786E\u8BA4\u5E76\u91CD\u65B0\u53D1\u8D77");
     }
     db.prepare("UPDATE course_requests SET status = 'claimed', claimed_by = ?, claimed_at = ? WHERE id = ? AND status = 'pending'").run(claimedBy, nowIso(), requestId);
     return mapReq(db.prepare("SELECT * FROM course_requests WHERE id = ?").get(requestId));
@@ -22588,6 +22791,42 @@ function createCourseService(deps) {
     db.prepare("UPDATE courses SET status = 'complete', updated_at = ? WHERE id = ?").run(nowIso(), req.course_id);
     return mapReq(db.prepare("SELECT * FROM course_requests WHERE id = ?").get(requestId));
   };
+  const remove = (courseId, expectedSlug) => {
+    let assets = null;
+    let isolated = null;
+    let result;
+    try {
+      result = inTx(db, () => {
+        const course = getCourse(courseId);
+        if (course.slug !== expectedSlug) throw new Error("\u8BFE\u7A0B\u6807\u8BC6\u4E0E\u786E\u8BA4\u76EE\u6807\u4E0D\u4E00\u81F4\uFF0C\u62D2\u7EDD\u5220\u9664");
+        if (!SLUG_RE.test(course.slug)) throw new Error("\u8BFE\u7A0B\u6807\u8BC6\u4E0D\u5B89\u5168\uFF0C\u62D2\u7EDD\u5220\u9664");
+        assertDirNotSymlink(root, "\u8BFE\u7A0B\u8D44\u4EA7\u6839\u76EE\u5F55");
+        assets = (0, import_node_path2.resolve)(root, course.slug);
+        assertDirNotSymlink(assets, "\u8BFE\u7A0B\u8D44\u4EA7\u76EE\u5F55");
+        const deletedLessons = listLessons(courseId).length;
+        const deletedRequests = listRequests({ course_id: courseId }).length;
+        if ((0, import_node_fs2.existsSync)(assets)) {
+          isolated = (0, import_node_path2.join)(root, `.deleted-${courseId}-${(0, import_node_crypto11.randomUUID)()}`);
+          (0, import_node_fs2.renameSync)(assets, isolated);
+        }
+        const detached = db.prepare("UPDATE study_plan_drafts SET course_id = NULL WHERE course_id = ?").run(courseId);
+        db.prepare("DELETE FROM courses WHERE id = ?").run(courseId);
+        return { course_id: courseId, slug: course.slug, title: course.title, deleted_lessons: deletedLessons, deleted_requests: deletedRequests, detached_drafts: detached.changes };
+      });
+    } catch (error2) {
+      if (isolated && assets && (0, import_node_fs2.existsSync)(isolated)) (0, import_node_fs2.renameSync)(isolated, assets);
+      throw error2;
+    }
+    let cleanupWarning;
+    if (isolated) {
+      try {
+        (0, import_node_fs2.rmSync)(isolated, { recursive: true, force: true });
+      } catch {
+        cleanupWarning = `\u8BFE\u7A0B\u8BB0\u5F55\u5DF2\u5220\u9664\uFF0C\u9694\u79BB\u8D44\u4EA7\u6682\u672A\u6E05\u7406\uFF1A${isolated}`;
+      }
+    }
+    return { ...result, assets_removed: !cleanupWarning, cleanup_warning: cleanupWarning };
+  };
   return {
     importCourse,
     listCourses,
@@ -22604,12 +22843,81 @@ function createCourseService(deps) {
     listRequests,
     claimRequest,
     completeRequest,
+    remove,
     coursesRoot: root
   };
 }
 
 // packages/core/src/services/study.ts
 var import_node_crypto13 = require("node:crypto");
+
+// packages/core/src/services/study-progress.ts
+function getStudyProgress(db, planId) {
+  return readSnapshot(db, () => {
+    const scope = planId == null ? "" : " WHERE p.id = ?";
+    const params = planId == null ? [] : [planId];
+    const plans = db.prepare(`SELECT p.id FROM study_plans p${scope} ORDER BY p.id`).all(...params);
+    const rows = db.prepare(`
+      WITH dated AS (
+        SELECT i.*, DENSE_RANK() OVER (PARTITION BY i.plan_id ORDER BY i.date) AS course_day
+        FROM plan_items i JOIN study_plans p ON p.id = i.plan_id${scope}
+      ), notes AS (
+        SELECT i.plan_id, s.plan_item_id, COUNT(*) AS n FROM study_sessions s
+        JOIN plan_items i ON i.id = s.plan_item_id AND (s.plan_id IS NULL OR s.plan_id = i.plan_id)
+        WHERE TRIM(s.explanation, char(9) || char(10) || char(13) || ' ') <> '' GROUP BY i.plan_id, s.plan_item_id
+      ), assessments AS (
+        SELECT i.plan_id, i.id AS item_id, COUNT(*) AS n
+        FROM study_assessments a LEFT JOIN study_sessions s ON s.id = a.session_id
+        JOIN plan_items i ON i.id = COALESCE(a.plan_item_id, s.plan_item_id)
+          AND (a.plan_id IS NULL OR a.plan_id = i.plan_id)
+        WHERE TRIM(a.answer) <> '' GROUP BY i.plan_id, i.id
+      )
+      SELECT d.plan_id, d.id AS item_id, d.course_day, c.id AS course_id,
+        l.status AS lesson_status, l.quiz, l.quiz_answers,
+        COALESCE(n.n, 0) AS note_count, COALESCE(a.n, 0) AS assessment_count
+      FROM dated d
+      LEFT JOIN courses c ON c.id = (
+        SELECT id FROM courses WHERE plan_id = d.plan_id ORDER BY created_at DESC, id DESC LIMIT 1
+      )
+      LEFT JOIN course_lessons l ON l.course_id = c.id AND l.day = d.course_day
+      LEFT JOIN notes n ON n.plan_id = d.plan_id AND n.plan_item_id = d.id
+      LEFT JOIN assessments a ON a.plan_id = d.plan_id AND a.item_id = d.id
+      ORDER BY d.plan_id, d.date, d.sort_order, d.id
+    `).all(...params);
+    const grouped = new Map(plans.map((p) => [Number(p.id), {
+      plan_id: Number(p.id),
+      total_items: 0,
+      read_items: 0,
+      assessed_items: 0,
+      noted_items: 0,
+      items: []
+    }]));
+    for (const row of rows) {
+      const quiz = JSON.parse(String(row.quiz ?? "[]"));
+      const answers = JSON.parse(String(row.quiz_answers ?? "[]"));
+      const answered = new Set(answers.map((a) => a.question_id));
+      const item = {
+        item_id: Number(row.item_id),
+        course_id: row.course_id == null ? null : Number(row.course_id),
+        course_day: Number(row.course_day),
+        lesson_status: row.course_id == null ? "unbound" : row.lesson_status == null ? "pending" : row.lesson_status,
+        quiz_answered: quiz.filter((q) => answered.has(q.id)).length,
+        quiz_total: quiz.length,
+        note_count: Number(row.note_count),
+        assessment_count: Number(row.assessment_count)
+      };
+      const plan = grouped.get(Number(row.plan_id));
+      plan.items.push(item);
+      plan.total_items++;
+      if (item.lesson_status === "read") plan.read_items++;
+      if (item.assessment_count > 0 || item.quiz_total > 0 && item.quiz_answered === item.quiz_total) plan.assessed_items++;
+      if (item.note_count > 0) plan.noted_items++;
+    }
+    return [...grouped.values()];
+  });
+}
+
+// packages/core/src/services/study.ts
 var import_node_fs4 = require("node:fs");
 var import_node_path4 = require("node:path");
 
@@ -23710,15 +24018,33 @@ function createStudyService(db, deps) {
   const rollbackPlanWithTodos = (planId) => {
     deps.plans.remove(planId);
   };
+  const bindDraftCourse = (draft2, planId) => {
+    if (draft2.course_id == null) return;
+    const course = db.prepare("SELECT plan_id FROM courses WHERE id = ?").get(draft2.course_id);
+    if (!course) throw new Error(`\u5173\u8054\u8BFE\u7A0B ${draft2.course_id} \u4E0D\u5B58\u5728\uFF0C\u65E0\u6CD5\u786E\u8BA4\u5B66\u4E60\u8BA1\u5212`);
+    if (course.plan_id != null) {
+      if (Number(course.plan_id) !== planId) {
+        throw new Error(`\u8BFE\u7A0B ${draft2.course_id} \u5DF2\u7ED1\u5B9A\u5B66\u4E60\u8BA1\u5212 ${course.plan_id}\uFF0C\u4E0D\u5F97\u6539\u7ED1\u8BA1\u5212 ${planId}`);
+      }
+      return;
+    }
+    db.prepare("UPDATE courses SET plan_id = ?, updated_at = ? WHERE id = ? AND plan_id IS NULL").run(planId, nowIso(), draft2.course_id);
+  };
   const confirmDraft = (id2, opts = {}) => {
     const d = getDraft(id2);
     if (d.status === "confirmed" && d.plan_id != null) {
-      return { draft: d, plan: deps.plans.get(d.plan_id) };
+      const planId = d.plan_id;
+      return inTx(db, () => {
+        const plan2 = deps.plans.get(planId);
+        bindDraftCourse(d, plan2.id);
+        return { draft: d, plan: plan2 };
+      });
     }
     if (d.status === "cancelled") throw new Error(`\u8349\u6848 ${id2} \u5DF2\u53D6\u6D88\uFF0C\u4E0D\u80FD\u786E\u8BA4\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u8349\u6848`);
     if (d.start_date == null || d.end_date == null || d.daily_minutes == null || d.items.length === 0) {
       throw new Error(`\u8349\u6848 ${id2} \u5C1A\u672A\u6392\u671F\uFF08\u7F3A\u8D77\u59CB\u65E5\u671F/\u6BCF\u65E5\u9884\u7B97/\u9010\u65E5\u5B89\u6392\uFF09\uFF0C\u4E0D\u80FD\u786E\u8BA4\uFF1B\u8BF7\u5148 preview_study_draft_schedule \u9884\u89C8\u5E76 schedule_study_draft \u6392\u671F`);
     }
+    const dailyMinutes = d.daily_minutes;
     if (d.conflict_checked_at != null) {
       assertOverDatesConfirmed(overDatesOf(d.items, d.daily_minutes), opts.confirmed_over_dates, "\u786E\u8BA4");
     }
@@ -23732,31 +24058,20 @@ function createStudyService(db, deps) {
       create_todos: true,
       daily_minutes: d.daily_minutes
     });
-    let pendingError = null;
-    let confirmed = false;
     try {
-      confirmed = db.prepare(
-        `UPDATE study_plan_drafts SET status = 'confirmed', plan_id = ?, confirmed_at = ?, updated_at = ? WHERE id = ? AND status = 'draft'`
-      ).run(plan.id, nowIso(), nowIso(), id2).changes === 1;
+      inTx(db, () => {
+        const confirmed = db.prepare(
+          `UPDATE study_plan_drafts SET status = 'confirmed', plan_id = ?, confirmed_at = ?, updated_at = ? WHERE id = ? AND status = 'draft'`
+        ).run(plan.id, nowIso(), nowIso(), id2).changes === 1;
+        if (!confirmed) throw new Error(`\u8349\u6848 ${id2} \u786E\u8BA4\u4E2D\u65AD\uFF08\u72B6\u6001\u66F4\u65B0\u672A\u751F\u6548\uFF09\uFF0C\u5DF2\u56DE\u6EDA\u672C\u6B21\u751F\u6210\u7684\u8BA1\u5212 ${plan.id}`);
+        if (d.conflict_checked_at != null) {
+          assertOverDatesConfirmed(overDatesOf(d.items, dailyMinutes, plan.id), opts.confirmed_over_dates, "\u786E\u8BA4\u590D\u68C0");
+        }
+        bindDraftCourse(d, plan.id);
+      });
     } catch (e) {
-      confirmed = false;
-      pendingError = e;
-    }
-    if (!confirmed) {
       rollbackPlanWithTodos(plan.id);
-      if (pendingError) throw pendingError;
-      throw new Error(`\u8349\u6848 ${id2} \u786E\u8BA4\u4E2D\u65AD\uFF08\u72B6\u6001\u66F4\u65B0\u672A\u751F\u6548\uFF09\uFF0C\u5DF2\u56DE\u6EDA\u672C\u6B21\u751F\u6210\u7684\u8BA1\u5212 ${plan.id}`);
-    }
-    if (d.conflict_checked_at != null) {
-      try {
-        assertOverDatesConfirmed(overDatesOf(d.items, d.daily_minutes, plan.id), opts.confirmed_over_dates, "\u786E\u8BA4\u590D\u68C0");
-      } catch (e) {
-        db.prepare(
-          `UPDATE study_plan_drafts SET status = 'draft', plan_id = NULL, confirmed_at = NULL, updated_at = ? WHERE id = ?`
-        ).run(nowIso(), id2);
-        rollbackPlanWithTodos(plan.id);
-        throw e;
-      }
+      throw e;
     }
     return { draft: getDraft(id2), plan };
   };
@@ -23779,7 +24094,7 @@ function createStudyService(db, deps) {
     if (date3 < addDays(todayStr(), -MAX_SESSION_BACKFILL_DAYS)) {
       throw new Error(`\u4F1A\u8BDD\u65E5\u671F ${date3} \u8FC7\u65E9\uFF0C\u4E0D\u652F\u6301\u8865\u8BB0\u8D85\u8FC7 ${MAX_SESSION_BACKFILL_DAYS} \u5929\u524D\u7684\u4F1A\u8BDD`);
     }
-    if (!Number.isInteger(input2.actual_minutes) || input2.actual_minutes <= 0 || input2.actual_minutes > 1440) {
+    if (input2.actual_minutes !== void 0 && (!Number.isInteger(input2.actual_minutes) || input2.actual_minutes <= 0 || input2.actual_minutes > 1440)) {
       throw new Error(`\u5B9E\u9645\u7528\u65F6 actual_minutes \u5FC5\u987B\u4E3A 1~1440 \u7684\u6574\u6570\uFF08\u5206\u949F\uFF09\uFF0C\u6536\u5230 "${input2.actual_minutes}"`);
     }
     if (input2.plan_item_id != null) {
@@ -23833,7 +24148,7 @@ function createStudyService(db, deps) {
         topic,
         attempt,
         date3,
-        input2.actual_minutes,
+        input2.actual_minutes ?? existing?.actual_minutes ?? 0,
         explanation,
         questions,
         materialSource,
@@ -24436,6 +24751,7 @@ ${body}`;
     confirmDraft,
     cancelDraft,
     recordSession,
+    getProgress: (planId) => getStudyProgress(db, planId),
     listSessions,
     recordAssessment,
     listAssessments,
@@ -25986,7 +26302,7 @@ var manifest_schema_default = {
 };
 
 // package.json
-var version2 = "0.21.0";
+var version2 = "0.28.0";
 var package_default = {
   name: "tododesk-monorepo",
   private: true,
@@ -35593,7 +35909,7 @@ var TOOL_GROUPS = {
 };
 
 // apps/help/docs/09-study-loop.md
-var study_loop_default = "---\ntitle: \u5B66\u4E60\u95ED\u73AF\ndescription: \u5BF9 AI \u8BF4\u300C\u5B66\u4E60\u7EBF\u6027\u4EE3\u6570\u300D\uFF0C\u7531 agent \u6309\u672C\u89C4\u8303\u5B8C\u6210\u8BA1\u5212\u3001\u5B66\u4E60\u8BB0\u5F55\u3001\u6D4B\u8BC4\u3001\u8C03\u6574\u4E0E\u77E5\u8BC6\u6C89\u6DC0\n---\n\n## \u8FD9\u662F\u4EC0\u4E48\n\nDayfolio \u7684\u5B66\u4E60\u95ED\u73AF\u4EE5 **AI agent \u4E3A\u7B2C\u4E00\u64CD\u4F5C\u8005**\uFF1A\u4F60\u5728 zcode \u7B49 AI \u5BA2\u6237\u7AEF\u91CC\u8BF4\u300C\u5B66\u4E60\u7EBF\u6027\u4EE3\u6570\u300D\uFF0Cagent \u6309 Dayfolio \u89C4\u8303\u5B8C\u6210\u4ECE\u8BA1\u5212\u5230\u6C89\u6DC0\u7684\u5168\u6D41\u7A0B\uFF1BApp \u5185\u53EA\u505A**\u5C55\u793A\u4E0E\u786E\u8BA4**\uFF08\u8349\u6848\u786E\u8BA4\u3001\u8C03\u6574\u5E94\u7528\u3001\u5361\u7247\u5BFC\u51FA\uFF09\uFF0C\u6CA1\u6709\u624B\u5DE5\u5EFA\u8BA1\u5212\u7684\u8868\u5355\u3002\n\nApp\u300C\u5B66\u4E60\u8BA1\u5212\u300D\u9996\u9875\u9ED8\u8BA4\u663E\u793A**\u8BA1\u5212**\uFF0C\u6807\u9898\u53F3\u4FA7\u53EF\u5207\u6362\u5230**\u8BFE\u7A0B**\u3002\u8BA1\u5212\u5361\u663E\u793A\u5173\u8054\u8BFE\u7A0B\uFF1B\u6682\u672A\u5173\u8054\u65F6\u663E\u793A\u300C\u5F85\u5173\u8054\u8BFE\u7A0B\u300D\u3002\u8BA1\u5212\u53EF\u5148\u6392\u671F\uFF0C\u4F46\u6700\u7EC8\u5E94\u5173\u8054\u8BFE\u7A0B\uFF1A\u8BF7 agent \u5BFC\u5165\u8BFE\u7A0B\u6837\u8BFE\u5E76\u5F15\u7528\u73B0\u6709\u8BA1\u5212\uFF0C\u6216\u4E3A\u672A\u7ED1\u5B9A\u8BFE\u7A0B\u91CD\u5BFC\u540C\u5185\u5BB9\u6837\u8BFE\u5305\u8865\u4E0A\u8BA1\u5212\u5173\u8054\u3002\n\n\u6253\u5F00\u8BA1\u5212\u540E\uFF0C\u70B9\u51FB\u6BCF\u65E5\u6761\u76EE\u7684\u6587\u5B57\u6216\u300C\u8BE6\u60C5 \u2192\u300D\u53EF\u8FDB\u5165**\u8BA1\u5212\u6761\u76EE\u8BE6\u60C5**\uFF0C\u67E5\u770B\u5B8C\u6574\u5B89\u6392\u3001\u65E5\u671F\u3001\u7C7B\u578B\u3001\u9884\u8BA1\u65F6\u957F\u3001\u5F53\u524D\u72B6\u6001\uFF0C\u4EE5\u53CA\u4E0E\u8BE5\u6761\u76EE\u5173\u8054\u7684\u5B66\u4E60\u4F1A\u8BDD\u548C\u6D4B\u8BC4\uFF1B\u6709\u77E5\u8BC6\u70B9\u638C\u63E1\u6570\u636E\u65F6\u4E5F\u4F1A\u663E\u793A\u3002\u6761\u76EE\u5DE6\u4FA7\u7684\u52FE\u9009\u6309\u94AE\u53EF\u76F4\u63A5\u5B8C\u6210\u6216\u64A4\u9500\u5B8C\u6210\uFF0C\u5F85\u529E\u6761\u76EE\u4ECD\u53EF\u76F4\u63A5\u300C\u8DF3\u8FC7\u300D\u3002\u8BE6\u60C5\u9875\u4E5F\u80FD\u5B8C\u6210\u3001\u64A4\u9500\u3001\u8DF3\u8FC7\u6216\u6062\u590D\u5F85\u529E\uFF1B\u8FD4\u56DE\u8BA1\u5212\u8BE6\u60C5\u65F6\u4FDD\u7559\u539F\u6765\u7684\u6D4F\u89C8\u4F4D\u7F6E\u3002\u6253\u5361\u72B6\u6001\u4E0E\u77E5\u8BC6\u70B9\u638C\u63E1\u5EA6\u5206\u522B\u8BA1\u7B97\uFF0C\u5B8C\u6210\u6761\u76EE\u4E0D\u7B49\u4E8E\u901A\u8FC7\u6D4B\u8BC4\u3002\n\n\u672C\u6587\u4EF6\u662F\u5B66\u4E60\u95ED\u73AF\u7684**\u552F\u4E00\u89C4\u8303\u6E90**\uFF1AMCP \u7684 `get_study_workflow` \u5DE5\u5177\u4E0E `tododesk://study/workflow` \u8D44\u6E90\u8FD4\u56DE\u7684\u5C31\u662F\u672C\u6587\u5185\u5BB9\uFF08\u6784\u5EFA\u65F6\u540C\u6E90\u6CE8\u5165\uFF09\uFF0C\u6539\u89C4\u8303\u53EA\u6539\u8FD9\u91CC\u3002\n\n## \u5168\u6D41\u7A0B\uFF08agent \u64CD\u4F5C\u89C4\u8303\uFF09\n\n1. **\u6F84\u6E05\u76EE\u6807**\uFF1A\u7F3A\u4FE1\u606F\u5148\u95EE\u7528\u6237\uFF0C\u4E0D\u8981\u7F16\u9020\u3002\u9700\u8981\u6F84\u6E05\u7684\u5178\u578B\u9879\uFF1A\u5B66\u4E60\u52A8\u673A\u4E0E\u76EE\u6807\u6C34\u5E73\u3001\u6BCF\u65E5\u65F6\u95F4\u9884\u7B97\uFF08\u5206\u949F\uFF09\u3001\u6750\u6599\u6765\u6E90\uFF08\u4E66/\u8BFE/\u6587\u6863\uFF09\u3001\u8D77\u70B9\u4E0E\u5148\u4FEE\u57FA\u7840\u3001\u671F\u671B\u5B8C\u6210\u65F6\u95F4\u3002\n2. **\u5148\u4FEE\u8BCA\u65AD**\uFF1A\u6309\u76EE\u6807\u62C6\u77E5\u8BC6\u70B9\u65F6\u5148\u5224\u65AD\u7528\u6237\u662F\u5426\u5177\u5907\u5148\u4FEE\u77E5\u8BC6\uFF1B\u4E0D\u786E\u5B9A\u5C31\u5355\u72EC\u62C6\u6210\u524D\u7F6E\u77E5\u8BC6\u70B9\u653E\u8FDB\u8BA1\u5212\uFF0C\u6216\u5148\u95EE\u4E00\u53E5\u3002\n3. **\u751F\u6210\u8349\u6848\uFF08\u6709\u65E5\u671F\uFF09**\uFF1A\u7528\u6237\u5DF2\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u65F6\uFF0C\u8C03\u7528 `draft_study_plan`\uFF0C\u4F20\u5165\u6807\u9898\u3001\u76EE\u6807\u3001\u6750\u6599\u6765\u6E90\u3001\u6BCF\u65E5\u9884\u7B97\uFF0810~600 \u5206\u949F\uFF09\u3001\u5F00\u59CB\u65E5\u671F\u4E0E\u77E5\u8BC6\u70B9\u6E05\u5355\uFF08\u6BCF\u9879\u542B\u7A33\u5B9A `key`\u3001\u540D\u79F0\u3001\u4F9D\u8D56 `depends_on`\u3001\u9884\u8BA1\u65F6\u957F\u3001\u53EF\u9A8C\u8BC1\u6210\u679C `outcome`\uFF09\u3002Dayfolio \u6309**\u900F\u660E\u89C4\u5219**\uFF08\u89C1\u4E0B\uFF09\u6392\u6210\u9010\u65E5\u5B89\u6392\u5E76\u4FDD\u5B58\u4E3A**\u8349\u6848**\u2014\u2014\u6B64\u65F6\u4E0D\u521B\u5EFA\u4EFB\u4F55\u8BA1\u5212\u3001\u5F85\u529E\u6216\u6253\u5361\u3002\u7F3A\u5931\u7684\u65F6\u957F/\u6210\u679C\u4F1A\u8BB0\u5F55\u5728\u8349\u6848\u7684 `assumptions` \u91CC\uFF0C\u5411\u7528\u6237\u5C55\u793A\uFF0C\u4E0D\u8981\u9ED8\u9ED8\u8865\u9020\u3002\n4. **\u65E0\u65E5\u671F\u5148\u5B58\uFF08\u65E5\u671F\u5F85\u6392\u671F\uFF09**\uFF1A\u7528\u6237**\u5C1A\u672A**\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\uFF08\u5982\u300C\u8FD9\u6279\u4E13\u9898\u6587\u7A3F\u5148\u5B58\u7740\uFF0C\u4EC0\u4E48\u65F6\u5019\u5B66\u518D\u5B9A\u300D\uFF09\u65F6\uFF0C\u8C03\u7528 `draft_study_topic` \u4FDD\u5B58**\u65E0\u65E5\u671F\u4E13\u9898\u8349\u6848**\uFF1A\u53EA\u5B58\u4E3B\u9898\u5927\u7EB2/\u77E5\u8BC6\u70B9/\u6750\u6599\u4E0E\u53EF\u9009\u7684\u6837\u8BFE\u8BFE\u7A0B\u5173\u8054\uFF08`course_id`\uFF0C\u6837\u8BFE\u672A\u786E\u8BA4\u4E5F\u53EF\u5173\u8054\uFF09\u2014\u2014**\u4E0D\u6392\u65E5\u7A0B\u3001\u4E0D\u4EA7\u5F85\u529E\u3001\u4E0D\u5360\u6BCF\u65E5\u9884\u7B97**\u3002\u77E5\u8BC6\u70B9\u5728\u521B\u5EFA\u65F6\u5373\u6821\u9A8C\uFF08key \u683C\u5F0F/\u4F9D\u8D56/\u73AF\uFF09\uFF0C\u5185\u5BB9\u53EF\u968F\u540E\u7528 `update_study_topic_draft` \u66F4\u65B0\uFF08\u4EC5\u672A\u6392\u671F\u65F6\uFF09\u3002**\u4E0D\u8981**\u4E3A\u4E86\u8D70 dated \u6D41\u7A0B\u66FF\u7528\u6237\u62CD\u65E5\u671F\u6216\u9884\u7B97\u3002\n5. **\u6392\u671F\uFF08\u9884\u89C8 \u2192 \u786E\u8BA4\u63D0\u4EA4\uFF09**\uFF1A\u7528\u6237\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u540E\uFF0C\u5148\u8C03 `preview_study_draft_schedule` **\u53EA\u8BFB\u9884\u89C8**\u2014\u2014\u9010\u65E5\u5B89\u6392\u3001\u4F9D\u8D56\u62D3\u6251\u987A\u5E8F\u3001\u4E0E\u5176\u4ED6**\u8FDB\u884C\u4E2D\u8BA1\u5212**\u7684\u6BCF\u65E5\u9884\u7B97\u51B2\u7A81\uFF08\u65E2\u6709\u5360\u7528 + \u65B0\u6392\u8D85\u9884\u7B97\u7684\u65E5\u5B50\uFF0C\u6C47\u603B\u5728\u8FD4\u56DE\u7684 `over_budget_dates`\uFF09\u4E0E\u77E5\u8BC6\u70B9\u91CD\u590D\u9884\u8B66\u3001\u900F\u660E\u89C4\u5219\u5047\u8BBE\uFF1B**\u6709\u9884\u8B66\u5FC5\u987B\u9010\u6761\u5FF5\u7ED9\u7528\u6237**\u3002\u7528\u6237\u660E\u786E\u540C\u610F\u540E\u624D\u8C03 `schedule_study_draft`\uFF0C\u5E76\u628A `over_budget_dates` **\u539F\u6837**\u4F5C\u4E3A `confirmed_over_dates` \u4F20\u56DE\u2014\u2014\u670D\u52A1\u7AEF\u5728**\u4E8B\u52A1\u5185\u6309\u5F53\u4E0B\u5E93\u72B6\u6001\u91CD\u7B97\u5E76\u786C\u6821\u9A8C**\uFF1A\u6709\u51B2\u7A81\u672A\u786E\u8BA4\u3001\u9884\u89C8\u540E\u65E2\u6709\u8BA1\u5212\u53D8\u52A8\u5BFC\u81F4\u51B2\u7A81\u96C6\u53D8\u5316\u3001\u51B2\u7A81\u5DF2\u6D88\u5931\u5374\u4ECD\u5E26\u65E7\u786E\u8BA4\u96C6\uFF0C\u4E00\u5F8B\u62D2\u7EDD\uFF08UI \u63D0\u793A\u4E0D\u80FD\u66FF\u4EE3\u670D\u52A1\u5C42\u6821\u9A8C\uFF09\u3002\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4**\u5E42\u7B49**\uFF1B\u672A\u786E\u8BA4\u524D\u6362\u53C2\u6570 = \u91CD\u65B0\u6392\u671F\uFF08\u91CD\u65B0\u8FC7\u786C\u6821\u9A8C\uFF09\u3002\n6. **\u9884\u89C8\u4E0E\u786E\u8BA4**\uFF1A\u628A\u8349\u6848\u9010\u65E5\u5B89\u6392\u4E0E\u5047\u8BBE\u5FF5\u7ED9\u7528\u6237\uFF1B\u7528\u6237\u540C\u610F\u540E\u8C03\u7528 `confirm_study_plan_draft`\uFF08\u751F\u6210\u6B63\u5F0F\u8BA1\u5212\u4E0E\u9010\u65E5\u5F85\u529E\uFF0C\u5E42\u7B49\u53EF\u91CD\u8BD5\uFF09\u3002**\u786E\u8BA4\u8FB9\u754C\u540C\u6837\u786C\u6821\u9A8C\u51B2\u7A81**\uFF08\u7ECF `schedule_study_draft` \u6392\u671F\u7684\u8349\u6848\uFF09\uFF1A\u6392\u671F\u4E4B\u540E\u3001\u786E\u8BA4\u4E4B\u524D\u65E2\u6709\u8BA1\u5212\u53EF\u80FD\u53D8\u52A8\u2014\u2014\u786E\u8BA4\u65F6\u670D\u52A1\u7AEF\u91CD\u7B97\u8D85\u9884\u7B97\u65E5\u671F\uFF0C\u5B58\u5728\u51B2\u7A81\u5FC5\u987B\u518D\u6B21\u643A\u5E26\u4E0E\u91CD\u7B97**\u7CBE\u786E\u4E00\u81F4**\u7684 `confirmed_over_dates`\uFF0C\u5426\u5219\u62D2\u7EDD\uFF08\u5EFA\u8BA1\u5212\u671F\u95F4\u7684\u5E76\u53D1\u53D8\u52A8\u7531\u590D\u68C0\u515C\u5E95\uFF0C\u4E0D\u4E00\u81F4\u6574\u4F53\u56DE\u9000\uFF0C\u4E0D\u7559\u51B2\u7A81\u672A\u786E\u8BA4\u7684\u8BA1\u5212\uFF09\u3002\u7528\u6237\u4E0D\u8981\u5C31 `cancel_study_plan_draft`\uFF08\u65E0\u4EFB\u4F55\u526F\u4F5C\u7528\uFF09\u3002\u672A\u6392\u671F\u7684\u8349\u6848\u4E0D\u80FD\u786E\u8BA4\uFF08\u4F1A\u62D2\u7EDD\u5E76\u63D0\u793A\u5148\u6392\u671F\uFF09\uFF1B\u65E7\u8DEF\u5F84\u8349\u6848\uFF08`draft_study_plan` \u521B\u5EFA\u5373\u6392\u671F\uFF09\u786E\u8BA4\u4E0D\u8BBE\u51B2\u7A81\u95E8\uFF08\u5386\u53F2\u884C\u4E3A\u4FDD\u6301\uFF09\u3002\n7. **\u6BCF\u65E5\u6267\u884C**\uFF1A\u6BCF\u5929\u4ECE `get_today` \u770B\u5F53\u65E5\u5B89\u6392\u3002\u5B66\u4E60\u5B8C\u6210\u540E\u8C03\u7528 `record_study_session` \u8BB0\u5F55\u4E00\u6B21\u72EC\u7ACB\u4F1A\u8BDD\uFF1A\u5B9E\u9645\u7528\u65F6\u3001**\u81EA\u5DF1\u7684\u89E3\u91CA/\u7B54\u6848**\uFF08\u7528\u81EA\u5DF1\u7684\u8BDD\u8BB2\u51FA\u6765\uFF09\u3001\u7591\u95EE\u3001\u6750\u6599\u6765\u6E90\u3002\u540C\u4E00\u76EE\u6807\u5B66\u4E86\u51E0\u904D\u5C31\u8BB0\u51E0\u6761\uFF08`attempt` \u9012\u589E\uFF09\uFF0C\u91CD\u8BD5\u8BF7\u5E26\u540C\u4E00\u7A33\u5B9A `id` \u4FDD\u8BC1\u5E42\u7B49\u3002\n8. **\u6D4B\u8BC4\u7559\u8BC1**\uFF1A\u8C03\u7528 `record_study_assessment` \u8BB0\u5F55\u9898\u76EE\u3001\u8BC4\u4EF7\u6807\u51C6\u3001\u539F\u7B54\u6848\u3001\u8BC4\u5206\u4E0E**\u4F9D\u636E**\u3002`source` \u5FC5\u987B\u663E\u5F0F\uFF1A`self`\uFF08\u81EA\u8BC4\uFF0C\u53EF\u88AB\u540E\u7EED\u7EA0\u6B63\uFF09\u3001`objective`\uFF08\u5BA2\u89C2\u6D4B\u8BD5\uFF0C**\u5FC5\u987B\u9644\u771F\u5B9E\u5224\u9898\u4F9D\u636E evidence \u4E0E\u5224\u9898\u7ED3\u679C**\uFF0CDayfolio \u4E0D\u4EE3\u5224\u4E5F\u4E0D\u4F2A\u9020\uFF09\u3001`ai_suggestion`\uFF08AI \u7684\u5EFA\u8BAE\u6027\u53CD\u9988\uFF0C\u4EC5\u8BB0\u5F55\uFF0C**\u4E0D\u8BA1\u5165\u638C\u63E1\u8BC1\u636E**\uFF09\u3002\n9. **\u590D\u76D8\u8C03\u6574**\uFF1A\u5468\u671F\u6027\u8C03\u7528 `suggest_plan_adjustments` \u83B7\u53D6\u5EFA\u8BAE\uFF08\u7EAF\u9884\u89C8\u3001\u4E0D\u5199\u5E93\uFF09\uFF0C\u4F9D\u636E\u6765\u81EA\u6F0F\u505A\u6761\u76EE\u4E0E\u8584\u5F31\u8BC1\u636E\uFF1B\u7528\u6237\u786E\u8BA4\u540E `apply_plan_adjustments`\uFF08\u5165\u53C2\u643A\u5E26\u9884\u89C8\u65F6\u7684\u5EFA\u8BAE\u65E5\u671F\u505A**\u5FEB\u7167\u7ED1\u5B9A**\u2014\u2014\u8BA1\u5212\u5DF2\u53D8\u5316\u5BFC\u81F4\u5EFA\u8BAE\u65E5\u671F\u4E0D\u540C\u5219\u62D2\u7EDD\u8BE5\u6761\u5E76\u8981\u6C42\u91CD\u65B0\u9884\u89C8\uFF1B\u53EA\u52A8**\u672A\u5B8C\u6210**\u6761\u76EE\uFF0C\u540C\u6B65\u5173\u8054\u5F85\u529E\u622A\u6B62\u65E5\uFF0C\u5FC5\u8981\u65F6\u5EF6\u957F\u8BA1\u5212\uFF09\u3002\u7528\u6237\u4E0D\u786E\u8BA4\u5C31\u4E0D\u8C03\u7528\u2014\u2014\u53D6\u6D88\u6C38\u8FDC\u65E0\u526F\u4F5C\u7528\u3002\n10. **\u77E5\u8BC6\u6C89\u6DC0**\uFF1A\u5B66\u4E60\u7A33\u5B9A\u540E\u8C03\u7528 `preview_study_cards` \u9884\u89C8\u5F85\u5BA1\u5361\u7247\uFF1B\u7528\u6237\u786E\u8BA4\u5BFC\u51FA\u76EE\u5F55\u540E `export_study_cards` \u5199\u51FA Obsidian Markdown\uFF08`status: draft`\u3001`verified: false`\uFF0C\u542B\u6765\u6E90\u3001\u4F1A\u8BDD ID\u3001\u6D4B\u8BC4\u8BC1\u636E\uFF09\u3002\u540C\u4E00\u5361\u7247\u91CD\u590D\u5BFC\u51FA\u5E42\u7B49\uFF0C**\u88AB\u4EBA\u5DE5\u7F16\u8F91\u8FC7\u7684\u6587\u4EF6\u6C38\u4E0D\u8986\u76D6**\u3002\u5BFC\u51FA\u76EE\u5F55\u5FC5\u987B\u662F\u7528\u6237\u6307\u5B9A\u7684\u72EC\u7ACB\u76EE\u5F55\u2014\u2014core \u5C42\u4F1A**\u786C\u62D2\u7EDD**\u5199\u5165\u4EFB\u4F55\u77E5\u8BC6\u5E93 vault\uFF08\u542B\u5DF2\u6CE8\u518C vault\u3001\u5185\u7F6E\u9ED8\u8BA4\u4FDD\u62A4\u6839 `~/Desktop/knowledge-base` \u5373\u4F7F\u5C1A\u672A\u6CE8\u518C\u3001`TODODESK_PROTECTED_DIRS` \u6307\u5B9A\u76EE\u5F55\uFF1B\u7B26\u53F7\u94FE\u63A5\u522B\u540D\u540C\u6837\u62E6\u622A\uFF09\uFF0C\u800C\u4E0D\u662F\u4EC5\u9760\u63D0\u793A\u3002\n\n## \u900F\u660E\u89C4\u5219\uFF08\u53EF\u9A8C\u8BC1\u7684\u4E0D\u53D8\u5F0F\uFF09\n\n- **\u6392\u7A0B**\uFF1A\u77E5\u8BC6\u70B9\u5148\u6309\u4F9D\u8D56\u62D3\u6251\u6392\u5E8F\uFF08\u4FDD\u6301\u8F93\u5165\u987A\u5E8F\uFF0C\u6709\u73AF\u62A5\u9519\uFF09\uFF0C\u518D\u4ECE\u5F00\u59CB\u65E5\u6309\u6BCF\u65E5\u9884\u7B97\u88C5\u7BB1\uFF1B\u5355\u4E2A\u77E5\u8BC6\u70B9\u8D85\u8FC7\u5168\u5929\u9884\u7B97\u65F6\u5355\u72EC\u5360\u4E00\u5929\u5E76\u8BB0\u5165\u5047\u8BBE\u3002\n- **\u65E0\u65E5\u671F\u8349\u6848\u96F6\u526F\u4F5C\u7528**\uFF1A`draft_study_topic` \u53EA\u5199\u8349\u6848\u8868\uFF08start/end/daily_minutes \u4E3A\u7A7A\u3001items \u4E3A\u7A7A\uFF09\u2014\u2014\u4E0D\u6392\u65E5\u7A0B\u3001\u4E0D\u4EA7\u5F85\u529E\u3001\u4E0D\u5360\u9884\u7B97\u3001\u4E0D\u8FDB\u4ECA\u65E5\u9762\u677F\uFF1B\u521B\u5EFA\u65F6\u5373\u6821\u9A8C\u77E5\u8BC6\u70B9\uFF08key \u683C\u5F0F/\u53BB\u91CD/\u4F9D\u8D56\u5B58\u5728\u6027/\u73AF\u68C0\u6D4B\uFF09\u3002\n- **\u6392\u671F\u4E24\u6BB5\u5F0F\uFF08\u51B2\u7A81\u786C\u6821\u9A8C\uFF0C\u670D\u52A1\u5C42\u5F3A\u5236\uFF09**\uFF1A`preview_study_draft_schedule` \u7EAF\u53EA\u8BFB\u2014\u2014\u9010\u65E5\u5B89\u6392 + \u4F9D\u8D56\u62D3\u6251\u987A\u5E8F + \u4E0E\u8FDB\u884C\u4E2D\u8BA1\u5212\u7684**\u6BCF\u65E5\u9884\u7B97\u51B2\u7A81**\uFF08\u5176\u4ED6 active \u8BA1\u5212\u5F53\u65E5\u65E2\u6709\u5360\u7528 + \u672C\u8349\u6848\u65B0\u6392\u8D85\u51FA\u58F0\u660E\u7684\u6BCF\u65E5\u9884\u7B97\uFF0C\u6C47\u603B\u4E3A `over_budget_dates`\uFF09\u4E0E**\u77E5\u8BC6\u70B9\u91CD\u590D**\uFF08\u540C key \u5DF2\u5728\u5176\u4ED6 active \u8BA1\u5212\u672A\u5B8C\u6210\u6761\u76EE\u91CC\uFF09\u9884\u8B66\uFF1B`schedule_study_draft` \u5728 **BEGIN IMMEDIATE \u4E8B\u52A1\u5185\u91CD\u7B97**\u8D85\u9884\u7B97\u65E5\u671F\u5E76\u4E0E `confirmed_over_dates` **\u7CBE\u786E\u5339\u914D**\uFF08\u96C6\u5408\u5B8C\u5168\u4E00\u81F4\u624D\u653E\u884C\u2014\u2014\u6709\u51B2\u7A81\u672A\u786E\u8BA4\u3001\u786E\u8BA4\u96C6\u8FC7\u671F\u3001\u51B2\u7A81\u6D88\u5931\u4ECD\u5E26\u65E7\u96C6\u5747\u62D2\u7EDD\uFF09\uFF0C\u4E8B\u52A1\u843D\u5E93\u4E14**\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4\u5E42\u7B49**\uFF0C\u672A\u786E\u8BA4\u524D\u6362\u53C2\u6570 = \u91CD\u65B0\u6392\u671F\uFF08\u91CD\u65B0\u8FC7\u786C\u6821\u9A8C\uFF09\uFF1B\u5DF2\u786E\u8BA4/\u5DF2\u53D6\u6D88\u7684\u8349\u6848\u62D2\u7EDD\u6392\u671F\uFF1B\u672A\u6392\u671F\u8349\u6848\u4E0D\u80FD\u786E\u8BA4\u3002**\u786E\u8BA4\u8FB9\u754C\u91CD\u68C0**\uFF1A\u786E\u8BA4\u65F6\u6309\u5F53\u4E0B\u5E93\u72B6\u6001\u518D\u7B97\u4E00\u6B21\uFF08\u5EFA\u8BA1\u5212\u540E\u8FD8\u590D\u68C0\u4E00\u6B21\u4EE5\u6355\u83B7\u5E76\u53D1\u5199\u5165\uFF0C\u4E0D\u4E00\u81F4\u6574\u4F53\u56DE\u9000\u5220\u8BA1\u5212\u5220\u5F85\u529E\uFF09\uFF1B\u65E7\u8DEF\u5F84\u8349\u6848\uFF08`draft_study_plan` \u521B\u5EFA\u5373\u6392\u671F\uFF0C\u65E0\u6392\u671F\u63D0\u4EA4\u65F6\u523B\u6807\u8BB0\uFF09\u786E\u8BA4\u4E0D\u8BBE\u51B2\u7A81\u95E8\u2014\u2014\u8C41\u514D\u4EC5\u9650\u8FD9\u4E00\u7C7B\uFF0C\u4E0D\u524A\u5F31\u65B0\u6392\u671F\u8349\u6848\u7684\u4EFB\u4F55\u6821\u9A8C\u3002\n- **\u8C03\u6574\u5EFA\u8BAE\u4F9D\u8D56\u611F\u77E5**\uFF1A\u6F0F\u505A\u6761\u76EE\u6539\u671F\u540E\uFF0C\u82E5\u5176**\u672A\u5B8C\u6210\u540E\u7EE7**\u6761\u76EE\u4F1A\u65E9\u4E8E\u524D\u7F6E\uFF08\u542B\u6539\u671F\u540E\u7684\u751F\u6548\u65E5\u671F\uFF09\uFF0C\u9884\u89C8\u4F1A**\u8054\u52A8\u987A\u5EF6\u540E\u7EE7**\u5230\u524D\u7F6E\u4E4B\u540E\u7684\u9884\u7B97\u7A7A\u4F4D\uFF0C\u7EDD\u4E0D\u8BA9\u540E\u7EE7\u6392\u5728\u672A\u5B8C\u6210\u524D\u7F6E\u4E4B\u524D\uFF1B\u5DF2\u5B8C\u6210/\u5DF2\u8DF3\u8FC7\u7684\u524D\u7F6E\u89C6\u4E3A\u5DF2\u6EE1\u8DB3\uFF0C\u4E0D\u518D\u7EA6\u675F\u540E\u7EE7\uFF1B\u7EA7\u8054\u9010\u65E5\u4F20\u64AD\u5E76\u9010\u6761\u9884\u5360\u6BCF\u65E5\u9884\u7B97\u3002\n- **\u4F9D\u8D56\u7EC4\u5B8C\u6574\u6027\uFF08\u90E8\u5206\u5E94\u7528\u4FDD\u62A4\uFF09**\uFF1A\u5E94\u7528\u65F6\u53EA\u52FE\u9009\u524D\u7F6E\u6539\u671F\u800C\u843D\u4E0B\u5176\u540E\u7EE7\u7684\u8054\u52A8\u5EFA\u8BAE\uFF0C\u4F1A\u88AB**\u6574\u7EC4\u62D2\u7EDD**\uFF08\u8BE5\u6761\u8DF3\u8FC7\u5E76\u8BF4\u660E\u9700\u4E00\u8D77\u52FE\u9009\u7684\u5EFA\u8BAE\uFF09\u2014\u2014\u843D\u5E93\u8BA1\u5212\u4EFB\u4F55\u65F6\u523B\u90FD\u4E0D\u4F1A\u51FA\u73B0\u300C\u540E\u7EE7\u65E9\u4E8E\u672A\u5B8C\u6210\u524D\u7F6E\u300D\uFF1B\u4F20\u9012\u94FE\uFF08A\u2192B\u2192C \u53EA\u52FE\u90E8\u5206\uFF09\u6309\u4E0D\u52A8\u70B9\u9010\u7EA7\u56DE\u9000\u3002\n- **\u638C\u63E1\u5EA6\u5224\u5B9A**\uFF08`get_mastery`\uFF0C\u53EA\u770B\u6D4B\u8BC4\u8BC1\u636E\uFF0C\u4E0E\u4EFB\u52A1\u5B8C\u6210\u7387\u5206\u5F00\u5C55\u793A\uFF1B**\u8BC1\u636E\u6309\u8BA1\u5212\u9694\u79BB**\u2014\u2014\u53EA\u7EDF\u8BA1\u5F52\u5C5E\u8BE5\u8BA1\u5212\u7684\u6D4B\u8BC4\uFF0C\u4F20 `plan_id` \u6216\u5173\u8054\u4F1A\u8BDD\u5373\u53EF\u5F52\u5C5E\uFF09\uFF1A\n\n| \u5224\u5B9A | \u6761\u4EF6 |\n| --- | --- |\n| unknown | \u8BA1\u5212\u5185\u5C1A\u65E0 self/objective \u6D4B\u8BC4\uFF08\u6253\u5361\u3001\u4F1A\u8BDD\u90FD\u4E0D\u7B97\u638C\u63E1\uFF09 |\n| strong | \u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u5BA2\u89C2\u5224\u9898\u901A\u8FC7\uFF1B\u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u81EA\u8BC4 \u2265 80 |\n| reviewing | \u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF0C\u6700\u65B0\u81EA\u8BC4 60~79 |\n| weak | \u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u5BA2\u89C2\u5224\u9898\u672A\u901A\u8FC7\uFF1B\u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u81EA\u8BC4 < 60 |\n\n- **\u5BA2\u89C2\u4F18\u5148**\uFF1A\u53EA\u8981\u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF0C\u5224\u5B9A\u53EA\u770B\u6700\u65B0\u5BA2\u89C2\u7ED3\u679C\uFF0C\u8F83\u65B0\u7684\u81EA\u8BC4\u4E0D\u8986\u76D6\u5BA2\u89C2\uFF1B`ai_suggestion` \u4E0D\u53C2\u4E0E\u5224\u5B9A\u3002\n- **\u53EF\u7EA0\u6B63**\uFF1A\u540C\u4E00\u6D4B\u8BC4 id \u91CD\u65B0\u63D0\u4EA4\u4F1A\u4FDD\u7559 `corrections` \u5386\u53F2\uFF08\u65E7\u8BC4\u5206\u4E0D\u4E22\u5931\uFF09\u3002\n- **\u5E42\u7B49**\uFF1A\u4F1A\u8BDD\u6309\u7A33\u5B9A id \u6216\uFF08\u76EE\u6807, attempt\uFF09\u590D\u7528\uFF1B\u8349\u6848\u786E\u8BA4\u4E00\u6B21\uFF08\u91CD\u590D\u786E\u8BA4\u8FD4\u56DE\u539F\u8BA1\u5212\uFF09\uFF1B\u6392\u671F\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4\u8FD4\u56DE\u539F\u6392\u671F\uFF1B\u5361\u7247\u6309\u5185\u5BB9\u54C8\u5E0C\u53BB\u91CD\u3002\n- **\u8C03\u6574\u8FB9\u754C**\uFF1A`apply` \u77AC\u95F4\u5DF2\u4E0D\u662F pending \u7684\u6761\u76EE\u81EA\u52A8\u8DF3\u8FC7\uFF1B\u5DF2\u5B8C\u6210\u6761\u76EE\u4E0E\u5386\u53F2\u4F1A\u8BDD\u6C38\u4E0D\u88AB\u6539\u5199\u3002\n- **\u7F3A\u7701\u503C**\uFF1A\u77E5\u8BC6\u70B9\u65F6\u957F\u7F3A\u7701 60 \u5206\u949F\uFF1B\u65E7\u8BA1\u5212\u65E0\u9884\u7B97\u65F6\u8C03\u6574\u6309 120 \u5206\u949F/\u5929\u4F30\u5BB9\u91CF\uFF1B\u81EA\u52A8\u8865\u590D\u4E60\u6761\u76EE 20 \u5206\u949F\u3002\n\n## \u5DE5\u5177\u5BF9\u7167\n\n| \u9636\u6BB5 | MCP \u5DE5\u5177 | \u8BFB\u5199 |\n| --- | --- | --- |\n| \u89C4\u8303 | `get_study_workflow` / \u8D44\u6E90 `tododesk://study/workflow` | \u8BFB |\n| \u8349\u6848\uFF08\u6709\u65E5\u671F\uFF09 | `draft_study_plan`\u3001`list_study_drafts`\u3001`get_study_draft` | \u5199\uFF08\u4EC5\u8349\u6848\u8868\uFF09/\u8BFB |\n| \u8349\u6848\uFF08\u65E0\u65E5\u671F\uFF09 | `draft_study_topic`\u3001`update_study_topic_draft` | \u5199\uFF08\u4EC5\u8349\u6848\u8868\uFF0C\u96F6\u526F\u4F5C\u7528\uFF09 |\n| \u6392\u671F | `preview_study_draft_schedule`\uFF08\u53EA\u8BFB\u9884\u89C8\uFF1A\u51B2\u7A81+\u4F9D\u8D56\uFF09\u3001`schedule_study_draft`\uFF08\u4E8B\u52A1+\u5E42\u7B49\uFF09 | \u9884\u89C8/\u5199 |\n| \u786E\u8BA4 | `confirm_study_plan_draft`\u3001`cancel_study_plan_draft` | \u5199\uFF08\u5E42\u7B49/\u65E0\u526F\u4F5C\u7528\uFF09 |\n| \u4F1A\u8BDD | `record_study_session`\u3001`list_study_sessions` | \u5199\uFF08\u5E42\u7B49\uFF09/\u8BFB |\n| \u6D4B\u8BC4 | `record_study_assessment`\u3001`list_study_assessments`\u3001`get_mastery` | \u5199\uFF08\u7559\u8BC1\uFF09/\u8BFB |\n| \u8C03\u6574 | `suggest_plan_adjustments`\u3001`apply_plan_adjustments` | \u9884\u89C8/\u5199 |\n| \u5361\u7247 | `preview_study_cards`\u3001`export_study_cards`\u3001`list_card_exports` | \u9884\u89C8/\u5199\u6587\u4EF6 |\n\n\u8BA1\u5212\u6761\u76EE\u672C\u4F53\uFF08`study_plan`/`plan_item`\uFF09\u3001\u6253\u5361\u4E0E\u5F85\u529E\u6CBF\u7528\u65E2\u6709\u5DE5\u5177\uFF08`create_study_plan`\u3001`update_plan_item`\u3001`get_today` \u7B49\uFF09\u3002\u8349\u6848\u786E\u8BA4\u751F\u6210\u7684\u8BA1\u5212\u4E0E\u666E\u901A\u8BA1\u5212\u5B8C\u5168\u540C\u6784\uFF0CApp\u300C\u5B66\u4E60\u300D\u9762\u677F\u4E0E `get_today` \u76F4\u63A5\u53EF\u89C1\u3002\n\n## \u5361\u7247\u683C\u5F0F\n\n\u5BFC\u51FA\u7684\u6BCF\u5F20\u5361\u7247\u5BF9\u5E94**\u4E00\u6B21\u771F\u5B9E\u4F1A\u8BDD**\uFF0C\u6587\u4EF6\u540D `TD-<\u77E5\u8BC6\u70B9>-<\u5B8C\u6574\u4F1A\u8BDDid>.md`\uFF08\u4F1A\u8BDD id \u5373\u4E3B\u952E\uFF0C\u6587\u4EF6\u540D\u5929\u7136\u4E0D\u78B0\u649E\uFF09\u3002frontmatter \u58F0\u660E `source`\uFF08Dayfolio \u5B66\u4E60\u4F1A\u8BDD\uFF09\u3001`session_id`\u3001`knowledge_key`\u3001`status: draft`\u3001`verified: false`\u3001`assessed`\uFF08\u6D4B\u8BC4\u8BC1\u636E\u6458\u8981\u6216 none\uFF09\uFF1B\u6B63\u6587\u662F\u5B66\u4E60\u8005\u5F53\u65F6\u7684\u81EA\u8FF0\uFF08\u6211\u7684\u89E3\u91CA/\u7591\u95EE/\u6D4B\u8BC4\u8BC1\u636E/\u6750\u6599\uFF09\uFF0C\u5E76\u5E26\u300C\u5F85\u5BA1\u5361\u7247\u300D\u8B66\u793A\uFF1A**\u5185\u5BB9\u672A\u7ECF\u6838\u5B9E\uFF0C\u4E0D\u4EE3\u8868\u4E3B\u4EBA\u89C2\u70B9\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u5DF2\u638C\u63E1**\u3002\u8BF7\u4EBA\u5DE5\u5BA1\u9605\u540E\u518D\u6574\u7406\u8FDB\u77E5\u8BC6\u5E93\u3002\n\n\n## \u7EDF\u4E00\u5199\u5165\u89C4\u5219\n\n\u8349\u6848\u3001\u5B66\u4E60\u4F1A\u8BDD\u3001\u6D4B\u8BC4\u3001\u8C03\u6574\u4E0E\u5BFC\u51FA\u8BB0\u5F55\u5747\u53EF\u5728\u6570\u636E\u9762\u677F\u67E5\u770B\u3002\u7CFB\u7EDF\u5B57\u6BB5\u5199\u5165\u53EA\u8D70\u5BF9\u5E94\u4E1A\u52A1\u52A8\u4F5C\uFF1B\u8C03\u6574\u548C\u5361\u7247\u5BFC\u51FA\u5386\u53F2\u8BB0\u5F55\u53EA\u8BFB\u3002\u5220\u9664\u8BA1\u5212\u540E\u4FDD\u7559\u5B66\u4E60\u8BC1\u636E\u4E0E\u539F\u5386\u53F2\u5F15\u7528\uFF0C\u4E0D\u81EA\u52A8\u6539\u5199\u6216\u6E05\u7406\u3002\n";
+var study_loop_default = "---\ntitle: \u5B66\u4E60\u95ED\u73AF\ndescription: \u5BF9 AI \u8BF4\u300C\u5B66\u4E60\u7EBF\u6027\u4EE3\u6570\u300D\uFF0C\u7531 agent \u6309\u672C\u89C4\u8303\u5B8C\u6210\u8BA1\u5212\u3001\u5B66\u4E60\u8BB0\u5F55\u3001\u6D4B\u8BC4\u3001\u8C03\u6574\u4E0E\u77E5\u8BC6\u6C89\u6DC0\n---\n\n## \u8FD9\u662F\u4EC0\u4E48\n\nDayfolio \u7684\u5B66\u4E60\u95ED\u73AF\u4EE5 **AI agent \u4E3A\u7B2C\u4E00\u64CD\u4F5C\u8005**\uFF1A\u4F60\u5728 zcode \u7B49 AI \u5BA2\u6237\u7AEF\u91CC\u8BF4\u300C\u5B66\u4E60\u7EBF\u6027\u4EE3\u6570\u300D\uFF0Cagent \u6309 Dayfolio \u89C4\u8303\u5B8C\u6210\u4ECE\u8BA1\u5212\u5230\u6C89\u6DC0\u7684\u5168\u6D41\u7A0B\uFF1BApp \u5185\u63D0\u4F9B\u5C55\u793A\u4E0E\u64CD\u4F5C\u5165\u53E3\uFF1B\u8349\u6848\u786E\u8BA4\u3001\u8C03\u6574\u5E94\u7528\u548C\u5361\u7247\u5BFC\u51FA\u4E5F\u53EF\u7531\u4F60\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u6388\u6743\u52A9\u624B\u6267\u884C\uFF0C\u6837\u8BFE\u5728 App \u9605\u8BFB\u540E\u76F4\u63A5\u56DE\u5230\u5BF9\u8BDD\u786E\u8BA4\uFF0C\u6CA1\u6709\u624B\u5DE5\u5EFA\u8BA1\u5212\u7684\u8868\u5355\u3002\n\nApp\u300C\u5B66\u4E60\u8BA1\u5212\u300D\u9996\u9875\u9ED8\u8BA4\u663E\u793A**\u8BA1\u5212**\uFF0C\u6807\u9898\u53F3\u4FA7\u53EF\u5207\u6362\u5230**\u8BFE\u7A0B**\u3002\u8BA1\u5212\u5361\u663E\u793A\u5173\u8054\u8BFE\u7A0B\uFF1B\u6682\u672A\u5173\u8054\u65F6\u663E\u793A\u300C\u5F85\u5173\u8054\u8BFE\u7A0B\u300D\u3002\u8BA1\u5212\u53EF\u5148\u6392\u671F\uFF0C\u4F46\u6700\u7EC8\u5E94\u5173\u8054\u8BFE\u7A0B\uFF1A\u8BF7 agent \u5BFC\u5165\u8BFE\u7A0B\u6837\u8BFE\u5E76\u5F15\u7528\u73B0\u6709\u8BA1\u5212\uFF0C\u6216\u4E3A\u672A\u7ED1\u5B9A\u8BFE\u7A0B\u91CD\u5BFC\u540C\u5185\u5BB9\u6837\u8BFE\u5305\u8865\u4E0A\u8BA1\u5212\u5173\u8054\u3002\n\n\u65E0\u65E5\u671F\u8349\u6848\u82E5\u5DF2\u901A\u8FC7 `course_id` \u6307\u5B9A\u8BFE\u7A0B\uFF0C\u786E\u8BA4\u751F\u6210\u6B63\u5F0F\u8BA1\u5212\u65F6\u4F1A\u540C\u6B65\u7ED1\u5B9A\uFF0C\u8BFE\u7A0B\u548C\u8BA1\u5212\u4E24\u7AEF\u90FD\u4F1A\u663E\u793A\u5173\u8054\u3002\u65E7\u7248\u5DF2\u786E\u8BA4\u8349\u6848\u82E5\u6F0F\u5199\u7ED1\u5B9A\uFF0C\u53EF\u91CD\u590D\u8C03\u7528 `confirm_study_plan_draft`\uFF1A\u53EA\u8865\u9F50\u5C1A\u672A\u7ED1\u5B9A\u7684\u8BFE\u7A0B\u5173\u7CFB\uFF0C\u590D\u7528\u539F\u8BA1\u5212\u4E0E\u5F85\u529E\uFF0C\u4FDD\u7559\u9605\u8BFB\u3001\u81EA\u6D4B\u3001\u6837\u8BFE\u786E\u8BA4\u548C\u6253\u5361\uFF1B\u5DF2\u7ED1\u5B9A\u5176\u4ED6\u8BA1\u5212\u5219\u62D2\u7EDD\u3002\u6CA1\u6709\u660E\u786E\u8BFE\u7A0B ID \u7684\u8349\u6848\u4E0D\u4F1A\u6309\u6807\u9898\u81EA\u52A8\u5339\u914D\u3002\n\n\u6253\u5F00\u8BA1\u5212\u540E\uFF0C\u70B9\u51FB\u6BCF\u65E5\u6761\u76EE\u7684\u6587\u5B57\u6216\u300C\u8BE6\u60C5 \u2192\u300D\u53EF\u8FDB\u5165**\u8BA1\u5212\u6761\u76EE\u8BE6\u60C5**\uFF0C\u67E5\u770B\u5B8C\u6574\u5B89\u6392\u3001\u65E5\u671F\u3001\u7C7B\u578B\u3001\u9884\u8BA1\u65F6\u957F\u3001\u5F53\u524D\u72B6\u6001\uFF0C\u4EE5\u53CA\u4E0E\u8BE5\u6761\u76EE\u5173\u8054\u7684\u5B66\u4E60\u4F1A\u8BDD\u548C\u6D4B\u8BC4\uFF1B\u6709\u77E5\u8BC6\u70B9\u638C\u63E1\u6570\u636E\u65F6\u4E5F\u4F1A\u663E\u793A\u3002\u6761\u76EE\u5DE6\u4FA7\u7684\u52FE\u9009\u6309\u94AE\u53EF\u76F4\u63A5\u5B8C\u6210\u6216\u64A4\u9500\u5B8C\u6210\uFF0C\u5F85\u529E\u6761\u76EE\u4ECD\u53EF\u76F4\u63A5\u300C\u8DF3\u8FC7\u300D\u3002\u8BE6\u60C5\u9875\u4E5F\u80FD\u5B8C\u6210\u3001\u64A4\u9500\u3001\u8DF3\u8FC7\u6216\u6062\u590D\u5F85\u529E\uFF1B\u8FD4\u56DE\u8BA1\u5212\u8BE6\u60C5\u65F6\u4FDD\u7559\u539F\u6765\u7684\u6D4F\u89C8\u4F4D\u7F6E\u3002\u6253\u5361\u72B6\u6001\u4E0E\u77E5\u8BC6\u70B9\u638C\u63E1\u5EA6\u5206\u522B\u8BA1\u7B97\uFF0C\u5B8C\u6210\u6761\u76EE\u4E0D\u7B49\u4E8E\u901A\u8FC7\u6D4B\u8BC4\u3002\n\n\u672C\u6587\u4EF6\u662F\u5B66\u4E60\u95ED\u73AF\u7684**\u552F\u4E00\u89C4\u8303\u6E90**\uFF1AMCP \u7684 `get_study_workflow` \u5DE5\u5177\u4E0E `tododesk://study/workflow` \u8D44\u6E90\u8FD4\u56DE\u7684\u5C31\u662F\u672C\u6587\u5185\u5BB9\uFF08\u6784\u5EFA\u65F6\u540C\u6E90\u6CE8\u5165\uFF09\uFF0C\u6539\u89C4\u8303\u53EA\u6539\u8FD9\u91CC\u3002\n\n## \u5168\u6D41\u7A0B\uFF08agent \u64CD\u4F5C\u89C4\u8303\uFF09\n\n1. **\u6F84\u6E05\u76EE\u6807**\uFF1A\u7F3A\u4FE1\u606F\u5148\u95EE\u7528\u6237\uFF0C\u4E0D\u8981\u7F16\u9020\u3002\u9700\u8981\u6F84\u6E05\u7684\u5178\u578B\u9879\uFF1A\u5B66\u4E60\u52A8\u673A\u4E0E\u76EE\u6807\u6C34\u5E73\u3001\u6BCF\u65E5\u65F6\u95F4\u9884\u7B97\uFF08\u5206\u949F\uFF09\u3001\u6750\u6599\u6765\u6E90\uFF08\u4E66/\u8BFE/\u6587\u6863\uFF09\u3001\u8D77\u70B9\u4E0E\u5148\u4FEE\u57FA\u7840\u3001\u671F\u671B\u5B8C\u6210\u65F6\u95F4\u3002\n2. **\u5148\u4FEE\u8BCA\u65AD**\uFF1A\u6309\u76EE\u6807\u62C6\u77E5\u8BC6\u70B9\u65F6\u5148\u5224\u65AD\u7528\u6237\u662F\u5426\u5177\u5907\u5148\u4FEE\u77E5\u8BC6\uFF1B\u4E0D\u786E\u5B9A\u5C31\u5355\u72EC\u62C6\u6210\u524D\u7F6E\u77E5\u8BC6\u70B9\u653E\u8FDB\u8BA1\u5212\uFF0C\u6216\u5148\u95EE\u4E00\u53E5\u3002\n3. **\u751F\u6210\u8349\u6848\uFF08\u6709\u65E5\u671F\uFF09**\uFF1A\u7528\u6237\u5DF2\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u65F6\uFF0C\u8C03\u7528 `draft_study_plan`\uFF0C\u4F20\u5165\u6807\u9898\u3001\u76EE\u6807\u3001\u6750\u6599\u6765\u6E90\u3001\u6BCF\u65E5\u9884\u7B97\uFF0810~600 \u5206\u949F\uFF09\u3001\u5F00\u59CB\u65E5\u671F\u4E0E\u77E5\u8BC6\u70B9\u6E05\u5355\uFF08\u6BCF\u9879\u542B\u7A33\u5B9A `key`\u3001\u540D\u79F0\u3001\u4F9D\u8D56 `depends_on`\u3001\u9884\u8BA1\u65F6\u957F\u3001\u53EF\u9A8C\u8BC1\u6210\u679C `outcome`\uFF09\u3002Dayfolio \u6309**\u900F\u660E\u89C4\u5219**\uFF08\u89C1\u4E0B\uFF09\u6392\u6210\u9010\u65E5\u5B89\u6392\u5E76\u4FDD\u5B58\u4E3A**\u8349\u6848**\u2014\u2014\u6B64\u65F6\u4E0D\u521B\u5EFA\u4EFB\u4F55\u8BA1\u5212\u3001\u5F85\u529E\u6216\u6253\u5361\u3002\u7F3A\u5931\u7684\u65F6\u957F/\u6210\u679C\u4F1A\u8BB0\u5F55\u5728\u8349\u6848\u7684 `assumptions` \u91CC\uFF0C\u5411\u7528\u6237\u5C55\u793A\uFF0C\u4E0D\u8981\u9ED8\u9ED8\u8865\u9020\u3002\n4. **\u65E0\u65E5\u671F\u5148\u5B58\uFF08\u65E5\u671F\u5F85\u6392\u671F\uFF09**\uFF1A\u7528\u6237**\u5C1A\u672A**\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\uFF08\u5982\u300C\u8FD9\u6279\u4E13\u9898\u6587\u7A3F\u5148\u5B58\u7740\uFF0C\u4EC0\u4E48\u65F6\u5019\u5B66\u518D\u5B9A\u300D\uFF09\u65F6\uFF0C\u8C03\u7528 `draft_study_topic` \u4FDD\u5B58**\u65E0\u65E5\u671F\u4E13\u9898\u8349\u6848**\uFF1A\u53EA\u5B58\u4E3B\u9898\u5927\u7EB2/\u77E5\u8BC6\u70B9/\u6750\u6599\u4E0E\u53EF\u9009\u7684\u6837\u8BFE\u8BFE\u7A0B\u5173\u8054\uFF08`course_id`\uFF0C\u6837\u8BFE\u672A\u786E\u8BA4\u4E5F\u53EF\u5173\u8054\uFF09\u2014\u2014**\u4E0D\u6392\u65E5\u7A0B\u3001\u4E0D\u4EA7\u5F85\u529E\u3001\u4E0D\u5360\u6BCF\u65E5\u9884\u7B97**\u3002\u77E5\u8BC6\u70B9\u5728\u521B\u5EFA\u65F6\u5373\u6821\u9A8C\uFF08key \u683C\u5F0F/\u4F9D\u8D56/\u73AF\uFF09\uFF0C\u5185\u5BB9\u53EF\u968F\u540E\u7528 `update_study_topic_draft` \u66F4\u65B0\uFF08\u4EC5\u672A\u6392\u671F\u65F6\uFF09\u3002**\u4E0D\u8981**\u4E3A\u4E86\u8D70 dated \u6D41\u7A0B\u66FF\u7528\u6237\u62CD\u65E5\u671F\u6216\u9884\u7B97\u3002\n5. **\u6392\u671F\uFF08\u9884\u89C8 \u2192 \u786E\u8BA4\u63D0\u4EA4\uFF09**\uFF1A\u7528\u6237\u7ED9\u51FA\u8D77\u59CB\u65E5\u671F\u4E0E\u6BCF\u65E5\u9884\u7B97\u540E\uFF0C\u5148\u8C03 `preview_study_draft_schedule` **\u53EA\u8BFB\u9884\u89C8**\u2014\u2014\u9010\u65E5\u5B89\u6392\u3001\u4F9D\u8D56\u62D3\u6251\u987A\u5E8F\u3001\u4E0E\u5176\u4ED6**\u8FDB\u884C\u4E2D\u8BA1\u5212**\u7684\u6BCF\u65E5\u9884\u7B97\u51B2\u7A81\uFF08\u65E2\u6709\u5360\u7528 + \u65B0\u6392\u8D85\u9884\u7B97\u7684\u65E5\u5B50\uFF0C\u6C47\u603B\u5728\u8FD4\u56DE\u7684 `over_budget_dates`\uFF09\u4E0E\u77E5\u8BC6\u70B9\u91CD\u590D\u9884\u8B66\u3001\u900F\u660E\u89C4\u5219\u5047\u8BBE\uFF1B**\u6709\u9884\u8B66\u5FC5\u987B\u9010\u6761\u5FF5\u7ED9\u7528\u6237**\u3002\u7528\u6237\u660E\u786E\u540C\u610F\u540E\u624D\u8C03 `schedule_study_draft`\uFF0C\u5E76\u628A `over_budget_dates` **\u539F\u6837**\u4F5C\u4E3A `confirmed_over_dates` \u4F20\u56DE\u2014\u2014\u670D\u52A1\u7AEF\u5728**\u4E8B\u52A1\u5185\u6309\u5F53\u4E0B\u5E93\u72B6\u6001\u91CD\u7B97\u5E76\u786C\u6821\u9A8C**\uFF1A\u6709\u51B2\u7A81\u672A\u786E\u8BA4\u3001\u9884\u89C8\u540E\u65E2\u6709\u8BA1\u5212\u53D8\u52A8\u5BFC\u81F4\u51B2\u7A81\u96C6\u53D8\u5316\u3001\u51B2\u7A81\u5DF2\u6D88\u5931\u5374\u4ECD\u5E26\u65E7\u786E\u8BA4\u96C6\uFF0C\u4E00\u5F8B\u62D2\u7EDD\uFF08UI \u63D0\u793A\u4E0D\u80FD\u66FF\u4EE3\u670D\u52A1\u5C42\u6821\u9A8C\uFF09\u3002\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4**\u5E42\u7B49**\uFF1B\u672A\u786E\u8BA4\u524D\u6362\u53C2\u6570 = \u91CD\u65B0\u6392\u671F\uFF08\u91CD\u65B0\u8FC7\u786C\u6821\u9A8C\uFF09\u3002\n6. **\u9884\u89C8\u4E0E\u786E\u8BA4**\uFF1A\u628A\u8349\u6848\u9010\u65E5\u5B89\u6392\u4E0E\u5047\u8BBE\u5FF5\u7ED9\u7528\u6237\uFF1B\u7528\u6237\u540C\u610F\u540E\u8C03\u7528 `confirm_study_plan_draft`\uFF08\u751F\u6210\u6B63\u5F0F\u8BA1\u5212\u4E0E\u9010\u65E5\u5F85\u529E\uFF0C\u5E42\u7B49\u53EF\u91CD\u8BD5\uFF09\u3002**\u786E\u8BA4\u8FB9\u754C\u540C\u6837\u786C\u6821\u9A8C\u51B2\u7A81**\uFF08\u7ECF `schedule_study_draft` \u6392\u671F\u7684\u8349\u6848\uFF09\uFF1A\u6392\u671F\u4E4B\u540E\u3001\u786E\u8BA4\u4E4B\u524D\u65E2\u6709\u8BA1\u5212\u53EF\u80FD\u53D8\u52A8\u2014\u2014\u786E\u8BA4\u65F6\u670D\u52A1\u7AEF\u91CD\u7B97\u8D85\u9884\u7B97\u65E5\u671F\uFF0C\u5B58\u5728\u51B2\u7A81\u5FC5\u987B\u518D\u6B21\u643A\u5E26\u4E0E\u91CD\u7B97**\u7CBE\u786E\u4E00\u81F4**\u7684 `confirmed_over_dates`\uFF0C\u5426\u5219\u62D2\u7EDD\uFF08\u5EFA\u8BA1\u5212\u671F\u95F4\u7684\u5E76\u53D1\u53D8\u52A8\u7531\u590D\u68C0\u515C\u5E95\uFF0C\u4E0D\u4E00\u81F4\u6574\u4F53\u56DE\u9000\uFF0C\u4E0D\u7559\u51B2\u7A81\u672A\u786E\u8BA4\u7684\u8BA1\u5212\uFF09\u3002\u7528\u6237\u4E0D\u8981\u5C31 `cancel_study_plan_draft`\uFF08\u65E0\u4EFB\u4F55\u526F\u4F5C\u7528\uFF09\u3002\u672A\u6392\u671F\u7684\u8349\u6848\u4E0D\u80FD\u786E\u8BA4\uFF08\u4F1A\u62D2\u7EDD\u5E76\u63D0\u793A\u5148\u6392\u671F\uFF09\uFF1B\u65E7\u8DEF\u5F84\u8349\u6848\uFF08`draft_study_plan` \u521B\u5EFA\u5373\u6392\u671F\uFF09\u786E\u8BA4\u4E0D\u8BBE\u51B2\u7A81\u95E8\uFF08\u5386\u53F2\u884C\u4E3A\u4FDD\u6301\uFF09\u3002\n7. **\u6BCF\u65E5\u6267\u884C**\uFF1A\u6BCF\u5929\u4ECE `get_today` \u770B\u5F53\u65E5\u5B89\u6392\u3002\u5B66\u4E60\u5B8C\u6210\u540E\u8C03\u7528 `record_study_session` \u8BB0\u5F55\u4E00\u6B21\u72EC\u7ACB\u4F1A\u8BDD\uFF1A**\u81EA\u5DF1\u7684\u89E3\u91CA/\u7B54\u6848**\uFF08\u7528\u81EA\u5DF1\u7684\u8BDD\u8BB2\u51FA\u6765\uFF09\u3001\u7591\u95EE\u4E0E\u6750\u6599\u6765\u6E90\uFF1B\u5B9E\u9645\u7528\u65F6\u53EF\u7701\u7565\uFF0C\u4EC5\u7528\u6237\u4E3B\u52A8\u63D0\u4F9B\u65F6\u8BB0\u5F55\u3002\u540C\u4E00\u76EE\u6807\u5B66\u4E86\u51E0\u904D\u5C31\u8BB0\u51E0\u6761\uFF08`attempt` \u9012\u589E\uFF09\uFF0C\u91CD\u8BD5\u8BF7\u5E26\u540C\u4E00\u7A33\u5B9A `id` \u4FDD\u8BC1\u5E42\u7B49\u3002\n8. **\u6D4B\u8BC4\u7559\u8BC1**\uFF1A\u8C03\u7528 `record_study_assessment` \u8BB0\u5F55\u9898\u76EE\u3001\u8BC4\u4EF7\u6807\u51C6\u3001\u539F\u7B54\u6848\u3001\u8BC4\u5206\u4E0E**\u4F9D\u636E**\u3002`source` \u5FC5\u987B\u663E\u5F0F\uFF1A`self`\uFF08\u81EA\u8BC4\uFF0C\u53EF\u88AB\u540E\u7EED\u7EA0\u6B63\uFF09\u3001`objective`\uFF08\u5BA2\u89C2\u6D4B\u8BD5\uFF0C**\u5FC5\u987B\u9644\u771F\u5B9E\u5224\u9898\u4F9D\u636E evidence \u4E0E\u5224\u9898\u7ED3\u679C**\uFF0CDayfolio \u4E0D\u4EE3\u5224\u4E5F\u4E0D\u4F2A\u9020\uFF09\u3001`ai_suggestion`\uFF08AI \u7684\u5EFA\u8BAE\u6027\u53CD\u9988\uFF0C\u4EC5\u8BB0\u5F55\uFF0C**\u4E0D\u8BA1\u5165\u638C\u63E1\u8BC1\u636E**\uFF09\u3002\n9. **\u590D\u76D8\u8C03\u6574**\uFF1A\u5468\u671F\u6027\u8C03\u7528 `suggest_plan_adjustments` \u83B7\u53D6\u5EFA\u8BAE\uFF08\u7EAF\u9884\u89C8\u3001\u4E0D\u5199\u5E93\uFF09\uFF0C\u4F9D\u636E\u6765\u81EA\u6F0F\u505A\u6761\u76EE\u4E0E\u8584\u5F31\u8BC1\u636E\uFF1B\u7528\u6237\u786E\u8BA4\u540E `apply_plan_adjustments`\uFF08\u5165\u53C2\u643A\u5E26\u9884\u89C8\u65F6\u7684\u5EFA\u8BAE\u65E5\u671F\u505A**\u5FEB\u7167\u7ED1\u5B9A**\u2014\u2014\u8BA1\u5212\u5DF2\u53D8\u5316\u5BFC\u81F4\u5EFA\u8BAE\u65E5\u671F\u4E0D\u540C\u5219\u62D2\u7EDD\u8BE5\u6761\u5E76\u8981\u6C42\u91CD\u65B0\u9884\u89C8\uFF1B\u53EA\u52A8**\u672A\u5B8C\u6210**\u6761\u76EE\uFF0C\u540C\u6B65\u5173\u8054\u5F85\u529E\u622A\u6B62\u65E5\uFF0C\u5FC5\u8981\u65F6\u5EF6\u957F\u8BA1\u5212\uFF09\u3002\u7528\u6237\u4E0D\u786E\u8BA4\u5C31\u4E0D\u8C03\u7528\u2014\u2014\u53D6\u6D88\u6C38\u8FDC\u65E0\u526F\u4F5C\u7528\u3002\n10. **\u77E5\u8BC6\u6C89\u6DC0**\uFF1A\u5B66\u4E60\u7A33\u5B9A\u540E\u8C03\u7528 `preview_study_cards` \u9884\u89C8\u5F85\u5BA1\u5361\u7247\uFF1B\u7528\u6237\u786E\u8BA4\u5BFC\u51FA\u76EE\u5F55\u540E `export_study_cards` \u5199\u51FA Obsidian Markdown\uFF08`status: draft`\u3001`verified: false`\uFF0C\u542B\u6765\u6E90\u3001\u4F1A\u8BDD ID\u3001\u6D4B\u8BC4\u8BC1\u636E\uFF09\u3002\u540C\u4E00\u5361\u7247\u91CD\u590D\u5BFC\u51FA\u5E42\u7B49\uFF0C**\u88AB\u4EBA\u5DE5\u7F16\u8F91\u8FC7\u7684\u6587\u4EF6\u6C38\u4E0D\u8986\u76D6**\u3002\u5BFC\u51FA\u76EE\u5F55\u5FC5\u987B\u662F\u7528\u6237\u6307\u5B9A\u7684\u72EC\u7ACB\u76EE\u5F55\u2014\u2014core \u5C42\u4F1A**\u786C\u62D2\u7EDD**\u5199\u5165\u4EFB\u4F55\u77E5\u8BC6\u5E93 vault\uFF08\u542B\u5DF2\u6CE8\u518C vault\u3001\u5185\u7F6E\u9ED8\u8BA4\u4FDD\u62A4\u6839 `~/Desktop/knowledge-base` \u5373\u4F7F\u5C1A\u672A\u6CE8\u518C\u3001`TODODESK_PROTECTED_DIRS` \u6307\u5B9A\u76EE\u5F55\uFF1B\u7B26\u53F7\u94FE\u63A5\u522B\u540D\u540C\u6837\u62E6\u622A\uFF09\uFF0C\u800C\u4E0D\u662F\u4EC5\u9760\u63D0\u793A\u3002\n\n## \u900F\u660E\u89C4\u5219\uFF08\u53EF\u9A8C\u8BC1\u7684\u4E0D\u53D8\u5F0F\uFF09\n\n- **\u6392\u7A0B**\uFF1A\u77E5\u8BC6\u70B9\u5148\u6309\u4F9D\u8D56\u62D3\u6251\u6392\u5E8F\uFF08\u4FDD\u6301\u8F93\u5165\u987A\u5E8F\uFF0C\u6709\u73AF\u62A5\u9519\uFF09\uFF0C\u518D\u4ECE\u5F00\u59CB\u65E5\u6309\u6BCF\u65E5\u9884\u7B97\u88C5\u7BB1\uFF1B\u5355\u4E2A\u77E5\u8BC6\u70B9\u8D85\u8FC7\u5168\u5929\u9884\u7B97\u65F6\u5355\u72EC\u5360\u4E00\u5929\u5E76\u8BB0\u5165\u5047\u8BBE\u3002\n- **\u65E0\u65E5\u671F\u8349\u6848\u96F6\u526F\u4F5C\u7528**\uFF1A`draft_study_topic` \u53EA\u5199\u8349\u6848\u8868\uFF08start/end/daily_minutes \u4E3A\u7A7A\u3001items \u4E3A\u7A7A\uFF09\u2014\u2014\u4E0D\u6392\u65E5\u7A0B\u3001\u4E0D\u4EA7\u5F85\u529E\u3001\u4E0D\u5360\u9884\u7B97\u3001\u4E0D\u8FDB\u4ECA\u65E5\u9762\u677F\uFF1B\u521B\u5EFA\u65F6\u5373\u6821\u9A8C\u77E5\u8BC6\u70B9\uFF08key \u683C\u5F0F/\u53BB\u91CD/\u4F9D\u8D56\u5B58\u5728\u6027/\u73AF\u68C0\u6D4B\uFF09\u3002\n- **\u6392\u671F\u4E24\u6BB5\u5F0F\uFF08\u51B2\u7A81\u786C\u6821\u9A8C\uFF0C\u670D\u52A1\u5C42\u5F3A\u5236\uFF09**\uFF1A`preview_study_draft_schedule` \u7EAF\u53EA\u8BFB\u2014\u2014\u9010\u65E5\u5B89\u6392 + \u4F9D\u8D56\u62D3\u6251\u987A\u5E8F + \u4E0E\u8FDB\u884C\u4E2D\u8BA1\u5212\u7684**\u6BCF\u65E5\u9884\u7B97\u51B2\u7A81**\uFF08\u5176\u4ED6 active \u8BA1\u5212\u5F53\u65E5\u65E2\u6709\u5360\u7528 + \u672C\u8349\u6848\u65B0\u6392\u8D85\u51FA\u58F0\u660E\u7684\u6BCF\u65E5\u9884\u7B97\uFF0C\u6C47\u603B\u4E3A `over_budget_dates`\uFF09\u4E0E**\u77E5\u8BC6\u70B9\u91CD\u590D**\uFF08\u540C key \u5DF2\u5728\u5176\u4ED6 active \u8BA1\u5212\u672A\u5B8C\u6210\u6761\u76EE\u91CC\uFF09\u9884\u8B66\uFF1B`schedule_study_draft` \u5728 **BEGIN IMMEDIATE \u4E8B\u52A1\u5185\u91CD\u7B97**\u8D85\u9884\u7B97\u65E5\u671F\u5E76\u4E0E `confirmed_over_dates` **\u7CBE\u786E\u5339\u914D**\uFF08\u96C6\u5408\u5B8C\u5168\u4E00\u81F4\u624D\u653E\u884C\u2014\u2014\u6709\u51B2\u7A81\u672A\u786E\u8BA4\u3001\u786E\u8BA4\u96C6\u8FC7\u671F\u3001\u51B2\u7A81\u6D88\u5931\u4ECD\u5E26\u65E7\u96C6\u5747\u62D2\u7EDD\uFF09\uFF0C\u4E8B\u52A1\u843D\u5E93\u4E14**\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4\u5E42\u7B49**\uFF0C\u672A\u786E\u8BA4\u524D\u6362\u53C2\u6570 = \u91CD\u65B0\u6392\u671F\uFF08\u91CD\u65B0\u8FC7\u786C\u6821\u9A8C\uFF09\uFF1B\u5DF2\u786E\u8BA4/\u5DF2\u53D6\u6D88\u7684\u8349\u6848\u62D2\u7EDD\u6392\u671F\uFF1B\u672A\u6392\u671F\u8349\u6848\u4E0D\u80FD\u786E\u8BA4\u3002**\u786E\u8BA4\u8FB9\u754C\u91CD\u68C0**\uFF1A\u786E\u8BA4\u65F6\u6309\u5F53\u4E0B\u5E93\u72B6\u6001\u518D\u7B97\u4E00\u6B21\uFF08\u5EFA\u8BA1\u5212\u540E\u8FD8\u590D\u68C0\u4E00\u6B21\u4EE5\u6355\u83B7\u5E76\u53D1\u5199\u5165\uFF0C\u4E0D\u4E00\u81F4\u6574\u4F53\u56DE\u9000\u5220\u8BA1\u5212\u5220\u5F85\u529E\uFF09\uFF1B\u65E7\u8DEF\u5F84\u8349\u6848\uFF08`draft_study_plan` \u521B\u5EFA\u5373\u6392\u671F\uFF0C\u65E0\u6392\u671F\u63D0\u4EA4\u65F6\u523B\u6807\u8BB0\uFF09\u786E\u8BA4\u4E0D\u8BBE\u51B2\u7A81\u95E8\u2014\u2014\u8C41\u514D\u4EC5\u9650\u8FD9\u4E00\u7C7B\uFF0C\u4E0D\u524A\u5F31\u65B0\u6392\u671F\u8349\u6848\u7684\u4EFB\u4F55\u6821\u9A8C\u3002\n- **\u8C03\u6574\u5EFA\u8BAE\u4F9D\u8D56\u611F\u77E5**\uFF1A\u6F0F\u505A\u6761\u76EE\u6539\u671F\u540E\uFF0C\u82E5\u5176**\u672A\u5B8C\u6210\u540E\u7EE7**\u6761\u76EE\u4F1A\u65E9\u4E8E\u524D\u7F6E\uFF08\u542B\u6539\u671F\u540E\u7684\u751F\u6548\u65E5\u671F\uFF09\uFF0C\u9884\u89C8\u4F1A**\u8054\u52A8\u987A\u5EF6\u540E\u7EE7**\u5230\u524D\u7F6E\u4E4B\u540E\u7684\u9884\u7B97\u7A7A\u4F4D\uFF0C\u7EDD\u4E0D\u8BA9\u540E\u7EE7\u6392\u5728\u672A\u5B8C\u6210\u524D\u7F6E\u4E4B\u524D\uFF1B\u5DF2\u5B8C\u6210/\u5DF2\u8DF3\u8FC7\u7684\u524D\u7F6E\u89C6\u4E3A\u5DF2\u6EE1\u8DB3\uFF0C\u4E0D\u518D\u7EA6\u675F\u540E\u7EE7\uFF1B\u7EA7\u8054\u9010\u65E5\u4F20\u64AD\u5E76\u9010\u6761\u9884\u5360\u6BCF\u65E5\u9884\u7B97\u3002\n- **\u4F9D\u8D56\u7EC4\u5B8C\u6574\u6027\uFF08\u90E8\u5206\u5E94\u7528\u4FDD\u62A4\uFF09**\uFF1A\u5E94\u7528\u65F6\u53EA\u52FE\u9009\u524D\u7F6E\u6539\u671F\u800C\u843D\u4E0B\u5176\u540E\u7EE7\u7684\u8054\u52A8\u5EFA\u8BAE\uFF0C\u4F1A\u88AB**\u6574\u7EC4\u62D2\u7EDD**\uFF08\u8BE5\u6761\u8DF3\u8FC7\u5E76\u8BF4\u660E\u9700\u4E00\u8D77\u52FE\u9009\u7684\u5EFA\u8BAE\uFF09\u2014\u2014\u843D\u5E93\u8BA1\u5212\u4EFB\u4F55\u65F6\u523B\u90FD\u4E0D\u4F1A\u51FA\u73B0\u300C\u540E\u7EE7\u65E9\u4E8E\u672A\u5B8C\u6210\u524D\u7F6E\u300D\uFF1B\u4F20\u9012\u94FE\uFF08A\u2192B\u2192C \u53EA\u52FE\u90E8\u5206\uFF09\u6309\u4E0D\u52A8\u70B9\u9010\u7EA7\u56DE\u9000\u3002\n- **\u638C\u63E1\u5EA6\u5224\u5B9A**\uFF08`get_mastery`\uFF0C\u53EA\u770B\u6D4B\u8BC4\u8BC1\u636E\uFF0C\u4E0E\u4EFB\u52A1\u5B8C\u6210\u7387\u5206\u5F00\u5C55\u793A\uFF1B**\u8BC1\u636E\u6309\u8BA1\u5212\u9694\u79BB**\u2014\u2014\u53EA\u7EDF\u8BA1\u5F52\u5C5E\u8BE5\u8BA1\u5212\u7684\u6D4B\u8BC4\uFF0C\u4F20 `plan_id` \u6216\u5173\u8054\u4F1A\u8BDD\u5373\u53EF\u5F52\u5C5E\uFF09\uFF1A\n\n| \u5224\u5B9A | \u6761\u4EF6 |\n| --- | --- |\n| unknown | \u8BA1\u5212\u5185\u5C1A\u65E0 self/objective \u6D4B\u8BC4\uFF08\u6253\u5361\u3001\u4F1A\u8BDD\u90FD\u4E0D\u7B97\u638C\u63E1\uFF09 |\n| strong | \u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u5BA2\u89C2\u5224\u9898\u901A\u8FC7\uFF1B\u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u81EA\u8BC4 \u2265 80 |\n| reviewing | \u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF0C\u6700\u65B0\u81EA\u8BC4 60~79 |\n| weak | \u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u5BA2\u89C2\u5224\u9898\u672A\u901A\u8FC7\uFF1B\u65E0\u5BA2\u89C2\u6D4B\u8BC4\uFF1A\u6700\u65B0\u81EA\u8BC4 < 60 |\n\n- **\u5BA2\u89C2\u4F18\u5148**\uFF1A\u53EA\u8981\u5B58\u5728\u5BA2\u89C2\u6D4B\u8BC4\uFF0C\u5224\u5B9A\u53EA\u770B\u6700\u65B0\u5BA2\u89C2\u7ED3\u679C\uFF0C\u8F83\u65B0\u7684\u81EA\u8BC4\u4E0D\u8986\u76D6\u5BA2\u89C2\uFF1B`ai_suggestion` \u4E0D\u53C2\u4E0E\u5224\u5B9A\u3002\n- **\u53EF\u7EA0\u6B63**\uFF1A\u540C\u4E00\u6D4B\u8BC4 id \u91CD\u65B0\u63D0\u4EA4\u4F1A\u4FDD\u7559 `corrections` \u5386\u53F2\uFF08\u65E7\u8BC4\u5206\u4E0D\u4E22\u5931\uFF09\u3002\n- **\u5E42\u7B49**\uFF1A\u4F1A\u8BDD\u6309\u7A33\u5B9A id \u6216\uFF08\u76EE\u6807, attempt\uFF09\u590D\u7528\uFF1B\u8349\u6848\u786E\u8BA4\u4E00\u6B21\uFF08\u91CD\u590D\u786E\u8BA4\u8FD4\u56DE\u539F\u8BA1\u5212\uFF09\uFF1B\u6392\u671F\u540C\u53C2\u6570\u91CD\u590D\u63D0\u4EA4\u8FD4\u56DE\u539F\u6392\u671F\uFF1B\u5361\u7247\u6309\u5185\u5BB9\u54C8\u5E0C\u53BB\u91CD\u3002\n- **\u8C03\u6574\u8FB9\u754C**\uFF1A`apply` \u77AC\u95F4\u5DF2\u4E0D\u662F pending \u7684\u6761\u76EE\u81EA\u52A8\u8DF3\u8FC7\uFF1B\u5DF2\u5B8C\u6210\u6761\u76EE\u4E0E\u5386\u53F2\u4F1A\u8BDD\u6C38\u4E0D\u88AB\u6539\u5199\u3002\n- **\u7F3A\u7701\u503C**\uFF1A\u77E5\u8BC6\u70B9\u65F6\u957F\u7F3A\u7701 60 \u5206\u949F\uFF1B\u65E7\u8BA1\u5212\u65E0\u9884\u7B97\u65F6\u8C03\u6574\u6309 120 \u5206\u949F/\u5929\u4F30\u5BB9\u91CF\uFF1B\u81EA\u52A8\u8865\u590D\u4E60\u6761\u76EE 20 \u5206\u949F\u3002\n\n## \u5DE5\u5177\u5BF9\u7167\n\n| \u9636\u6BB5 | MCP \u5DE5\u5177 | \u8BFB\u5199 |\n| --- | --- | --- |\n| \u89C4\u8303 | `get_study_workflow` / \u8D44\u6E90 `tododesk://study/workflow` | \u8BFB |\n| \u8349\u6848\uFF08\u6709\u65E5\u671F\uFF09 | `draft_study_plan`\u3001`list_study_drafts`\u3001`get_study_draft` | \u5199\uFF08\u4EC5\u8349\u6848\u8868\uFF09/\u8BFB |\n| \u8349\u6848\uFF08\u65E0\u65E5\u671F\uFF09 | `draft_study_topic`\u3001`update_study_topic_draft` | \u5199\uFF08\u4EC5\u8349\u6848\u8868\uFF0C\u96F6\u526F\u4F5C\u7528\uFF09 |\n| \u6392\u671F | `preview_study_draft_schedule`\uFF08\u53EA\u8BFB\u9884\u89C8\uFF1A\u51B2\u7A81+\u4F9D\u8D56\uFF09\u3001`schedule_study_draft`\uFF08\u4E8B\u52A1+\u5E42\u7B49\uFF09 | \u9884\u89C8/\u5199 |\n| \u786E\u8BA4 | `confirm_study_plan_draft`\u3001`cancel_study_plan_draft` | \u5199\uFF08\u5E42\u7B49/\u65E0\u526F\u4F5C\u7528\uFF09 |\n| \u4F1A\u8BDD | `record_study_session`\u3001`list_study_sessions` | \u5199\uFF08\u5E42\u7B49\uFF09/\u8BFB |\n| \u6D4B\u8BC4 | `record_study_assessment`\u3001`list_study_assessments`\u3001`get_mastery` | \u5199\uFF08\u7559\u8BC1\uFF09/\u8BFB |\n| \u8C03\u6574 | `suggest_plan_adjustments`\u3001`apply_plan_adjustments` | \u9884\u89C8/\u5199 |\n| \u5361\u7247 | `preview_study_cards`\u3001`export_study_cards`\u3001`list_card_exports` | \u9884\u89C8/\u5199\u6587\u4EF6 |\n\n\u8BA1\u5212\u6761\u76EE\u672C\u4F53\uFF08`study_plan`/`plan_item`\uFF09\u3001\u6253\u5361\u4E0E\u5F85\u529E\u6CBF\u7528\u65E2\u6709\u5DE5\u5177\uFF08`create_study_plan`\u3001`update_plan_item`\u3001`get_today` \u7B49\uFF09\u3002\u8349\u6848\u786E\u8BA4\u751F\u6210\u7684\u8BA1\u5212\u4E0E\u666E\u901A\u8BA1\u5212\u5B8C\u5168\u540C\u6784\uFF0CApp\u300C\u5B66\u4E60\u300D\u9762\u677F\u4E0E `get_today` \u76F4\u63A5\u53EF\u89C1\u3002\n\n## \u5361\u7247\u683C\u5F0F\n\n\u5BFC\u51FA\u7684\u6BCF\u5F20\u5361\u7247\u5BF9\u5E94**\u4E00\u6B21\u771F\u5B9E\u4F1A\u8BDD**\uFF0C\u6587\u4EF6\u540D `TD-<\u77E5\u8BC6\u70B9>-<\u5B8C\u6574\u4F1A\u8BDDid>.md`\uFF08\u4F1A\u8BDD id \u5373\u4E3B\u952E\uFF0C\u6587\u4EF6\u540D\u5929\u7136\u4E0D\u78B0\u649E\uFF09\u3002frontmatter \u58F0\u660E `source`\uFF08Dayfolio \u5B66\u4E60\u4F1A\u8BDD\uFF09\u3001`session_id`\u3001`knowledge_key`\u3001`status: draft`\u3001`verified: false`\u3001`assessed`\uFF08\u6D4B\u8BC4\u8BC1\u636E\u6458\u8981\u6216 none\uFF09\uFF1B\u6B63\u6587\u662F\u5B66\u4E60\u8005\u5F53\u65F6\u7684\u81EA\u8FF0\uFF08\u6211\u7684\u89E3\u91CA/\u7591\u95EE/\u6D4B\u8BC4\u8BC1\u636E/\u6750\u6599\uFF09\uFF0C\u5E76\u5E26\u300C\u5F85\u5BA1\u5361\u7247\u300D\u8B66\u793A\uFF1A**\u5185\u5BB9\u672A\u7ECF\u6838\u5B9E\uFF0C\u4E0D\u4EE3\u8868\u4E3B\u4EBA\u89C2\u70B9\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u5DF2\u638C\u63E1**\u3002\u8BF7\u4EBA\u5DE5\u5BA1\u9605\u540E\u518D\u6574\u7406\u8FDB\u77E5\u8BC6\u5E93\u3002\n\n\n## \u7EDF\u4E00\u5199\u5165\u89C4\u5219\n\n\u8349\u6848\u3001\u5B66\u4E60\u4F1A\u8BDD\u3001\u6D4B\u8BC4\u3001\u8C03\u6574\u4E0E\u5BFC\u51FA\u8BB0\u5F55\u5747\u53EF\u5728\u6570\u636E\u9762\u677F\u67E5\u770B\u3002\u7CFB\u7EDF\u5B57\u6BB5\u5199\u5165\u53EA\u8D70\u5BF9\u5E94\u4E1A\u52A1\u52A8\u4F5C\uFF1B\u8C03\u6574\u548C\u5361\u7247\u5BFC\u51FA\u5386\u53F2\u8BB0\u5F55\u53EA\u8BFB\u3002\u5220\u9664\u8BA1\u5212\u540E\u4FDD\u7559\u5B66\u4E60\u8BC1\u636E\u4E0E\u539F\u5386\u53F2\u5F15\u7528\uFF0C\u4E0D\u81EA\u52A8\u6539\u5199\u6216\u6E05\u7406\u3002\n\n\n## \u4ECE App \u53D1\u8D77\u5B66\u4E60\u68C0\u9A8C\n\n\u8BA1\u5212\u4E0E\u6761\u76EE\u4EE5\u5361\u7247\u5C55\u793A\u8BFE\u4EF6\u5DF2\u8BFB\u3001\u8BC4\u6D4B\u5DF2\u505A\u3001\u7B14\u8BB0\u5DF2\u8F93\u51FA\uFF0C\u5B8C\u6210\u4E0E\u8DF3\u8FC7\u64CD\u4F5C\u96C6\u4E2D\u5230\u6761\u76EE\u8BE6\u60C5\u3002\u6761\u76EE\u8BE6\u60C5\u76F4\u63A5\u9605\u8BFB\u5B8C\u6574\u8BFE\u4EF6\u3001\u63D0\u4EA4\u81EA\u6D4B\uFF0C\u586B\u5199\u81EA\u5DF1\u7684\u89E3\u91CA\u5373\u53EF\u4FDD\u5B58\u4E3A\u7ED1\u5B9A plan_id\u3001plan_item_id \u7684\u5B66\u4E60\u4F1A\u8BDD\uFF0C\u65E0\u9700\u586B\u5199\u7528\u65F6\uFF1B\u300CAI \u68C0\u9A8C\u5B66\u4E60\u6210\u679C\u300D\u7D27\u8DDF\u8BC4\u6D4B\uFF0C\u5B66\u4E60\u7B14\u8BB0\u968F\u540E\u663E\u793A\uFF1B\u5E95\u90E8\u53EF\u6807\u8BB0\u5B8C\u6210\u3002\n\n\u300CAI \u68C0\u9A8C\u5B66\u4E60\u6210\u679C\u300D\u590D\u5236\u542B\u7A33\u5B9A\u6807\u8BC6\u7684\u63D0\u793A\u8BCD\uFF0C\u7528\u6237\u7C98\u8D34\u5230\u5DF2\u8FDE\u63A5 Dayfolio \u7684\u5BF9\u8BDD\u540E\uFF0C\u52A9\u624B\u5148\u8BFB\u53D6 get_study_plan\u3001get_course_lessons / get_lesson_html\u3001\u73B0\u6709\u4F1A\u8BDD\u4E0E\u6D4B\u8BC4\uFF0C\u518D\u4E00\u6B21\u95EE\u4E00\u4E2A\u95EE\u9898\uFF0C\u7B49\u5F85\u539F\u7B54\u6848\u540E\u7EA0\u6B63\u3002\u7ED3\u675F\u524D\u6838\u5BF9\u7B14\u8BB0\u4E0E\u8BB0\u5F55\u8303\u56F4\uFF1B\u5B9E\u9645\u7528\u65F6\u4EC5\u7528\u6237\u4E3B\u52A8\u63D0\u4F9B\u65F6\u8BB0\u5F55\uFF0C\u53EF\u7701\u7565\uFF0C\u4E0D\u8FFD\u95EE\u6216\u4F30\u7B97\uFF1B\u7528 record_study_session / record_study_assessment \u5199\u5165\u5BF9\u5E94\u6761\u76EE\uFF0C\u5EFA\u8BAE\u6027\u53CD\u9988\u4F7F\u7528 ai_suggestion\u3002\u672A\u7ECF\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u56E0\u68C0\u9A8C\u7ED3\u675F\u81EA\u52A8\u6807\u8BB0\u5B8C\u6210\u3002get_study_progress \u53EF\u8BFB\u56DE\u5404\u8BA1\u5212\u548C\u6761\u76EE\u7684\u5B9E\u9645\u5B66\u4E60\u8FDB\u5EA6\uFF0C\u4F5C\u7B54\u548C AI \u53CD\u9988\u4E0D\u81EA\u52A8\u8BC1\u660E\u638C\u63E1\u3002\n";
 
 // apps/mcp/src/resources/study.ts
 function registerStudyResource(server) {
@@ -35975,8 +36291,25 @@ function registerTools4(server, { core }) {
 // apps/mcp/src/tools/news.ts
 function registerTools5(server, { core }) {
   server.tool(
+    "get_news_collection_settings",
+    "\u8BFB\u53D6 App \u5F53\u524D\u4FDD\u5B58\u7684\u65B0\u95FB\u91C7\u96C6\u63D0\u793A\u8BCD\u3001\u6536\u5F55\u4E0A\u9650\u548C\u65F6\u95F4\u7A97\u3002\u4EC0\u4E48\u573A\u666F\u8C03\u7528\u6211\uFF1A\u6BCF\u65E5\u91C7\u96C6\u5F00\u59CB\u524D\u8BFB\u53D6\u6700\u65B0\u89C4\u5219\uFF1B\u4E0D\u8981\u628A\u65E7\u81EA\u52A8\u4EFB\u52A1\u91CC\u7684\u56FA\u5B9A\u8981\u6C42\u5F53\u4F5C\u5F53\u524D\u89C4\u5219\u3002\u8BFB\u53D6\u4E0D\u4F1A\u521B\u5EFA\u4EFB\u52A1\u6216\u8054\u7F51\u3002",
+    {},
+    async () => wrap(() => core.news.getCollectionSettings())()
+  );
+  server.tool(
+    "update_news_collection_settings",
+    "\u4FDD\u5B58\u65B0\u95FB\u91C7\u96C6\u63D0\u793A\u8BCD\uFF0CApp \u4E0E MCP \u5171\u7528\u3002\u4EC0\u4E48\u573A\u666F\u8C03\u7528\u6211\uFF1A\u7528\u6237\u660E\u786E\u8981\u6C42\u8C03\u6574\u4EE5\u540E\u7684\u65B0\u95FB\u5185\u5BB9\u3001\u7ED3\u6784\u6216\u91C7\u96C6\u8303\u56F4\u65F6\uFF1B\u5148\u8BFB\u53D6\u5F53\u524D revision\uFF0C\u4FDD\u5B58\u4EC5\u5F71\u54CD\u540E\u7EED\u6309\u63D0\u793A\u8BCD\u521B\u5EFA\u7684\u8BF7\u6C42\uFF0C\u5DF2\u6709\u8BF7\u6C42\u4FDD\u7559\u5FEB\u7167\u3002",
+    {
+      prompt: external_exports.string().min(1).max(12e3),
+      max_items: external_exports.number().int().min(1).max(11),
+      window_hours: external_exports.number().int().min(1).max(720),
+      expected_revision: external_exports.number().int().min(0)
+    },
+    async (input2) => wrap(() => core.news.updateCollectionSettings(input2))()
+  );
+  server.tool(
     "list_news",
-    "\u67E5\u770B\u5E93\u5185\u65B0\u95FB\uFF08**\u53EA\u8BFB\uFF0C\u4E0D\u8054\u7F51**\uFF09\uFF1A\u9ED8\u8BA4\u8FD1 3 \u5929\uFF0C\u53EF\u6309\u4EFB\u52A1/\u6765\u6E90/\u5173\u952E\u8BCD\u8FC7\u6EE4\uFF0C\u6216\u53EA\u770B\u672A\u8BFB/\u6536\u85CF\u3002\u6BCF\u6761\u542B\u539F\u59CB\u6765\u6E90\u94FE\u63A5\u3001\u6458\u8981\u3001\u53D1\u5E03\u65F6\u95F4\u3001\u5DF2\u8BFB\u4E0E\u6536\u85CF\u72B6\u6001\u3002App \u9762\u677F\u540C\u6E90\u5C55\u793A\u3002\u4EC0\u4E48\u573A\u666F\u8C03\u7528\u6211\uFF1A\u7528\u6237\u60F3\u770B\u6700\u8FD1\u7684\u65B0\u95FB\u3001\u67E5\u67D0\u6761\u65B0\u95FB\u7684\u6765\u6E90\u94FE\u63A5\u3001\u627E\u6536\u85CF\u7684\u5185\u5BB9",
+    "\u67E5\u770B\u5E93\u5185\u65B0\u95FB\uFF08**\u53EA\u8BFB\uFF0C\u4E0D\u8054\u7F51**\uFF09\uFF1A\u9ED8\u8BA4\u8FD1 3 \u5929\uFF0C\u53EF\u6309\u4EFB\u52A1/\u6765\u6E90/\u5173\u952E\u8BCD\u8FC7\u6EE4\uFF0C\u6216\u53EA\u770B\u672A\u8BFB/\u6536\u85CF\u3002\u6BCF\u6761\u542B\u539F\u59CB\u6765\u6E90\u94FE\u63A5\u3001\u6458\u8981\u3001\u53D1\u5E03\u65F6\u95F4\uFF1B\u4E13\u9898\u7B80\u62A5\u8FD8\u542B brief.overview \u4E0E brief.items \u9010\u6761\u6458\u8981\u548C\u94FE\u63A5\u3001\u5DF2\u8BFB\u4E0E\u6536\u85CF\u72B6\u6001\u3002App \u9762\u677F\u540C\u6E90\u5C55\u793A\u3002\u4EC0\u4E48\u573A\u666F\u8C03\u7528\u6211\uFF1A\u7528\u6237\u60F3\u770B\u6700\u8FD1\u7684\u65B0\u95FB\u3001\u67E5\u67D0\u6761\u65B0\u95FB\u7684\u6765\u6E90\u94FE\u63A5\u3001\u627E\u6536\u85CF\u7684\u5185\u5BB9",
     {
       days: external_exports.number().int().positive().max(90).optional().describe("\u6700\u8FD1 N \u5929\uFF08\u6309\u5317\u4EAC\u65E5\u671F\uFF09\uFF0C\u9ED8\u8BA4 3"),
       source: external_exports.union([external_exports.enum(["agent", "x", "zhihu_daily", "hacker_news"]), external_exports.string().regex(/^rss\//)]).optional().describe("\u7F3A\u7701\u770B\u5168\u90E8\uFF1B'agent'=\u4EFB\u52A1\u63D0\u4EA4\u7684\u65B0\u95FB\uFF0C\u5176\u4F59\u4E3A\u65E7\u7248\u6293\u53D6\u7684\u5386\u53F2"),
@@ -35984,7 +36317,7 @@ function registerTools5(server, { core }) {
       search: external_exports.string().optional().describe("\u5728\u6807\u9898\u548C\u6458\u8981\u4E2D\u641C\u7D22\uFF08\u5E93\u5185\uFF0C\u4E0D\u8054\u7F51\uFF09"),
       filter: external_exports.enum(["all", "unread", "starred"]).optional().describe("\u9ED8\u8BA4 all\uFF1Bunread=\u53EA\u770B\u672A\u8BFB\uFF0Cstarred=\u53EA\u770B\u6536\u85CF"),
       since: external_exports.string().optional().describe("ISO \u65F6\u95F4\u6233\uFF1A\u53EA\u770B\u6B64\u65F6\u523B\u4E4B\u540E\u53D1\u5E03\u7684\uFF08\u5982\u8FD1 24 \u5C0F\u65F6\u7A97\u53E3\uFF09"),
-      limit: external_exports.number().int().positive().max(500).optional().describe("\u9ED8\u8BA4 100\uFF1B\u5386\u53F2\u5C55\u793A\u4E0D\u53D7\u4EFB\u52A1 10 \u6761\u9884\u7B97\u9650\u5236"),
+      limit: external_exports.number().int().positive().max(500).optional().describe("\u9ED8\u8BA4 100\uFF1B\u5386\u53F2\u5C55\u793A\u4E0D\u53D7\u4EFB\u52A1\u9884\u7B97\u9650\u5236"),
       offset: external_exports.number().int().min(0).optional().describe("\u5206\u9875\u504F\u79FB\uFF08\u914D\u5408 limit \u4F7F\u7528\uFF0C\u6309\u53D1\u5E03\u65F6\u95F4\u5012\u5E8F\uFF09")
     },
     async ({ days, source, task_id, search, filter, since, limit, offset }) => wrap(() => {
@@ -35999,11 +36332,12 @@ function registerTools5(server, { core }) {
   );
   server.tool(
     "create_news_task",
-    "\u521B\u5EFA\u4E00\u4E2A\u5F85\u6267\u884C\u7684\u65B0\u95FB\u4EFB\u52A1\uFF08\u65B0\u95FB\u751F\u4EA7\u7684\u552F\u4E00\u5165\u53E3\uFF1BApp \u4E0D\u6293\u53D6\uFF0C\u4EFB\u52A1\u7531 agent \u6267\u884C\uFF09\u3002\u4EC0\u4E48\u573A\u666F\u8C03\u7528\u6211\uFF1A\u7528\u6237\u8BF4\u300C\u5E2E\u6211\u6536\u96C6/\u770B\u770B\u67D0\u65B9\u9762\u7684\u6700\u65B0\u65B0\u95FB\u300D\u3002\u4EFB\u52A1\u521B\u5EFA\u540E\u5904\u4E8E\u5F85\u6267\u884C\uFF0C\u7531\u4F60\u6216\u4E0B\u4E00\u6B21\u4F1A\u8BDD\u7528 claim_news_task \u8BA4\u9886\u6267\u884C\u3002\u89C4\u5219\uFF1A\u6BCF\u4EFB\u52A1\u7D2F\u8BA1\u6700\u591A 10 \u6761\u65B0\u5165\u5E93\uFF08\u8DE8\u6279\u6B21\u4E0D\u91CD\u7F6E\uFF09\uFF1B\u53EA\u63A5\u53D7\u4EFB\u52A1\u65F6\u95F4\u7A97\u5185\u53D1\u5E03\u3001\u5E26\u539F\u59CB\u6765\u6E90\u94FE\u63A5\u4E0E\u6458\u8981\u3001\u4F60\u4EB2\u81EA\u6838\u5B9E\u8FC7\u7684\u65B0\u95FB",
+    "\u521B\u5EFA\u4E00\u4E2A\u5F85\u6267\u884C\u7684\u65B0\u95FB\u4EFB\u52A1\uFF08\u65B0\u95FB\u751F\u4EA7\u7684\u552F\u4E00\u5165\u53E3\uFF1BApp \u4E0D\u6293\u53D6\uFF0C\u4EFB\u52A1\u7531 agent \u6267\u884C\uFF09\u3002\u4EC0\u4E48\u573A\u666F\u8C03\u7528\u6211\uFF1A\u7528\u6237\u8BF4\u300C\u5E2E\u6211\u6536\u96C6/\u770B\u770B\u67D0\u65B9\u9762\u7684\u6700\u65B0\u65B0\u95FB\u300D\u3002\u4EFB\u52A1\u521B\u5EFA\u540E\u5904\u4E8E\u5F85\u6267\u884C\uFF0C\u7531\u4F60\u6216\u4E0B\u4E00\u6B21\u4F1A\u8BDD\u7528 claim_news_task \u8BA4\u9886\u6267\u884C\u3002\u89C4\u5219\uFF1A\u6BCF\u4EFB\u52A1\u7D2F\u8BA1\u6700\u591A 11 \u6761\u65B0\u5165\u5E93\uFF08\u8DE8\u6279\u6B21\u4E0D\u91CD\u7F6E\uFF09\uFF1B\u53EA\u63A5\u53D7\u4EFB\u52A1\u65F6\u95F4\u7A97\u5185\u53D1\u5E03\u3001\u5E26\u539F\u59CB\u6765\u6E90\u94FE\u63A5\u4E0E\u6458\u8981\u3001\u4F60\u4EB2\u81EA\u6838\u5B9E\u8FC7\u7684\u65B0\u95FB",
     {
       title: external_exports.string().min(1).max(200).describe("\u4EFB\u52A1\u4E3B\u9898\uFF0C\u5982\u300CAI \u9886\u57DF\u6700\u8FD1 24 \u5C0F\u65F6\u91CD\u8981\u65B0\u95FB\u300D"),
+      use_collection_prompt: external_exports.boolean().optional().describe("true=\u8BFB\u53D6 App \u5F53\u524D\u63D0\u793A\u8BCD\uFF0C\u5E76\u5C06\u8981\u6C42\u4E0E\u914D\u7F6E\u5B58\u6210\u4EFB\u52A1\u5FEB\u7167\uFF1B\u6BCF\u65E5\u91C7\u96C6\u5FC5\u987B\u8BBE true\uFF0C\u9ED8\u8BA4 false \u7528\u4E8E\u4E34\u65F6\u4EFB\u52A1"),
       instructions: external_exports.string().max(2e3).optional().describe("\u7ED9\u6267\u884C agent \u7684\u89C4\u5219/\u8865\u5145\u8981\u6C42\uFF08\u5173\u6CE8\u65B9\u5411\u3001\u8BED\u8A00\u3001\u4FA7\u91CD\u7B49\uFF09\uFF0C\u4F1A\u5728\u8BA4\u9886\u65F6\u770B\u5230"),
-      max_items: external_exports.number().int().min(1).max(10).optional().describe("\u65B0\u5165\u5E93\u6761\u6570\u4E0A\u9650\uFF08\u9ED8\u8BA4 10\uFF0C\u4E0D\u53EF\u8D85\u8FC7 10\uFF1B\u8DE8\u6279\u6B21\u7D2F\u8BA1\uFF09"),
+      max_items: external_exports.number().int().min(1).max(11).optional().describe("\u7D2F\u8BA1\u4E0A\u9650 1~11\uFF1B\u4F7F\u7528\u91C7\u96C6\u63D0\u793A\u8BCD\u65F6\u9ED8\u8BA4\u8BFB\u53D6\u4FDD\u5B58\u914D\u7F6E\uFF0C\u5426\u5219\u9ED8\u8BA4 10"),
       window_hours: external_exports.number().int().min(1).max(720).optional().describe("\u65F6\u95F4\u7A97\uFF08\u5C0F\u65F6\uFF0C\u9ED8\u8BA4 24\uFF09\uFF1A\u53EA\u63A5\u53D7\u6700\u8FD1 N \u5C0F\u65F6\u5185\u53D1\u5E03\u7684\u65B0\u95FB")
     },
     async (input2) => wrap(() => core.news.createTask(input2))()
@@ -36038,6 +36372,16 @@ function registerTools5(server, { core }) {
         source_url: external_exports.string().min(1).max(2048).describe("\u539F\u59CB\u6765\u6E90\u7F51\u9875\u94FE\u63A5\uFF08http(s)\uFF0C\u4F60\u4EB2\u81EA\u6838\u5B9E\u8FC7\u7684\u516C\u5F00\u9875\u9762\uFF09"),
         source_name: external_exports.string().max(120).optional().describe("\u6765\u6E90\u7AD9\u70B9\u540D\uFF0C\u5982\u300CTechCrunch\u300D"),
         published_at: external_exports.string().min(1).describe("\u6765\u6E90\u9875\u9762\u7684\u771F\u5B9E\u53D1\u5E03\u65F6\u95F4\uFF08ISO \u683C\u5F0F\uFF09"),
+        brief: external_exports.object({
+          overview: external_exports.string().min(1).max(2e3).describe("\u4E13\u9898\u603B\u4F53\u770B\u70B9"),
+          items: external_exports.array(external_exports.object({
+            title: external_exports.string().min(1).max(300),
+            summary: external_exports.string().min(1).max(2e3),
+            source_url: external_exports.string().min(1).max(2048),
+            source_name: external_exports.string().max(120).optional(),
+            published_at: external_exports.string().min(1)
+          })).min(1).max(20)
+        }).optional().describe("\u4E13\u9898\u7B80\u62A5\uFF1A\u6574\u4EFD\u53EA\u7B97\u4E00\u6761\u65B0\u95FB\uFF0C\u5B50\u6761\u76EE\u5747\u987B\u6838\u5B9E\u6765\u6E90\u4E0E\u65F6\u95F4\u3002\u5916\u5C42 source_url \u548C published_at \u4F7F\u7528\u7B2C\u4E00\u5219\u65B0\u95FB\u7684\u503C\uFF0C\u4E0D\u80FD\u540C\u65F6\u4F20 html"),
         html: external_exports.string().max(1e6).optional().describe("\u672C\u5730 HTML \u5FEB\u7167\uFF08\u53EF\u9009\uFF09\uFF1AX/Twitter \u7B49\u65E0\u6CD5\u5185\u5D4C\u5C55\u793A\u7684\u6765\u6E90\u7528\u3002\u5199\u6210\u81EA\u5305\u542B HTML\uFF08\u4F5C\u8005/\u53D1\u5E03\u65F6\u95F4/\u6B63\u6587/\u56FE\u7247 https \u5916\u94FE/\u539F\u5E16\u94FE\u63A5\uFF09\uFF0C\u811A\u672C\u4E0E\u4E8B\u4EF6\u5C5E\u6027\u4F1A\u88AB\u5265\u79BB\uFF0C\u4FDD\u5B58\u540E\u7528 read_news_html \u6838\u5BF9")
       })).min(1).max(10).describe("\u672C\u6279\u6761\u76EE\uFF081~10 \u6761\uFF09")
     },
@@ -36106,6 +36450,12 @@ function registerTools5(server, { core }) {
 // apps/mcp/src/tools/courses.ts
 function registerTools6(server, { core }) {
   server.tool(
+    "delete_course",
+    "\u7528\u6237\u660E\u786E\u786E\u8BA4\u5220\u9664\u67D0\u95E8\u8BFE\u7A0B\u65F6\u8C03\u7528\u3002\u6C38\u4E45\u5220\u9664\u8BE5\u8BFE\u7A0B\u7684\u603B\u89C8\u3001\u5168\u90E8\u8BB2\u4E49\u3001\u9605\u8BFB\u4E0E\u81EA\u6D4B\u8BB0\u5F55\u3001\u751F\u6210\u8BF7\u6C42\u53CA\u8BFE\u7A0B\u8D44\u4EA7\uFF0C\u89E3\u9664\u5B66\u4E60\u8349\u6848\u5BF9\u8BFE\u7A0B\u7684\u5F15\u7528\uFF1B\u4FDD\u7559\u5B66\u4E60\u8BA1\u5212\u53CA\u5176\u5F85\u529E\uFF0C\u5220\u9664\u8BA1\u5212\u8BF7\u53E6\u7528 delete_study_plan\u3002\u4E0D\u53EF\u6062\u590D\uFF0C\u8BF7\u5148\u6838\u5BF9 list_courses \u7684 ID\u3001slug\u3001\u6807\u9898\u5E76\u4E0E\u7528\u6237\u786E\u8BA4\uFF1Bexpected_slug \u5FC5\u987B\u5339\u914D\u786E\u8BA4\u76EE\u6807",
+    { course_id: external_exports.number().int().positive(), expected_slug: external_exports.string().min(1) },
+    async ({ course_id, expected_slug }) => wrap(() => core.courses.remove(course_id, expected_slug))()
+  );
+  server.tool(
     "import_course",
     '\u5BFC\u5165\u6559\u5B66\u8BFE\u7A0B\u5305\uFF08staging \u76EE\u5F55\u6839\u987B\u542B course.json\u3001\u72EC\u7ACB\u603B\u89C8 HTML \u4E0E D1..Dn \u8BB2\u4E49 HTML\uFF09\u3002\u65B0\u5305\u8BF7\u58F0\u660E schema_version: 2 \u548C overview: {"html":"overview.html"}\uFF1Bv2 \u5F3A\u5236\u603B\u89C8\u5355\u72EC\u751F\u6210\uFF0CD1 \u53EA\u5199\u7B2C\u4E00\u5929\u6559\u5B66\u5185\u5BB9\uFF0C\u4E0D\u8981\u628A\u603B\u89C8\u585E\u8FDB D1\u3002\u65E0 schema_version \u7684\u65E7\u5305\u4ECD\u53EF\u5BFC\u5165\uFF0C\u7F3A\u603B\u89C8\u65F6 App \u663E\u793A\u5F85\u751F\u6210\uFF1B\u8865\u5145\u603B\u89C8\u65F6\u5E26 overview.html \u91CD\u5BFC\u6837\u8BFE\u5305\u5373\u53EF\uFF0C\u4E0D\u4F1A\u6539\u5199\u5DF2\u751F\u6210\u7684\u5176\u4ED6\u5929\u3002\u5B89\u5168\uFF1A\u8DEF\u5F84\u7A7F\u8D8A\u4E0E\u7B26\u53F7\u94FE\u63A5\u62D2\u7EDD\u3001HTML \u6D88\u6BD2\u3001\u5305\u5185\u76F8\u5BF9 CSS \u5185\u8054\u5E76\u79FB\u9664\u5916\u90E8\u8D44\u6E90\uFF1B\u5E42\u7B49\uFF08\u540C\u5185\u5BB9\u4E14\u78C1\u76D8\u6587\u4EF6\u4E00\u81F4\u624D\u65E0\u53D8\u66F4\uFF0C\u7F3A\u6587\u4EF6\u81EA\u52A8\u4FEE\u590D\uFF09\uFF1B\u6837\u8BFE\u53D8\u66F4\u4F1A\u4F7F\u65E2\u6709\u786E\u8BA4\u8FC7\u671F\u3002\u7ED1\u5B9A\u65E2\u6709 plan_id \u53EA\u5F15\u7528\u4E0D\u521B\u5EFA\u8BA1\u5212\uFF08\u987B\u5DF2\u5B58\u5728\uFF1B\u5DF2\u7ED1\u5B9A\u8BFE\u7A0B\u4E0D\u5F97\u6539\u7ED1\uFF0C\u7701\u7565\u8868\u793A\u6CBF\u7528\uFF09\u3002\u8BFE\u7A0B\u5305\u5FC5\u987B\u6070\u597D\u542B\u4E00\u4E2A is_sample \u6837\u8BFE\u6807\u8BB0\uFF08\u6837\u8BFE\u5305\u4EC5\u6837\u8BFE\u4E00\u5929\uFF1B\u5B8C\u6574\u5305\u4FDD\u7559\u6807\u8BB0\uFF09\u3002\u5B8C\u6574\u5305\u4EC5\u5728\u7528\u6237\u5DF2\u786E\u8BA4\u6837\u8BFE\u3001\u751F\u6210\u8BF7\u6C42\u5DF2\u88AB\u8BA4\u9886\u4E14\u6837\u8BFE\u6B63\u6587\u4E0E\u786E\u8BA4\u7248\u672C\u9010\u5B57\u8282\u4E00\u81F4\u65F6\u653E\u884C\uFF1B\u5DF2\u5B8C\u6210\u8BFE\u7A0B\u540C\u5185\u5BB9\u91CD\u5BFC\u53EF\u5E42\u7B49\u4FEE\u590D',
     { staging_dir: external_exports.string().min(1).describe("\u8BFE\u7A0B\u5305 staging \u76EE\u5F55\u7EDD\u5BF9\u8DEF\u5F84\uFF08\u5305\u6839\u542B course.json\uFF09") },
@@ -36117,10 +36467,10 @@ function registerTools6(server, { core }) {
         status: r.course.status,
         plan_id: r.course.plan_id,
         has_overview: core.courses.getOverview(r.course.id) != null,
-        lessons: r.lessons.map((l) => ({ day: l.day, title: l.title, is_sample: l.is_sample, estimated_minutes: l.estimated_minutes })),
+        lessons: r.lessons.map((l) => ({ day: l.day, title: l.title, revision: l.revision, is_sample: l.is_sample, estimated_minutes: l.estimated_minutes })),
         idempotent: r.idempotent,
         confirmation_expired: r.confirmation_expired,
-        hint: r.confirmation_expired ? "\u6837\u8BFE\u5185\u5BB9\u5DF2\u53D8\u66F4\uFF1A\u7528\u6237\u5148\u524D\u7684\u786E\u8BA4\u5DF2\u8FC7\u671F\uFF0C\u9700\u5728 App \u91CD\u65B0\u786E\u8BA4" : void 0
+        hint: r.confirmation_expired ? "\u6837\u8BFE\u5185\u5BB9\u5DF2\u53D8\u66F4\uFF1A\u7528\u6237\u5148\u524D\u7684\u786E\u8BA4\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u7528\u6237\u5728 App \u9605\u8BFB\u540E\u56DE\u5230\u5BF9\u8BDD\u91CD\u65B0\u786E\u8BA4" : void 0
       };
     })()
   );
@@ -36148,7 +36498,7 @@ function registerTools6(server, { core }) {
   );
   server.tool(
     "get_course_lessons",
-    "\u67E5\u8BE2\u8BFE\u7A0B\u5168\u90E8\u8BB2\u4E49\u5143\u6570\u636E\uFF08day/\u6807\u9898/\u6837\u8BFE/\u6982\u5FF5/\u4EE3\u7801\u5BFC\u8BFB/\u7B54\u9898\u72B6\u6001\uFF09",
+    "\u67E5\u8BE2\u8BFE\u7A0B\u5168\u90E8\u8BB2\u4E49\u5143\u6570\u636E\uFF08day/\u6807\u9898/revision \u9010\u8BFE\u7248\u672C\u53F7/\u6837\u8BFE/\u6982\u5FF5/\u4EE3\u7801\u5BFC\u8BFB/\u7B54\u9898\u72B6\u6001\uFF09\u3002revision \u4ECE 1 \u5F00\u59CB\uFF0C\u6B63\u6587\u6216\u6559\u5B66\u8D44\u6599\u5B9E\u9645\u66F4\u65B0\u624D\u9012\u589E\uFF1B\u91CD\u590D\u5BFC\u5165\u4E0E\u9605\u8BFB\u7B54\u9898\u4E0D\u9012\u589E\uFF0C\u7531\u5BFC\u5165\u670D\u52A1\u7EF4\u62A4",
     { course_id: external_exports.number().int().positive() },
     async ({ course_id }) => wrap(() => core.courses.listLessons(course_id))()
   );
@@ -36170,6 +36520,22 @@ function registerTools6(server, { core }) {
       answers: external_exports.array(external_exports.object({ question_id: external_exports.string(), picked: external_exports.number().int().nonnegative() })).min(1)
     },
     async ({ course_id, day, answers }) => wrap(() => core.courses.submitQuiz(course_id, day, answers))()
+  );
+  server.tool(
+    "confirm_course_sample",
+    "\u4EC5\u5F53\u7528\u6237\u5728\u5BF9\u8BDD\u4E2D\u660E\u786E\u540C\u610F\u5F53\u524D\u6837\u8BFE\u540E\uFF0C\u8BB0\u5F55\u8BE5\u786E\u8BA4\u3002\u5148\u901A\u8FC7 get_course_lessons \u83B7\u53D6\u6837\u8BFE content_hash\uFF0C\u7528\u6237\u987B\u5DF2\u5728 App \u6253\u5F00\u9605\u8BFB\uFF1B\u786E\u8BA4\u7ED1\u5B9A\u8BE5\u7248\u672C\uFF0C\u5185\u5BB9\u53D8\u66F4\u540E\u987B\u91CD\u65B0\u9605\u8BFB\u5E76\u8BE2\u95EE\u3002\u4E0D\u5F97\u6839\u636E\u5BFC\u5165\u3001\u5DF2\u8BFB\u6216\u65E7\u7248\u540C\u610F\u81EA\u52A8\u786E\u8BA4\u3002\u7528\u6237\u82E5\u540C\u65F6\u8981\u6C42\u751F\u6210\u5B8C\u6574\u7248\uFF0C\u786E\u8BA4\u6210\u529F\u540E\u7EE7\u7EED create_course_request \u2192 claim \u2192 \u751F\u6210 \u2192 import \u2192 complete\uFF0C\u65E0\u9700\u56DE App \u70B9\u51FB\u6309\u94AE",
+    {
+      course_id: external_exports.number().int().positive(),
+      sample_content_hash: external_exports.string().regex(/^[a-f0-9]{64}$/).describe("\u7528\u6237\u672C\u6B21\u540C\u610F\u7684\u6837\u8BFE content_hash\uFF08\u6765\u81EA get_course_lessons\uFF09"),
+      confirmed: external_exports.literal(true).describe("\u7528\u6237\u5DF2\u5728\u672C\u6B21\u5BF9\u8BDD\u4E2D\u660E\u786E\u786E\u8BA4\u8BE5\u8BFE\u7A0B\u5F53\u524D\u6837\u8BFE\uFF0C\u624D\u53EF\u4F20 true")
+    },
+    async ({ course_id, sample_content_hash }) => wrap(() => {
+      const sample = core.courses.listLessons(course_id).find((lesson) => lesson.is_sample);
+      if (!sample || sample.content_hash !== sample_content_hash) {
+        throw new Error("\u6837\u8BFE\u7248\u672C\u5DF2\u53D8\u66F4\u6216\u4E0D\u5B58\u5728\uFF1A\u8BF7\u7528\u6237\u5728 App \u9605\u8BFB\u5F53\u524D\u6837\u8BFE\u540E\uFF0C\u5728\u5BF9\u8BDD\u4E2D\u91CD\u65B0\u786E\u8BA4");
+      }
+      return core.commands.human.confirmCourseSample(course_id, sample_content_hash);
+    })()
   );
   server.tool(
     "create_course_request",
@@ -36254,6 +36620,12 @@ function registerTools8(server, { core }) {
     {},
     wrap(() => ({ spec_version: "2026-10-v2", tool_chain: STUDY_TOOL_CHAIN, spec_markdown: study_loop_default }))
   );
+  server.tool(
+    "get_study_progress",
+    "\u8BFB\u53D6\u5B66\u4E60\u8BA1\u5212\u53CA\u5404\u6761\u76EE\u7684\u771F\u5B9E\u5B66\u4E60\u8FDB\u5EA6\uFF1A\u8BFE\u4EF6\u5DF2\u8BFB\u3001\u8BC4\u6D4B\u5DF2\u505A\u3001\u7B14\u8BB0\u5DF2\u8F93\u51FA\u3002\u7528\u4E8E\u67E5\u770B\u5B66\u4E60\u8FDB\u5C55\u6216\u68C0\u9A8C\u524D\u5B9A\u4F4D\u9057\u6F0F\uFF1B\u5B8C\u6210\u4E0E\u638C\u63E1\u5206\u5F00\uFF0CAI\u53CD\u9988\u548C\u7B54\u9898\u8BB0\u5F55\u5747\u4E0D\u81EA\u52A8\u8BC1\u660E\u638C\u63E1\u3002\u540C\u65E5\u6761\u76EE\u5171\u7528\u5F53\u5929\u8BFE\u4EF6\u4E0E\u81EA\u6D4B\uFF0C\u7B14\u8BB0\u53CA\u6D4B\u8BC4\u6309\u5177\u4F53\u6761\u76EE\u9694\u79BB\u3002\u7701\u7565plan_id\u8FD4\u56DE\u6240\u6709\u8BA1\u5212\uFF0C\u65E0\u8BB0\u5F55\u65F6\u4FDD\u7559\u96F6\u503C",
+    { plan_id: external_exports.number().int().positive().optional() },
+    async ({ plan_id }) => wrap(() => core.study.getProgress(plan_id))()
+  );
   const knowledgePointSchema = external_exports.object({
     key: external_exports.string().min(1).describe("\u77E5\u8BC6\u70B9\u7A33\u5B9A\u6807\u8BC6\uFF0C\u5C0F\u5199 slug\uFF08\u5982 matrix-multiply\uFF09\uFF0C\u5361\u7247\u4E0E\u4F1A\u8BDD\u9760\u5B83\u5173\u8054"),
     name: external_exports.string().min(1).describe("\u77E5\u8BC6\u70B9\u540D\u79F0\uFF08\u5982 \u77E9\u9635\u4E58\u6CD5\uFF09"),
@@ -36299,7 +36671,7 @@ function registerTools8(server, { core }) {
   );
   server.tool(
     "confirm_study_plan_draft",
-    "\u786E\u8BA4\u8349\u6848\u4E3A\u6B63\u5F0F\u5B66\u4E60\u8BA1\u5212\uFF08\u751F\u6210\u9010\u65E5\u6761\u76EE\u4E0E\u5BF9\u5E94\u5F85\u529E\uFF0C\u8FDB\u5165\u4ECA\u65E5\u9762\u677F/\u5F85\u529E\u5217\u8868\uFF09\u3002\u5E42\u7B49\uFF1A\u5BF9\u5DF2\u786E\u8BA4\u8349\u6848\u91CD\u590D\u8C03\u7528\u8FD4\u56DE\u539F\u8BA1\u5212\u4E0D\u91CD\u590D\u521B\u5EFA\u3002\u5FC5\u987B\u5148\u628A\u9884\u89C8\u5FF5\u7ED9\u7528\u6237\u5E76\u53D6\u5F97\u540C\u610F\u3002**\u786E\u8BA4\u8FB9\u754C\u51B2\u7A81\u786C\u6821\u9A8C**\uFF08\u7ECF schedule_study_draft \u6392\u671F\u7684\u8349\u6848\uFF09\uFF1A\u6392\u671F\u540E\u65E2\u6709\u8BA1\u5212\u53D8\u52A8\u53EF\u80FD\u5F15\u5165\u65B0\u7684\u8D85\u9884\u7B97\u51B2\u7A81\u2014\u2014\u786E\u8BA4\u65F6\u670D\u52A1\u7AEF\u91CD\u7B97\uFF0C\u82E5\u5B58\u5728\u8D85\u9884\u7B97\u65E5\u671F\u5FC5\u987B\u628A\u7528\u6237\u786E\u8BA4\u7684\u96C6\u5408\u4F5C\u4E3A confirmed_over_dates \u4F20\u56DE\u4E14\u4E0E\u91CD\u7B97\u7CBE\u786E\u4E00\u81F4\uFF0C\u5426\u5219\u62D2\u7EDD\uFF08\u987B\u91CD\u65B0\u9884\u89C8\u6392\u671F\uFF09\u3002\u65E7\u8DEF\u5F84\u8349\u6848\uFF08draft_study_plan \u521B\u5EFA\u5373\u6392\u671F\uFF09\u4E0D\u8BBE\u6B64\u51B2\u7A81\u95E8",
+    "\u786E\u8BA4\u8349\u6848\u4E3A\u6B63\u5F0F\u5B66\u4E60\u8BA1\u5212\uFF08\u751F\u6210\u9010\u65E5\u6761\u76EE\u4E0E\u5BF9\u5E94\u5F85\u529E\uFF0C\u8FDB\u5165\u4ECA\u65E5\u9762\u677F/\u5F85\u529E\u5217\u8868\uFF09\uFF1B\u8349\u6848\u6709 course_id \u65F6\u540C\u6B65\u7ED1\u5B9A\u8BFE\u7A0B\u3002\u5E42\u7B49\uFF1A\u5DF2\u786E\u8BA4\u8349\u6848\u8FD4\u56DE\u539F\u8BA1\u5212\u3001\u4E0D\u91CD\u590D\u521B\u5EFA\uFF0C\u4EC5\u8865\u9F50\u539F\u8BFE\u7A0B\u5C1A\u672A\u7ED1\u5B9A\u7684\u5173\u7CFB\uFF1B\u8BFE\u7A0B\u5DF2\u7ED1\u5B9A\u5176\u4ED6\u8BA1\u5212\u65F6\u62D2\u7EDD\uFF0C\u4E0D\u80FD\u6539\u7ED1\u3002\u5FC5\u987B\u5148\u628A\u9884\u89C8\u5FF5\u7ED9\u7528\u6237\u5E76\u53D6\u5F97\u540C\u610F\u3002**\u786E\u8BA4\u8FB9\u754C\u51B2\u7A81\u786C\u6821\u9A8C**\uFF08\u7ECF schedule_study_draft \u6392\u671F\u7684\u8349\u6848\uFF09\uFF1A\u6392\u671F\u540E\u65E2\u6709\u8BA1\u5212\u53D8\u52A8\u53EF\u80FD\u5F15\u5165\u65B0\u7684\u8D85\u9884\u7B97\u51B2\u7A81\u2014\u2014\u786E\u8BA4\u65F6\u670D\u52A1\u7AEF\u91CD\u7B97\uFF0C\u82E5\u5B58\u5728\u8D85\u9884\u7B97\u65E5\u671F\u5FC5\u987B\u628A\u7528\u6237\u786E\u8BA4\u7684\u96C6\u5408\u4F5C\u4E3A confirmed_over_dates \u4F20\u56DE\u4E14\u4E0E\u91CD\u7B97\u7CBE\u786E\u4E00\u81F4\uFF0C\u5426\u5219\u62D2\u7EDD\uFF08\u987B\u91CD\u65B0\u9884\u89C8\u6392\u671F\uFF09\u3002\u65E7\u8DEF\u5F84\u8349\u6848\uFF08draft_study_plan \u521B\u5EFA\u5373\u6392\u671F\uFF09\u4E0D\u8BBE\u6B64\u51B2\u7A81\u95E8",
     {
       draft_id: external_exports.number().int().positive(),
       confirmed_over_dates: external_exports.array(dateSchema).optional().describe("\u7528\u6237\u786E\u8BA4\u63A5\u53D7\u7684\u8D85\u9884\u7B97\u65E5\u671F\uFF1A\u4E0E\u5F53\u4E0B\u91CD\u7B97\u7ED3\u679C\u5B8C\u5168\u4E00\u81F4\uFF1B\u65E0\u51B2\u7A81\u5219\u4E0D\u4F20")
@@ -36308,6 +36680,7 @@ function registerTools8(server, { core }) {
       const { draft, plan } = core.study.confirmDraft(draft_id, { confirmed_over_dates });
       return {
         draft_status: draft.status,
+        course_id: draft.course_id,
         plan_id: plan.id,
         title: plan.title,
         date_range: `${plan.start_date} ~ ${plan.end_date}`,
@@ -36405,7 +36778,7 @@ function registerTools8(server, { core }) {
   );
   server.tool(
     "record_study_session",
-    "\u8BB0\u5F55\u4E00\u6B21**\u72EC\u7ACB\u5B66\u4E60\u4F1A\u8BDD**\uFF08\u5F53\u65E5\u5B66\u4E60\u5B8C\u6210\u7684\u51ED\u8BC1\uFF09\uFF1A\u5B9E\u9645\u7528\u65F6\u3001\u7528\u81EA\u5DF1\u7684\u8BDD\u5199\u7684\u89E3\u91CA/\u7B54\u6848\u3001\u7591\u95EE\u3001\u6750\u6599\u6765\u6E90\u3002\u540C\u4E00\u76EE\u6807\u591A\u6B21\u5B66\u4E60\u7528 attempt \u533A\u5206\uFF081,2,3\u2026\uFF09\u3002\u5E42\u7B49\uFF1A\u91CD\u8BD5\u8BF7\u5E26\u540C\u4E00\u7A33\u5B9A id\uFF1B\u4E0D\u4F20 id \u65F6\u6309\uFF08\u76EE\u6807\u6761\u76EE \u6216 \u77E5\u8BC6\u70B9+\u65E5\u671F, attempt\uFF09\u590D\u7528",
+    "\u8BB0\u5F55\u4E00\u6B21**\u72EC\u7ACB\u5B66\u4E60\u4F1A\u8BDD**\uFF08\u5F53\u65E5\u5B66\u4E60\u5B8C\u6210\u7684\u51ED\u8BC1\uFF09\uFF1A\u7528\u81EA\u5DF1\u7684\u8BDD\u5199\u7684\u89E3\u91CA/\u7B54\u6848\u3001\u53EF\u9009\u5B9E\u9645\u7528\u65F6\u3001\u7591\u95EE\u3001\u6750\u6599\u6765\u6E90\u3002\u540C\u4E00\u76EE\u6807\u591A\u6B21\u5B66\u4E60\u7528 attempt \u533A\u5206\uFF081,2,3\u2026\uFF09\u3002\u5E42\u7B49\uFF1A\u91CD\u8BD5\u8BF7\u5E26\u540C\u4E00\u7A33\u5B9A id\uFF1B\u4E0D\u4F20 id \u65F6\u6309\uFF08\u76EE\u6807\u6761\u76EE \u6216 \u77E5\u8BC6\u70B9+\u65E5\u671F, attempt\uFF09\u590D\u7528",
     {
       id: external_exports.string().optional().describe("\u7A33\u5B9A\u4F1A\u8BDD id\uFF08\u91CD\u8BD5/\u66F4\u65B0\u540C\u4E00\u4F1A\u8BDD\u65F6\u4F20\u540C\u4E00\u4E2A\uFF0C\u5982 sess-matrix-mult-a1\uFF09"),
       plan_id: external_exports.number().int().positive().optional(),
@@ -36414,7 +36787,7 @@ function registerTools8(server, { core }) {
       topic: external_exports.string().optional().describe("\u4E3B\u9898\u540D\u79F0\uFF0C\u7F3A\u7701\u7528\u77E5\u8BC6\u70B9\u540D"),
       attempt: external_exports.number().int().positive().optional().describe("\u7B2C\u51E0\u6B21\u5C1D\u8BD5\uFF1B\u4E0D\u4F20 = \u8BE5\u76EE\u6807\u7684\u4E0B\u4E00\u6B21\u5C1D\u8BD5"),
       date: dateSchema.optional().describe("\u4F1A\u8BDD\u65E5\u671F\uFF0C\u7F3A\u7701\u4ECA\u5929"),
-      actual_minutes: external_exports.number().int().min(1).max(1440).describe("\u5B9E\u9645\u7528\u65F6\uFF08\u5206\u949F\uFF09"),
+      actual_minutes: external_exports.number().int().min(1).max(1440).optional().describe("\u53EF\u9009\u5B9E\u9645\u7528\u65F6\uFF08\u5206\u949F\uFF09\uFF0C\u4EC5\u7528\u6237\u4E3B\u52A8\u63D0\u4F9B\u65F6\u8BB0\u5F55\uFF0C\u4E0D\u4F30\u7B97\u6216\u8865\u586B"),
       explanation: external_exports.string().optional().describe("\u81EA\u5DF1\u7684\u89E3\u91CA/\u7B54\u6848\uFF08\u8D39\u66FC\u5F0F\u8F93\u51FA\uFF0C\u8D8A\u5177\u4F53\u8D8A\u597D\uFF09"),
       questions: external_exports.string().optional().describe("\u6CA1\u89E3\u51B3\u7684\u7591\u95EE"),
       material_source: external_exports.string().optional().describe("\u672C\u6B21\u7528\u7684\u6750\u6599\uFF08\u7AE0\u8282/\u94FE\u63A5\uFF09")

@@ -8,7 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { sanitizeCssText, sanitizeLessonHtml, validateCourseManifest } from '../src/services/course';
-import { mkCore } from './helpers';
+import { mkCore, mkLegacyDb } from './helpers';
+import { createCore, openNodeSqliteDb } from '../src';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -210,6 +211,121 @@ describe('课程样式内联（包内 .css → 消毒 <style>，讲义保持离�
 });
 
 describe('课程导入与阅读', () => {
+  it('删除课程清理从属数据和资产，解除草案引用，保留计划、待办与其他课程', () => {
+    const ctx = mkCore(); cleanups.push(ctx.cleanup);
+    const plan = ctx.core.plans.create({ title: '保留的计划', start_date: '2026-10-20', items: [{ date: '2026-10-20', content: '保留的待办' }] });
+    const imported = ctx.core.courses.importCourse(mkPkg(mkStage(), { plan_id: plan.id }));
+    const id = imported.course.id;
+    readAndConfirm(ctx.core, id);
+    ctx.core.courses.submitQuiz(id, 1, [{ question_id: 'q1', picked: 1 }]);
+    ctx.core.courses.createGenerationRequest(id);
+    const draft = ctx.core.study.draftDateless({ title: '保留的草案', course_id: id, knowledge_points: [{ key: 'delete-test', name: '知识点' }] });
+    const other = ctx.core.courses.importCourse(mkPkg(mkStage(), { slug: 'other-course' }));
+    expect(() => ctx.core.courses.remove(id, 'other-course')).toThrow('不一致');
+    expect(ctx.core.courses.getCourse(id).title).toBe('测试课程');
+    const removed = ctx.core.courses.remove(id, imported.course.slug);
+    expect(removed).toMatchObject({ course_id: id, deleted_lessons: 1, deleted_requests: 1, detached_drafts: 1, assets_removed: true });
+    expect(() => ctx.core.courses.getCourse(id)).toThrow('不存在');
+    expect(ctx.core.courses.listLessons(id)).toEqual([]);
+    expect(() => ctx.core.courses.getOverview(id)).toThrow('不存在');
+    expect(ctx.core.courses.listRequests({ course_id: id })).toEqual([]);
+    expect(existsSync(join(ctx.core.courses.coursesRoot, imported.course.slug))).toBe(false);
+    expect(ctx.core.study.getDraft(draft.id).course_id).toBeNull();
+    expect(ctx.core.plans.get(plan.id).items).toHaveLength(1);
+    expect(ctx.core.todos.list({ status: 'all' })).toHaveLength(1);
+    expect(ctx.core.courses.getCourse(other.course.id).slug).toBe('other-course');
+  });
+
+  it('删除课程数据库失败时归还资产；资产已经丢失时仍可清除课程记录', () => {
+    const ctx = mkCore(); cleanups.push(ctx.cleanup);
+    const imported = ctx.core.courses.importCourse(mkPkg(mkStage()));
+    const db = openNodeSqliteDb(ctx.dbPath); cleanups.push(() => db.close());
+    db.exec("CREATE TRIGGER reject_course_delete BEFORE DELETE ON courses BEGIN SELECT RAISE(ABORT,'模拟删除失败'); END");
+    expect(() => ctx.core.courses.remove(imported.course.id, imported.course.slug)).toThrow('模拟删除失败');
+    expect(ctx.core.courses.getCourse(imported.course.id).slug).toBe(imported.course.slug);
+    expect(ctx.core.courses.readLessonHtml(ctx.core.courses.getLesson(imported.course.id, 1))).toContain('安全正文');
+    expect(readdirSync(ctx.core.courses.coursesRoot).some((name) => name.startsWith('.deleted-'))).toBe(false);
+    db.exec('DROP TRIGGER reject_course_delete');
+    rmSync(join(ctx.core.courses.coursesRoot, imported.course.slug), { recursive: true });
+    expect(ctx.core.courses.remove(imported.course.id, imported.course.slug).assets_removed).toBe(true);
+  });
+
+  it('删除拒绝指向包外的课程资产目录符号链接', () => {
+    const ctx = mkCore(); cleanups.push(ctx.cleanup);
+    const imported = ctx.core.courses.importCourse(mkPkg(mkStage()));
+    const dir = join(ctx.core.courses.coursesRoot, imported.course.slug);
+    const original = dir + '.original'; renameSync(dir, original); symlinkSync(original, dir, 'dir');
+    expect(() => ctx.core.courses.remove(imported.course.id, imported.course.slug)).toThrow('符号链接');
+    expect(ctx.core.courses.getCourse(imported.course.id).slug).toBe(imported.course.slug);
+    expect(existsSync(join(original, 'lessons/d1.html'))).toBe(true);
+  });
+
+  it('旧库迁移逐课版本：已有讲义记为 v1，保留阅读、答题和确认记录', () => {
+    const legacy = mkLegacyDb(22);
+    cleanups.push(legacy.cleanup);
+    legacy.db.exec(`INSERT INTO courses(id,slug,title,status,sample_content_hash,sample_confirmed_at,created_at,updated_at)
+      VALUES(1,'legacy-lesson','已有课程','sample_confirmed','old-hash','2026-10-20','2026-10-20','2026-10-20');
+      INSERT INTO course_lessons(course_id,day,title,html_rel,content_hash,is_sample,status,quiz_answers,created_at,updated_at)
+      VALUES(1,1,'已有讲义','legacy-lesson/d1.html','old-hash',1,'read','[{"question_id":"q1","picked":0,"at":"2026-10-20"}]','2026-10-20','2026-10-20')`);
+    const core = createCore(legacy.db, { dbPath: legacy.dbPath });
+    expect(core.courses.getLesson(1, 1)).toMatchObject({ revision: 1, status: 'read', quiz_answers: [{ question_id: 'q1', picked: 0, at: '2026-10-20' }] });
+    expect(core.courses.getCourse(1).sample_confirmed_at).toBe('2026-10-20');
+    expect(createCore(legacy.db, { dbPath: legacy.dbPath }).courses.getLesson(1, 1).revision).toBe(1);
+  });
+
+  it('逐课版本仅实际内容更新递增：阅读、确认、相同重导、资产修复和课程包版本不递增', () => {
+    const ctx = mkCore();
+    cleanups.push(ctx.cleanup);
+    const stage = mkPkg(mkStage());
+    const first = ctx.core.courses.importCourse(stage);
+    const id = first.course.id;
+    expect(first.lessons[0].revision).toBe(1);
+    readAndConfirm(ctx.core, id);
+    ctx.core.courses.submitQuiz(id, 1, [{ question_id: 'q1', picked: 1 }]);
+    expect(ctx.core.courses.importCourse(stage).lessons[0].revision).toBe(1);
+    rmSync(join(ctx.dbPath, '..', 'courses', first.lessons[0].html_rel));
+    expect(ctx.core.courses.importCourse(stage).lessons[0].revision).toBe(1);
+    const manifest = JSON.parse(readFileSync(join(stage, 'course.json'), 'utf8'));
+    manifest.version = '2.0.0';
+    writeFileSync(join(stage, 'course.json'), JSON.stringify(manifest));
+    expect(ctx.core.courses.importCourse(stage).lessons[0]).toMatchObject({ revision: 1, status: 'read' });
+    // 同一课程包版本的教学元数据更新也不能被幂等检查吞掉。
+    manifest.lessons[0].concepts[0].explanation = '更新后的解释';
+    writeFileSync(join(stage, 'course.json'), JSON.stringify(manifest));
+    expect(ctx.core.courses.importCourse(stage).lessons[0].revision).toBe(2);
+    expect(ctx.core.courses.importCourse(stage).lessons[0].revision).toBe(2);
+    writeFileSync(join(stage, 'lessons/d1.html'), '<h1>新版本正文</h1>');
+    const changed = ctx.core.courses.importCourse(stage);
+    expect(changed.lessons[0]).toMatchObject({ revision: 3, status: 'generated' });
+    expect(changed.confirmation_expired).toBe(true);
+  });
+
+  it('完整包按天维护版本：只更新 D2 时其余课次与进度保持版本，重导不重复递增', () => {
+    const ctx = mkCore();
+    cleanups.push(ctx.cleanup);
+    const stage = mkPkg(mkStage());
+    const first = ctx.core.courses.importCourse(stage);
+    const id = first.course.id;
+    readAndConfirm(ctx.core, id);
+    const request = ctx.core.courses.createGenerationRequest(id);
+    ctx.core.courses.claimRequest(request.id, 'revision-test');
+    const manifest = JSON.parse(readFileSync(join(stage, 'course.json'), 'utf8'));
+    manifest.lessons.push({ day: 2, title: '第二天', html: 'lessons/d2.html' });
+    writeFileSync(join(stage, 'lessons/d2.html'), '<h1>第二天 v1</h1>');
+    writeFileSync(join(stage, 'course.json'), JSON.stringify(manifest));
+    expect(ctx.core.courses.importCourse(stage).lessons.map((l) => l.revision)).toEqual([1, 1]);
+    ctx.core.courses.markLessonRead(id, 2);
+    ctx.core.courses.completeRequest(request.id, 'revision-test');
+    const next = ctx.core.courses.createGenerationRequest(id);
+    ctx.core.courses.claimRequest(next.id, 'revision-test');
+    writeFileSync(join(stage, 'lessons/d2.html'), '<h1>第二天 v2</h1>');
+    const updated = ctx.core.courses.importCourse(stage);
+    expect(updated.lessons.map((l) => l.revision)).toEqual([1, 2]);
+    expect(updated.lessons[0].status).toBe('read');
+    expect(updated.lessons[1].status).toBe('generated');
+    expect(ctx.core.courses.importCourse(stage).lessons.map((l) => l.revision)).toEqual([1, 2]);
+  });
+
   it('总览独立于 D1：消毒后可单独读取，不计入每日讲义，重导可更新总览而保留样课进度', () => {
     const ctx = mkCore();
     cleanups.push(ctx.cleanup);
@@ -604,6 +720,7 @@ describe('课程导入与阅读', () => {
     const overviewHtmlBefore = ctx.core.courses.readOverviewHtml(overviewBefore);
     const cssPath = join(ctx.dbPath, '..', 'courses', 'test-course', 'style.css');
     const cssBefore = readFileSync(cssPath, 'utf8');
+    const revisionsBefore = ctx.core.courses.listLessons(cid).map((l) => l.revision);
 
     // 故障 A（阶段 1 拷贝失败）：目标 lessons 目录只读 → 合并抛错
     chmodSync(lessonsDir, 0o555);
@@ -614,6 +731,7 @@ describe('课程导入与阅读', () => {
     try { ctx.core.courses.importCourse(s2); } catch { threwA = true; }
     chmodSync(lessonsDir, 0o755);
     expect(threwA).toBe(true);
+    expect(ctx.core.courses.listLessons(cid).map((l) => l.revision)).toEqual(revisionsBefore);
     // 库回滚：3 天、状态/讲义原样
     expect(ctx.core.courses.listLessons(cid).map((l) => l.day)).toEqual([1, 2, 3]);
     expect(ctx.core.courses.getCourse(cid).status).toBe('complete');
@@ -633,6 +751,7 @@ describe('课程导入与阅读', () => {
     let threwB = false;
     try { ctx.core.courses.importCourse(s3); } catch { threwB = true; }
     expect(threwB).toBe(true);
+    expect(ctx.core.courses.listLessons(cid).map((l) => l.revision)).toEqual(revisionsBefore);
     expect(ctx.core.courses.listLessons(cid).map((l) => l.day)).toEqual([1, 2, 3]);
     expect(readFileSync(d1, 'utf8')).toBe(htmlBefore); // 已落位的 d1 被恢复为旧内容（关键断言）
     expect(ctx.core.courses.getOverview(cid)).toEqual(overviewBefore);

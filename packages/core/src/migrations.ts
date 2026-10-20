@@ -658,6 +658,19 @@ MIGRATIONS.push({version:22,name:'provider_refresh_runtime',up:db=>{
   }
 }});
 
+MIGRATIONS.push({version:23,name:'course_lesson_revision',up:db=>{
+  db.exec('ALTER TABLE course_lessons ADD COLUMN revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)');
+}});
+
+MIGRATIONS.push({ version: 24, name: 'news_collection_prompt_and_brief', up: (db) => {
+  db.exec(`CREATE TABLE IF NOT EXISTS news_collection_settings (
+    id INTEGER PRIMARY KEY CHECK(id=1), prompt TEXT NOT NULL,
+    max_items INTEGER NOT NULL, window_hours INTEGER NOT NULL,
+    revision INTEGER NOT NULL, updated_at TEXT NOT NULL
+  );
+  ALTER TABLE news ADD COLUMN brief_json TEXT;`);
+}});
+
 export function runMigrations(db: DbAdapter): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
   const current = Number(row?.user_version ?? 0);

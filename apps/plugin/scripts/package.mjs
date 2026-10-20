@@ -6,13 +6,16 @@ import { isDeepStrictEqual } from 'node:util';
 export const digest = file => createHash('sha256').update(readFileSync(file)).digest('hex');
 const json = file => JSON.parse(readFileSync(file, 'utf8'));
 const inside = (parent, child) => { const rel = relative(resolve(parent), resolve(child)); return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel); };
-function validateManifest(manifest) {
+function validateManifest(manifest, { allowLegacySkills = false } = {}) {
   if (manifest.schemaVersion !== 1 || manifest.name !== 'dayfolio' || manifest.serverId !== 'tododesk' || !Array.isArray(manifest.skills) || !manifest.skills.length) throw new Error('技能清单不合法');
   if (new Set(manifest.skills.map(s => s.id)).size !== manifest.skills.length) throw new Error('技能清单包含重复技能');
   for (const skill of manifest.skills) {
     if (!/^[a-z0-9-]+$/.test(skill.id) || !Array.isArray(skill.requires?.tools) || skill.requires.tools.some(name => typeof name !== 'string')) throw new Error('非法技能标识或工具依赖');
     if (skill.licenseFile && (isAbsolute(skill.licenseFile) || skill.licenseFile.split(/[\\/]/).includes('..'))) throw new Error('许可文件路径不合法');
   }
+  const unified = manifest.skills.length === 1 && manifest.skills[0].id === 'dayfolio';
+  const legacy = allowLegacySkills && manifest.skills.every(skill => ['tododesk', 'tododesk-teach', 'tododesk-sports'].includes(skill.id));
+  if (!unified && !legacy) throw new Error('仅允许一个 dayfolio 技能入口');
 }
 
 export function filesIn(root, rel = '') {
@@ -28,7 +31,7 @@ export function filesIn(root, rel = '') {
 }
 
 /** 校验实际完整文件集；未知文件、残留模板和被改写的文件都不视为已发布版本。 */
-export function verifyAgentKit(root) {
+export function verifyAgentKit(root, options = {}) {
   const release = json(join(root, 'release.json'));
   if (release.schemaVersion !== 1 || release.name !== 'dayfolio' || !/^\d+\.\d+\.\d+$/.test(release.version)) throw new Error('能力包发布清单不合法');
   const expected = Object.keys(release.files).sort();
@@ -37,7 +40,9 @@ export function verifyAgentKit(root) {
   for (const file of actual) if (digest(join(root, file)) !== release.files[file]) throw new Error(`能力包文件摘要不一致：${file}`);
   const catalog = json(join(root, 'catalog.json'));
   const manifest = json(join(root, 'manifest.json'));
-  validateManifest(manifest);
+  validateManifest(manifest, options);
+  const entries = filesIn(join(root, 'skills')).filter(file => file.endsWith('/SKILL.md')).sort();
+  if (!isDeepStrictEqual(entries, manifest.skills.map(skill => `${skill.id}/SKILL.md`).sort())) throw new Error('能力包包含多余技能入口');
   if (catalog.version !== release.version || catalog.serverId !== 'tododesk') throw new Error('MCP 目录版本或服务标识不一致');
   const names = new Set(catalog.tools.map(t => t.name));
   if (names.size !== catalog.tools.length) throw new Error('MCP 工具名称重复');
@@ -51,10 +56,12 @@ export function verifyAgentKit(root) {
       const license = readFileSync(join(dir, skill.licenseFile), 'utf8');
       if (!license.trim() || (skill.requiredNotices ?? []).some(notice => !license.includes(notice))) throw new Error(`${skill.id} 缺少完整许可声明`);
     }
-    for (const [, target] of md.matchAll(/\]\(([^)]+)\)/g)) {
-      if (/^[a-z]+:|^#/.test(target) || target.includes('<')) continue;
-      const path = resolve(dir, target.split('#')[0]);
-      if (!inside(root, path) || !existsSync(path)) throw new Error(`${skill.id} 的相对引用失效：${target}`);
+    for (const file of filesIn(dir).filter(file => file.endsWith('.md'))) {
+      for (const [, target] of readFileSync(join(dir, file), 'utf8').matchAll(/\]\(([^)]+)\)/g)) {
+        if (/^[a-z]+:|^#/.test(target) || target.includes('<')) continue;
+        const path = resolve(dirname(join(dir, file)), target.split('#')[0]);
+        if (!inside(root, path) || !existsSync(path)) throw new Error(`${skill.id} 的相对引用失效：${target}`);
+      }
     }
   }
   const p = json(join(root, 'plugin.json')), z = json(join(root, '.zcode-plugin/plugin.json'));
@@ -169,8 +176,8 @@ function installManagedPackage(source, target, { dryRun = false, rollback = fals
   const backup = target + '.previous';
   if (lstatSafe(target)?.isSymbolicLink() || lstatSafe(backup)?.isSymbolicLink()) throw new Error('安装目录不能是符号链接');
   if (rollback) {
-    const previous = verifyAgentKit(backup);
-    if (existsSync(target)) verifyAgentKit(target);
+    const previous = verifyAgentKit(backup, { allowLegacySkills: true });
+    if (existsSync(target)) verifyAgentKit(target, { allowLegacySkills: true });
     if (dryRun) return { version: previous.version, target, rollback: true, dryRun };
     const temp = target + '.swap-' + randomUUID();
     if (existsSync(target)) renameSync(target, temp);
@@ -179,8 +186,8 @@ function installManagedPackage(source, target, { dryRun = false, rollback = fals
     return { version: previous.version, target, rollback: true };
   }
   const release = verifyAgentKit(source);
-  if (existsSync(target)) verifyAgentKit(target);
-  if (existsSync(backup)) verifyAgentKit(backup);
+  if (existsSync(target)) verifyAgentKit(target, { allowLegacySkills: true });
+  if (existsSync(backup)) verifyAgentKit(backup, { allowLegacySkills: true });
   if (dryRun) return { version: release.version, target, dryRun };
   mkdirSync(dirname(target), { recursive: true });
   const stage = target + '.stage-' + randomUUID();

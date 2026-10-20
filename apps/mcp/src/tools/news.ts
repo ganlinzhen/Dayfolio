@@ -3,11 +3,20 @@ import { z } from 'zod';
 import { wrap } from '../shared/response';
 
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
+  server.tool('get_news_collection_settings',
+    '读取 App 当前保存的新闻采集提示词、收录上限和时间窗。什么场景调用我：每日采集开始前读取最新规则；不要把旧自动任务里的固定要求当作当前规则。读取不会创建任务或联网。', {},
+    async () => wrap(() => core.news.getCollectionSettings())());
+  server.tool('update_news_collection_settings',
+    '保存新闻采集提示词，App 与 MCP 共用。什么场景调用我：用户明确要求调整以后的新闻内容、结构或采集范围时；先读取当前 revision，保存仅影响后续按提示词创建的请求，已有请求保留快照。', {
+      prompt: z.string().min(1).max(12000), max_items: z.number().int().min(1).max(11),
+      window_hours: z.number().int().min(1).max(720), expected_revision: z.number().int().min(0),
+    }, async (input) => wrap(() => core.news.updateCollectionSettings(input))());
+
   // ---------- 每日新闻（agent-only：任务 → 认领 → 提交；本地不抓取任何 RSS/X） ----------
 
   server.tool(
     'list_news',
-    '查看库内新闻（**只读，不联网**）：默认近 3 天，可按任务/来源/关键词过滤，或只看未读/收藏。每条含原始来源链接、摘要、发布时间、已读与收藏状态。App 面板同源展示。什么场景调用我：用户想看最近的新闻、查某条新闻的来源链接、找收藏的内容',
+    '查看库内新闻（**只读，不联网**）：默认近 3 天，可按任务/来源/关键词过滤，或只看未读/收藏。每条含原始来源链接、摘要、发布时间；专题简报还含 brief.overview 与 brief.items 逐条摘要和链接、已读与收藏状态。App 面板同源展示。什么场景调用我：用户想看最近的新闻、查某条新闻的来源链接、找收藏的内容',
     {
       days: z.number().int().positive().max(90).optional().describe('最近 N 天（按北京日期），默认 3'),
       source: z.union([z.enum(['agent', 'x', 'zhihu_daily', 'hacker_news']), z.string().regex(/^rss\//)]).optional().describe("缺省看全部；'agent'=任务提交的新闻，其余为旧版抓取的历史"),
@@ -15,7 +24,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
       search: z.string().optional().describe('在标题和摘要中搜索（库内，不联网）'),
       filter: z.enum(['all', 'unread', 'starred']).optional().describe('默认 all；unread=只看未读，starred=只看收藏'),
       since: z.string().optional().describe('ISO 时间戳：只看此时刻之后发布的（如近 24 小时窗口）'),
-      limit: z.number().int().positive().max(500).optional().describe('默认 100；历史展示不受任务 10 条预算限制'),
+      limit: z.number().int().positive().max(500).optional().describe('默认 100；历史展示不受任务预算限制'),
       offset: z.number().int().min(0).optional().describe('分页偏移（配合 limit 使用，按发布时间倒序）'),
     },
     async ({ days, source, task_id, search, filter, since, limit, offset }) =>
@@ -32,11 +41,12 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
 
   server.tool(
     'create_news_task',
-    '创建一个待执行的新闻任务（新闻生产的唯一入口；App 不抓取，任务由 agent 执行）。什么场景调用我：用户说「帮我收集/看看某方面的最新新闻」。任务创建后处于待执行，由你或下一次会话用 claim_news_task 认领执行。规则：每任务累计最多 10 条新入库（跨批次不重置）；只接受任务时间窗内发布、带原始来源链接与摘要、你亲自核实过的新闻',
+    '创建一个待执行的新闻任务（新闻生产的唯一入口；App 不抓取，任务由 agent 执行）。什么场景调用我：用户说「帮我收集/看看某方面的最新新闻」。任务创建后处于待执行，由你或下一次会话用 claim_news_task 认领执行。规则：每任务累计最多 11 条新入库（跨批次不重置）；只接受任务时间窗内发布、带原始来源链接与摘要、你亲自核实过的新闻',
     {
       title: z.string().min(1).max(200).describe('任务主题，如「AI 领域最近 24 小时重要新闻」'),
+      use_collection_prompt: z.boolean().optional().describe('true=读取 App 当前提示词，并将要求与配置存成任务快照；每日采集必须设 true，默认 false 用于临时任务'),
       instructions: z.string().max(2000).optional().describe('给执行 agent 的规则/补充要求（关注方向、语言、侧重等），会在认领时看到'),
-      max_items: z.number().int().min(1).max(10).optional().describe('新入库条数上限（默认 10，不可超过 10；跨批次累计）'),
+      max_items: z.number().int().min(1).max(11).optional().describe('累计上限 1~11；使用采集提示词时默认读取保存配置，否则默认 10'),
       window_hours: z.number().int().min(1).max(720).optional().describe('时间窗（小时，默认 24）：只接受最近 N 小时内发布的新闻'),
     },
     async (input) => wrap(() => core.news.createTask(input))(),
@@ -74,6 +84,14 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
         source_url: z.string().min(1).max(2048).describe('原始来源网页链接（http(s)，你亲自核实过的公开页面）'),
         source_name: z.string().max(120).optional().describe('来源站点名，如「TechCrunch」'),
         published_at: z.string().min(1).describe('来源页面的真实发布时间（ISO 格式）'),
+        brief: z.object({
+          overview: z.string().min(1).max(2000).describe('专题总体看点'),
+          items: z.array(z.object({
+            title: z.string().min(1).max(300), summary: z.string().min(1).max(2000),
+            source_url: z.string().min(1).max(2048), source_name: z.string().max(120).optional(),
+            published_at: z.string().min(1),
+          })).min(1).max(20),
+        }).optional().describe('专题简报：整份只算一条新闻，子条目均须核实来源与时间。外层 source_url 和 published_at 使用第一则新闻的值，不能同时传 html'),
         html: z.string().max(1000000).optional().describe('本地 HTML 快照（可选）：X/Twitter 等无法内嵌展示的来源用。写成自包含 HTML（作者/发布时间/正文/图片 https 外链/原帖链接），脚本与事件属性会被剥离，保存后用 read_news_html 核对'),
       })).min(1).max(10).describe('本批条目（1~10 条）'),
     },

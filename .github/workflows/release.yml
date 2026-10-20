@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  DAYFOLIO_SKIP_CODEX_SYNC: '1'
+
 # 同一提交避免重复构建；新提交不会取消正在验收的版本。
 concurrency:
   group: dayfolio-release-${{ github.workflow }}-${{ github.event.after || github.sha }}
@@ -82,6 +85,8 @@ jobs:
         run: |
           node apps/desktop/scripts/ui-smoke-demo.mjs
           node apps/desktop/scripts/ui-smoke-onboarding.mjs
+          node apps/desktop/scripts/ui-smoke-course.mjs
+          node apps/desktop/scripts/ui-smoke-news.mjs
       - name: 补齐 Electron 内嵌程序的签名
         run: node scripts/release-sign-electron.mjs
       - name: 生成桌面包
@@ -101,6 +106,8 @@ jobs:
         run: |
           node apps/desktop/scripts/ui-smoke-demo.mjs
           node apps/desktop/scripts/ui-smoke-onboarding.mjs
+          node apps/desktop/scripts/ui-smoke-course.mjs
+          node apps/desktop/scripts/ui-smoke-news.mjs
         env:
           TODODESK_SMOKE_APP: ${{ runner.temp }}/dayfolio-download/Dayfolio.app/Contents/MacOS/Dayfolio
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

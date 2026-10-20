@@ -53,11 +53,11 @@ npm run build:mcp
 
 ## 统一技能与能力包
 
-三个技能在 `packages/agent-kit/skills/` 统一维护：
+仅保留一个对外技能 `dayfolio`，显示名为 **Dayfolio**，源码位于 `packages/agent-kit/skills/dayfolio/`。
 
-- `tododesk`：通用数据操作与专业技能导引。
-- `tododesk-teach`：学习计划、样课、讲义、会话和测评；样课仍需用户在 App 亲自确认。
-- `tododesk-sports`：生成体育或电竞赛事页面，并更新已有工具的数据；继续使用工具箱保存，不提供内置体育后台或自动定时采集。
+待办、日程、新闻、工具箱、自定义数据、教学与赛事页面都由这个入口处理。教学和赛事说明按需从内部参考文件读取，不单独展示技能。样课仍在 App 阅读后由用户在对话中确认，助手通过专用工具记录当前版本。
+
+本机运行 `npm run package:desktop` 后，只有打包与签名校验成功，才会把同版本的完整能力包同步到 Codex。默认入口为 `~/.codex/skills/dayfolio`，设置 `CODEX_HOME` 时使用其下的 `skills/dayfolio`；旧 TodoDesk、教学和赛事入口会备份后移出发现目录。CI 和隔离验收不更新真实 Codex 目录。同步失败会使打包命令报错，并保留旧入口或受管包的上一版；重新打开对话后可重新加载技能列表。
 
 源码分发前运行 `npm run agent:build`、`npm run agent:verify`，完整包生成在 `dist/agent-kit/`。保留包内技能、运行时、MCP、宿主清单和发布记录文件，不单独拷贝技能目录。没有注册 MCP 的助手可使用包内 `runtime/call.mjs` 调用同一服务器。
 
@@ -134,7 +134,7 @@ npm run agent:doctor -- --target /自选目录/Dayfolio-Agent
 - 「帮我写个倒计时小工具放进工具箱」
 - 「为《TypeScript 全面指南》这门 20 集的课做个 14 天学习计划，每天 1 小时，注意安排复习」
 - 「看看现在有哪些待处理的课程生成请求」
-- 「把 ~/Downloads/sample-course/ 里的课程样课包导入进来」（AI 会走样课流程：导入后由你在 App 阅读确认）
+- 「把 ~/Downloads/sample-course/ 里的课程样课包导入进来」（AI 会走样课流程：导入后由你在 App 阅读，再在对话中确认）
 - 「我想学线性代数，每天晚上 1 小时，用《线性代数及其应用》」（AI 会先出**草案**给你确认，再按学习闭环推进）
 - 「今天的学习任务打卡了吗」
 - 「为今天学的《递归》知识点按遗忘曲线生成复习计划」

@@ -9,6 +9,7 @@
 // 3. 预览类操作（草案、调整建议、卡片）不产生计划/待办/打卡/文件等副作用；
 // 4. 写操作幂等：同一稳定 ID（或 scope+attempt）重复提交只更新不重复创建。
 import { createHash } from 'node:crypto';
+import { getStudyProgress } from './study-progress';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { DbAdapter } from '../db';
@@ -537,8 +538,24 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
     deps.plans.remove(planId);
   };
 
+  /** 仅按草案中明确记录的课程建立绑定；调用方须持有事务写锁，禁止覆盖已有绑定。 */
+  const bindDraftCourse = (draft: StudyDraft, planId: number): void => {
+    if (draft.course_id == null) return;
+    const course = db.prepare('SELECT plan_id FROM courses WHERE id = ?').get(draft.course_id);
+    if (!course) throw new Error(`关联课程 ${draft.course_id} 不存在，无法确认学习计划`);
+    if (course.plan_id != null) {
+      if (Number(course.plan_id) !== planId) {
+        throw new Error(`课程 ${draft.course_id} 已绑定学习计划 ${course.plan_id}，不得改绑计划 ${planId}`);
+      }
+      return;
+    }
+    db.prepare('UPDATE courses SET plan_id = ?, updated_at = ? WHERE id = ? AND plan_id IS NULL')
+      .run(planId, nowIso(), draft.course_id);
+  };
+
   /**
-   * 确认草案 → 生成正式计划与逐日待办。幂等：已确认的草案重复确认返回原计划，不重复创建。
+   * 确认草案 → 生成正式计划与逐日待办，并绑定草案指定的课程。
+   * 幂等：已确认的草案返回原计划，仅补齐旧版遗漏的空绑定，不重复创建或改绑。
    * **确认边界预算冲突硬校验**（仅新排期路径：conflict_checked_at 非 NULL，即经 scheduleDraft 排期的草案）：
    * 排期之后、确认之前，其他进程（App ↔ MCP 共库）可能新增/改期计划引入新的超预算冲突——
    * 1. 建计划前按当下库状态重检（快速拒绝，无副作用）；
@@ -546,13 +563,18 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
    *    不一致则整体回退：草案恢复未确认、本次生成的计划与待办删除，绝不留下冲突未确认的计划。
    * 旧路径豁免（明确限定）：conflict_checked_at IS NULL = `draft()` 创建即排期的 dated 草案，
    * 确认不设冲突门（历史行为保持），不因新增的校验挡住既有流程。
-   * 补偿回滚：计划创建成功但草案状态更新失败（并发/故障）时，删除本次生成的计划与待办后原样抛错，
+   * 草案确认、预算复检与课程绑定共用事务；失败后删除本次生成的计划与待办并原样抛错，
    * 不留下「计划已建而草案未确认」的中间态。
    */
   const confirmDraft = (id: number, opts: DraftConflictConfirm = {}): { draft: StudyDraft; plan: PlanDetail } => {
     const d = getDraft(id);
     if (d.status === 'confirmed' && d.plan_id != null) {
-      return { draft: d, plan: deps.plans.get(d.plan_id) };
+      const planId = d.plan_id;
+      return inTx(db, () => {
+        const plan = deps.plans.get(planId);
+        bindDraftCourse(d, plan.id);
+        return { draft: d, plan };
+      });
     }
     if (d.status === 'cancelled') throw new Error(`草案 ${id} 已取消，不能确认；请重新生成草案`);
     // 无日期草案防御：未排期（无起始日期/每日预算/逐日安排）一律拒绝确认——
@@ -560,6 +582,7 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
     if (d.start_date == null || d.end_date == null || d.daily_minutes == null || d.items.length === 0) {
       throw new Error(`草案 ${id} 尚未排期（缺起始日期/每日预算/逐日安排），不能确认；请先 preview_study_draft_schedule 预览并 schedule_study_draft 排期`);
     }
+    const dailyMinutes = d.daily_minutes;
     // 1) 建计划前重检（新排期路径）：排期后既有计划变动在此刻可见，冲突集必须与用户确认的精确一致
     if (d.conflict_checked_at != null) {
       assertOverDatesConfirmed(overDatesOf(d.items, d.daily_minutes), opts.confirmed_over_dates, '确认');
@@ -575,38 +598,23 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
       create_todos: true,
       daily_minutes: d.daily_minutes,
     });
-    let pendingError: unknown = null;
-    let confirmed = false;
     try {
-      confirmed =
-        db
+      inTx(db, () => {
+        const confirmed = db
           .prepare(
             `UPDATE study_plan_drafts SET status = 'confirmed', plan_id = ?, confirmed_at = ?, updated_at = ? WHERE id = ? AND status = 'draft'`,
           )
           .run(plan.id, nowIso(), nowIso(), id).changes === 1;
+        if (!confirmed) throw new Error(`草案 ${id} 确认中断（状态更新未生效），已回滚本次生成的计划 ${plan.id}`);
+        // 排除本次刚建的计划自身，在事务内复检预算，再写入课程绑定。
+        if (d.conflict_checked_at != null) {
+          assertOverDatesConfirmed(overDatesOf(d.items, dailyMinutes, plan.id), opts.confirmed_over_dates, '确认复检');
+        }
+        bindDraftCourse(d, plan.id);
+      });
     } catch (e) {
-      confirmed = false; // 状态更新抛错（并发/触发器/磁盘）：进入补偿回滚后原样抛出
-      pendingError = e;
-    }
-    if (!confirmed) {
-      // 草案状态未按预期落库：回滚本次生成的计划及其待办（plans.remove 自带事务；
-      // 由计划生成的待办在该事务外逐条删除——plans.remove 只解除关联，这里必须连待办一并清理）
       rollbackPlanWithTodos(plan.id);
-      if (pendingError) throw pendingError;
-      throw new Error(`草案 ${id} 确认中断（状态更新未生效），已回滚本次生成的计划 ${plan.id}`);
-    }
-    // 2) 建计划后复检（新排期路径）：排除本次刚建的计划自身重算，捕获建计划期间其他进程写入的占用；
-    //    不一致则整体回退（草案恢复未确认 + 删计划删待办），绝不留下「冲突未经确认的计划」
-    if (d.conflict_checked_at != null) {
-      try {
-        assertOverDatesConfirmed(overDatesOf(d.items, d.daily_minutes, plan.id), opts.confirmed_over_dates, '确认复检');
-      } catch (e) {
-        db.prepare(
-          `UPDATE study_plan_drafts SET status = 'draft', plan_id = NULL, confirmed_at = NULL, updated_at = ? WHERE id = ?`,
-        ).run(nowIso(), id);
-        rollbackPlanWithTodos(plan.id);
-        throw e;
-      }
+      throw e;
     }
     return { draft: getDraft(id), plan };
   };
@@ -645,7 +653,7 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
     if (date < addDays(todayStr(), -MAX_SESSION_BACKFILL_DAYS)) {
       throw new Error(`会话日期 ${date} 过早，不支持补记超过 ${MAX_SESSION_BACKFILL_DAYS} 天前的会话`);
     }
-    if (!Number.isInteger(input.actual_minutes) || input.actual_minutes <= 0 || input.actual_minutes > 1440) {
+    if (input.actual_minutes !== undefined && (!Number.isInteger(input.actual_minutes) || input.actual_minutes <= 0 || input.actual_minutes > 1440)) {
       throw new Error(`实际用时 actual_minutes 必须为 1~1440 的整数（分钟），收到 "${input.actual_minutes}"`);
     }
     if (input.plan_item_id != null) {
@@ -705,7 +713,7 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
         topic,
         attempt,
         date,
-        input.actual_minutes,
+        input.actual_minutes ?? existing?.actual_minutes ?? 0,
         explanation,
         questions,
         materialSource,
@@ -1454,6 +1462,7 @@ export function createStudyService(db: DbAdapter, deps: StudyServiceDeps) {
     confirmDraft,
     cancelDraft,
     recordSession,
+    getProgress: (planId?: number) => getStudyProgress(db, planId),
     listSessions,
     recordAssessment,
     listAssessments,

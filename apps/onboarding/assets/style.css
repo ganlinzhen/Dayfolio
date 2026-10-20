@@ -3,9 +3,10 @@ body {
   font-family: -apple-system, 'PingFang SC', sans-serif;
   line-height: 1.8;
   color: #1a1a19;
-  max-width: 720px;
+  box-sizing: border-box;
+  width: 100%;
   margin: 0 auto;
-  padding: 28px;
+  padding: clamp(16px, 2.5vw, 32px);
 }
 h1 { font-size: 26px; line-height: 1.4; }
 h2 { font-size: 19px; margin-top: 32px; }

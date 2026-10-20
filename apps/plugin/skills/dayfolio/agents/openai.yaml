@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dayfolio"
+  short_description: "统一管理待办、日程、学习课程、新闻和工具箱，包含教学与赛事页面流程"
+  default_prompt: "使用 $dayfolio 帮我管理今天的安排，或继续学习、新闻和赛事页面任务。"

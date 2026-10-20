@@ -66,3 +66,29 @@ Dayfolio 上手课程的唯一内容源为 **`apps/onboarding/`**，与 **`apps/
 - 渲染层构建 `npm run build:web` 已自动前置 `help:sync`；`npm run dev` 会监听 `apps/help/docs/` 变更自动重同步。
 - 测试：`npm test`（core 单测 + MCP 端到端）；类型检查：`npm run typecheck`。改动后两者须通过。
 - 数据库：App 与 MCP 必须指向同一 SQLite 文件（默认 `~/Library/Application Support/tododesk/tododesk.db`，环境变量 `TODODESK_DB` 覆盖）。
+
+## 课程对话确认约定
+
+- App 负责课程总览与讲义阅读。样课读完后，用户在对话中明确确认即可，助手通过专用 `confirm_course_sample` 工具记录当前内容版本，不要求用户回 App 点击确认或请求按钮。
+- 「样课」标识与讲义确认提示仅在待确认时展示，确认后隐藏，内容变化导致确认过期时恢复；不得为隐藏标识删除课程包的样课信息。
+- 用户只确认样课时仅记录确认；同时要求生成完整版时继续创建请求、认领、生成、导入与完成，不重复索要相同授权。保留未读拒绝、版本绑定、内容变更后重新阅读确认与完整包校验。
+
+- 每课内容修订号由课程导入服务维护，App 与 MCP 共用；实际内容更新才递增，重复导入、资产修复及学习状态变化不递增，不从课程包 version 推算逐课版本。
+
+## Dayfolio 技能入口与同步
+
+- `packages/agent-kit/skills/dayfolio/` 是唯一对外技能，教学和赛事维护在其 `references/`，不得再增加独立的 TodoDesk、教学或赛事 `SKILL.md` 入口。
+- `npm run package:desktop` 在候选 App 签名校验成功后自动同步完整能力包到本机 Codex，并备份、移除旧入口；同步失败视为交付失败。CI 与隔离验收通过 `DAYFOLIO_SKIP_CODEX_SYNC=1` 避免更新真实用户目录。
+- 默认 Codex 入口是 `~/.codex/skills/dayfolio`，指向 `~/.codex/dayfolio/agent-kit/skills/dayfolio`；`CODEX_HOME` 自定义时两处一并跟随。项目不另设发现入口，避免与个人入口重复。
+
+- 删除课程必须使用 `delete_course` 专用业务入口，核对 ID 与 slug 并确认不可恢复的范围；单独删除课程保留计划和待办，需要整组清理时分别调用计划删除入口，不直接修改数据库或删除资产目录。
+
+## 新闻采集提示词与专题简报
+
+- App 长期采集要求与 MCP 共用 `news_collection_settings`，定时执行前读取 `get_news_collection_settings`，以 `use_collection_prompt=true` 创建快照请求，不把长期内容写死在调度提示中。
+- 国际与国内新闻独立入库；AI 专题用结构化 `brief` 保存总览、逐条摘要及来源链接，整份只占一条。每任务上限 11 条，每批仍最多 10 条；不得以汇总时间替代子新闻真实发布时间。
+
+## 学习安排详情约定
+
+- 学习详情直接展示关联课件和自测，共用课程阅读器及课程自测业务入口；自测提交、已读、笔记和完成状态分别记录。
+- 学习笔记只要求内容，不要求填写实际用时；学习会话支持省略 `actual_minutes`，新记录用 0 表示未记录，更新时保留已有用时，不估算或补填。

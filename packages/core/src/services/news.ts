@@ -12,14 +12,14 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { join, resolve, sep } from 'node:path';
 import type { DbAdapter } from '../db';
 import { mapNews } from '../db';
-import type { NewsDeleteResult, NewsItem, NewsSubmissionItem, NewsTask } from '../types';
+import type { NewsBrief, NewsCollectionSettings, NewsDeleteResult, NewsItem, NewsSubmissionItem, NewsTask } from '../types';
 import { newsDedupKey } from '../utils/news-dedup';
 import { addDays, isoAfter, nowIso, todayStr } from '../utils/date';
 
 // ---------- 授权约束常量（用户 2026-10-11 批准，测试共用引用） ----------
 
 /** 每个任务「新入库」条数硬上限（跨批次与重试累计；历史展示不受此限） */
-export const NEWS_TASK_MAX_ITEMS = 10;
+export const NEWS_TASK_MAX_ITEMS = 11;
 /** 单次提交的条数上限（一次 submit_news_items 最多多少条） */
 export const NEWS_SUBMIT_BATCH_MAX = 10;
 /** 认领租约时长（毫秒）：到期未提交即失效，任务可被重新认领（跨批次接力） */
@@ -34,6 +34,14 @@ export const NEWS_TASK_WINDOW_MAX_HOURS = 720;
 /** 单条本地 HTML 快照的最大字符数（消毒前；足够容纳整页推文/长文快照） */
 export const NEWS_HTML_MAX_CHARS = 1_000_000;
 /** 本地快照目录名：位于 dirname(db)/news（与 tools/courses 同一应用数据推导规则） */
+/** 未保存配置时的默认采集要求；保存后始终读取用户当前版本。 */
+export const DEFAULT_NEWS_COLLECTION_PROMPT = `请生成今天的中文新闻：
+1. 国际新闻 3–5 条，每条独立入库，标题标注「国际」，附事实摘要、原始来源链接和真实发布时间。
+2. 国内新闻 3–5 条，每条独立入库，标题标注「国内」，附事实摘要、原始来源链接和真实发布时间。
+3. AI 专题简报 1 份，作为一条新闻入库，标题包含日期。简报包含总体看点和 3–5 则 AI 新闻，每则包含标题、事实摘要、来源名称、原始链接及真实发布时间；使用 brief 字段，不把简报子新闻拆成独立条目。
+AI 关注大模型、Agent、AI 编程、Codex/Claude Code、开源与重要研究。优先官方发布和可信一手报道。
+按当前时间窗逐条打开来源核实；不使用旧闻、传闻或搜索摘要凑数。同一事件不在国际、国内与 AI 中重复出现。数量不足时说明缺口，不编造内容。`;
+
 export const NEWS_DIR_NAME = 'news';
 
 /** 本地快照根目录：dirname(db)/news（App 的 news-file:// 协议与 MCP 共用同一推导） */
@@ -179,6 +187,28 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
   // 本地快照根目录：必须从数据库路径推导（App 与 MCP 共用；缺省交给 createCore 传真实路径）
   const htmlRoot = opts.dbPath ? newsRootForDb(opts.dbPath) : null;
 
+  const getCollectionSettings = (): NewsCollectionSettings => {
+    const row = db.prepare('SELECT * FROM news_collection_settings WHERE id=1').get();
+    return row ? {
+      prompt: String(row.prompt), max_items: Number(row.max_items), window_hours: Number(row.window_hours),
+      revision: Number(row.revision), updated_at: String(row.updated_at),
+    } : { prompt: DEFAULT_NEWS_COLLECTION_PROMPT, max_items: 11, window_hours: 24, revision: 0, updated_at: null };
+  };
+  const updateCollectionSettings = (input: {
+    prompt: string; max_items: number; window_hours: number; expected_revision: number;
+  }): NewsCollectionSettings => immediateTx(db, () => {
+    const prompt = sanitizeText(input.prompt);
+    if (!prompt || prompt.length > 12000) throw new Error('采集提示词须为 1~12000 字');
+    if (!Number.isInteger(input.max_items) || input.max_items < 1 || input.max_items > NEWS_TASK_MAX_ITEMS) throw new Error('最多收录须为 1~11 的整数');
+    if (!Number.isInteger(input.window_hours) || input.window_hours < 1 || input.window_hours > 720) throw new Error('时间窗须为 1~720 小时的整数');
+    if (getCollectionSettings().revision !== input.expected_revision) throw new Error('采集提示词已被其他窗口更新，请重新加载后再保存');
+    db.prepare(`INSERT INTO news_collection_settings (id,prompt,max_items,window_hours,revision,updated_at)
+      VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET prompt=excluded.prompt,max_items=excluded.max_items,
+      window_hours=excluded.window_hours,revision=excluded.revision,updated_at=excluded.updated_at`)
+      .run(prompt, input.max_items, input.window_hours, input.expected_revision + 1, nowIso());
+    return getCollectionSettings();
+  });
+
   const taskRow = (id: number): Record<string, unknown> | undefined =>
     db.prepare('SELECT * FROM news_tasks WHERE id = ?').get(id) as Record<string, unknown> | undefined;
 
@@ -218,19 +248,20 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
   // ---------- 任务：创建 / 查询 ----------
 
   const createTask = (
-    input: { title: string; instructions?: string; max_items?: number; window_hours?: number },
+    input: { title: string; instructions?: string; max_items?: number; window_hours?: number; use_collection_prompt?: boolean },
     createdBy = 'mcp',
   ): NewsTask => {
     const title = sanitizeText(input.title);
     if (!title) throw new Error('任务标题不能为空');
     if (title.length > 200) throw new Error('任务标题过长（≤200 字）');
-    const instructions = sanitizeText(input.instructions ?? '');
-    if (instructions.length > 2000) throw new Error('任务规则说明过长（≤2000 字）');
-    const maxItems = input.max_items ?? NEWS_TASK_MAX_ITEMS;
+    const settings = input.use_collection_prompt ? getCollectionSettings() : null;
+    const instructions = sanitizeText([settings?.prompt, input.instructions].filter(Boolean).join('\n\n补充要求：\n'));
+    if (instructions.length > (settings ? 14000 : 2000)) throw new Error(`任务规则说明过长（≤${settings ? 14000 : 2000} 字）`);
+    const maxItems = input.max_items ?? settings?.max_items ?? 10;
     if (!Number.isInteger(maxItems) || maxItems < 1 || maxItems > NEWS_TASK_MAX_ITEMS) {
       throw new Error(`每任务新入库上限须为 1~${NEWS_TASK_MAX_ITEMS} 的整数`);
     }
-    const windowHours = input.window_hours ?? NEWS_TASK_WINDOW_DEFAULT_HOURS;
+    const windowHours = input.window_hours ?? settings?.window_hours ?? NEWS_TASK_WINDOW_DEFAULT_HOURS;
     if (!Number.isInteger(windowHours) || windowHours < NEWS_TASK_WINDOW_MIN_HOURS || windowHours > NEWS_TASK_WINDOW_MAX_HOURS) {
       throw new Error(`任务时间窗须为 ${NEWS_TASK_WINDOW_MIN_HOURS}~${NEWS_TASK_WINDOW_MAX_HOURS} 小时的整数`);
     }
@@ -311,7 +342,7 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
   };
 
   /** 校验并清洗一条提交（返回可直接入库的字段）；任何一项不合法即抛错（整批拒绝） */
-  const validateItem = (raw: NewsSubmissionItem, windowHours: number, now: number, index: number) => {
+  const validateItem = (raw: NewsSubmissionItem, windowHours: number, now: number, index: number): { title: string; summary: string; url: string; sourceName: string; publishedAt: string; html: string | null; brief: NewsBrief | null } => {
     const label = `第 ${index + 1} 条`;
     if (raw == null || typeof raw !== 'object') throw new Error(`${label}：不是合法对象`);
     const title = sanitizeText(raw.title);
@@ -338,7 +369,30 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
       if (rawHtml.length > NEWS_HTML_MAX_CHARS) throw new Error(`${label}：html 快照过长（>${NEWS_HTML_MAX_CHARS} 字符）`);
       html = ensureStandaloneNewsHtml(sanitizeNewsHtml(rawHtml), title);
     }
-    return { title, summary, url, sourceName, publishedAt: new Date(ts).toISOString(), html };
+    let brief: NewsBrief | null = null;
+    if (raw.brief != null) {
+      if (raw.html != null) throw new Error(`${label}：简报不能同时提交 html`);
+      const overview = sanitizeText(raw.brief.overview);
+      if (!overview || overview.length > 2000) throw new Error(`${label}：简报总览须为 1~2000 字`);
+      if (!Array.isArray(raw.brief.items) || raw.brief.items.length < 1 || raw.brief.items.length > 20) throw new Error(`${label}：简报须含 1~20 则新闻`);
+      const seenUrls = new Set<string>();
+      const seenTitles = new Set<string>();
+      const entries = raw.brief.items.map((entry, i) => {
+        // 子条目只允许来源字段，避免递归简报和 HTML 混入。
+        const clean = validateItem({ title: entry?.title, summary: entry?.summary, source_url: entry?.source_url,
+          source_name: entry?.source_name, published_at: entry?.published_at }, windowHours, now, i);
+        const key = newsDedupKey('generic', clean.url, '');
+        const event = normalizeNewsEventTitle(clean.title);
+        if (seenUrls.has(key) || seenTitles.has(event)) throw new Error(`${label}：简报包含重复新闻`);
+        seenUrls.add(key); seenTitles.add(event);
+        return { title: clean.title, summary: clean.summary, source_url: clean.url,
+          source_name: clean.sourceName, published_at: clean.publishedAt };
+      });
+      if (newsDedupKey('generic', url, '') !== newsDedupKey('generic', entries[0].source_url, '')) throw new Error(`${label}：简报来源链接须使用第一则新闻的原始链接`);
+      if (new Date(ts).toISOString() !== entries[0].published_at) throw new Error(`${label}：简报发布时间须使用第一则新闻的真实发布时间`);
+      brief = { overview, items: entries };
+    }
+    return { title, summary, url, sourceName, publishedAt: new Date(ts).toISOString(), html, brief };
   };
 
   /** 提交一批新闻（整批原子：任何一条不合法/重复/超预算 → 全部拒绝，绝不部分入库）。
@@ -356,41 +410,38 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
       const now = Date.now();
       const cleaned = items.map((it, i) => validateItem(it, task.window_hours, now, i));
 
-      // 批内去重：规范 URL 或 归一化标题 完全一致 → 同事件
-      const batchUrlKeys = new Set<string>();
-      const batchTitleKeys = new Set<string>();
-      for (let i = 0; i < cleaned.length; i++) {
-        const urlKey = newsDedupKey('generic', cleaned[i].url, '');
-        if (batchUrlKeys.has(urlKey)) throw new Error(`第 ${i + 1} 条与本批前面的条目重复（相同来源链接）`);
-        batchUrlKeys.add(urlKey);
-        const tKey = normalizeNewsEventTitle(cleaned[i].title);
-        if (tKey && batchTitleKeys.has(tKey)) throw new Error(`第 ${i + 1} 条与本批前面的条目重复（同事件：归一化标题一致）`);
-        if (tKey) batchTitleKeys.add(tKey);
-      }
-      // 库内去重：同规范 URL（dedup_key）或同事件（归一化标题）已存在 → 拒绝（不占预算，也不允许绕过预算重复入库）
+      // 简报各来源与独立新闻共同去重；简报自身使用首条来源，不重复计入。
+      const identities = (entry: { title: string; url: string; brief: NewsBrief | null }) => [
+        { title: entry.title, url: entry.url },
+        ...(entry.brief?.items ?? []).map((it) => ({ title: it.title, url: it.source_url })),
+      ];
+      const existingUrls = new Set<string>();
       const existingTitles = new Set<string>();
-      for (const r of db.prepare('SELECT title FROM news').all() as Array<{ title: string }>) {
-        const k = normalizeNewsEventTitle(String(r.title));
-        if (k) existingTitles.add(k);
+      for (const stored of db.prepare('SELECT * FROM news').all()) {
+        const mapped = mapNews(stored);
+        for (const entry of identities(mapped)) {
+          existingUrls.add(newsDedupKey('generic', entry.url, ''));
+          existingTitles.add(normalizeNewsEventTitle(entry.title));
+        }
       }
-      for (let i = 0; i < cleaned.length; i++) {
-        const urlKey = newsDedupKey('generic', cleaned[i].url, '');
-        const dup = db.prepare('SELECT id FROM news WHERE dedup_key = ?').get(urlKey);
-        if (dup) throw new Error(`第 ${i + 1} 条已在库中（相同来源链接，news id=${dup.id}），不要重复提交`);
-        const tKey = normalizeNewsEventTitle(cleaned[i].title);
-        if (tKey && existingTitles.has(tKey)) throw new Error(`第 ${i + 1} 条与库内已有新闻同事件（归一化标题一致），不要重复提交`);
-      }
-      // 删除指纹（用户删除后防回流）：同链接或同事件命中即拒绝，不给「删了又进来」留通道
+      const batchUrls = new Set<string>();
+      const batchTitles = new Set<string>();
       const fpHit = db.prepare('SELECT 1 FROM news_deleted_fingerprints WHERE fingerprint = ?');
-      for (let i = 0; i < cleaned.length; i++) {
-        const urlKey = newsDedupKey('generic', cleaned[i].url, '');
-        if (fpHit.get(deletedFingerprint('link', urlKey))) {
-          throw new Error(`第 ${i + 1} 条对应的新闻已被用户删除，不接受相同来源链接重新提交`);
+      for (const [i, clean] of cleaned.entries()) {
+        const localUrls = new Set<string>();
+        const localTitles = new Set<string>();
+        for (const entry of identities(clean)) {
+          const urlKey = newsDedupKey('generic', entry.url, '');
+          const titleKey = normalizeNewsEventTitle(entry.title);
+          if (batchUrls.has(urlKey) || (titleKey && batchTitles.has(titleKey))) throw new Error(`第 ${i + 1} 条与本批前面的条目重复（相同来源链接或同事件）`);
+          if (existingUrls.has(urlKey) || (titleKey && existingTitles.has(titleKey))) throw new Error(`第 ${i + 1} 条已在库中或与库内新闻同事件，不要重复提交`);
+          if (fpHit.get(deletedFingerprint('link', urlKey))) throw new Error(`第 ${i + 1} 条对应的新闻已被用户删除，不接受重新提交`);
+          if (titleKey && fpHit.get(deletedFingerprint('event', titleKey))) throw new Error(`第 ${i + 1} 条与用户已删除的新闻为同一事件，不接受重新提交`);
+          localUrls.add(urlKey);
+          if (titleKey) localTitles.add(titleKey);
         }
-        const tKey = normalizeNewsEventTitle(cleaned[i].title);
-        if (tKey && fpHit.get(deletedFingerprint('event', tKey))) {
-          throw new Error(`第 ${i + 1} 条与用户已删除的新闻为同一事件，不接受重新提交`);
-        }
+        for (const key of localUrls) batchUrls.add(key);
+        for (const key of localTitles) batchTitles.add(key);
       }
       // 预算（跨批次累计，按历史累计收录数 accepted_count 计）：整批超限即整体拒绝；删除不返还预算
       if (task.accepted_count + cleaned.length > task.max_items) {
@@ -403,24 +454,24 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
       }
       const nowStr = nowIso();
       const insert = db.prepare(
-        `INSERT INTO news (source, title, url, summary, published_date, published_at, fetched_at, dedup_key, is_read, is_starred, task_id, source_name, content_kind, html_rel)
-         VALUES ('agent', ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`,
+        `INSERT INTO news (source, title, url, summary, published_date, published_at, fetched_at, dedup_key, is_read, is_starred, task_id, source_name, content_kind, html_rel, brief_json)
+         VALUES ('agent', ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)`,
       );
       const inserted: NewsItem[] = [];
       // 先落盘快照文件再入库；后续任一 INSERT 失败则回滚并清理已写文件（不留孤儿快照）
       const written: string[] = [];
       try {
-        mkdirSync(htmlRoot!, { recursive: true });
+        if (cleaned.some((c) => c.html)) mkdirSync(htmlRoot!, { recursive: true });
         for (const c of cleaned) {
           const htmlRel = c.html ? `${randomUUID()}.html` : null;
           if (c.html && htmlRel) {
             const abs = htmlAbsPath(htmlRoot!, htmlRel);
             writeFileSync(abs, c.html, 'utf8');
             written.push(abs);
-            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey('generic', c.url, ''), Number(task.id), c.sourceName || null, 'html', htmlRel);
+            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey('generic', c.url, ''), Number(task.id), c.sourceName || null, 'html', htmlRel, null);
             inserted.push(mapNews(db.prepare('SELECT * FROM news WHERE id = ?').get(res.lastInsertRowid) as Record<string, unknown>));
           } else {
-            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey('generic', c.url, ''), Number(task.id), c.sourceName || null, 'url', null);
+            const res = insert.run(c.title, c.url, c.summary, beijingDateOf(c.publishedAt), c.publishedAt, nowStr, newsDedupKey('generic', c.url, ''), Number(task.id), c.sourceName || null, c.brief ? 'brief' : 'url', null, c.brief ? JSON.stringify(c.brief) : null);
             inserted.push(mapNews(db.prepare('SELECT * FROM news WHERE id = ?').get(res.lastInsertRowid) as Record<string, unknown>));
           }
         }
@@ -590,6 +641,12 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
       const fps = new Set<string>([deletedFingerprint('link', String(row.dedup_key ?? ''))]);
       const tKey = normalizeNewsEventTitle(String(row.title ?? ''));
       if (tKey) fps.add(deletedFingerprint('event', tKey));
+      const brief = mapNews(row).brief;
+      for (const entry of brief?.items ?? []) {
+        fps.add(deletedFingerprint('link', newsDedupKey('generic', entry.source_url, '')));
+        const event = normalizeNewsEventTitle(entry.title);
+        if (event) fps.add(deletedFingerprint('event', event));
+      }
       const insFp = db.prepare('INSERT OR IGNORE INTO news_deleted_fingerprints (fingerprint, deleted_at) VALUES (?, ?)');
       let fingerprintsKept = 0;
       for (const fp of fps) fingerprintsKept += insFp.run(fp, now).changes;
@@ -625,11 +682,11 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
    *  url 形态返回 html:null；快照文件缺失时 missing:true（不抛错，调用方自行降级）。 */
   const readHtml = (
     id: number,
-  ): { id: number; content_kind: 'url' | 'html'; html_rel: string | null; html: string | null; missing: boolean } => {
+  ): { id: number; content_kind: 'url' | 'html' | 'brief'; html_rel: string | null; html: string | null; missing: boolean } => {
     const row = db.prepare('SELECT * FROM news WHERE id = ?').get(Number(id)) as Record<string, unknown> | undefined;
     if (!row) throw new Error(`新闻 ${id} 不存在`);
     const htmlRel = (row.html_rel as string | null) ?? null;
-    if (row.content_kind !== 'html' || !htmlRel) return { id: Number(id), content_kind: 'url', html_rel: null, html: null, missing: false };
+    if (row.content_kind !== 'html' || !htmlRel) return { id: Number(id), content_kind: row.content_kind === 'brief' ? 'brief' : 'url', html_rel: null, html: null, missing: false };
     if (!htmlRoot) throw new Error('本地快照未配置存储目录（dbPath），无法读取');
     let html: string | null = null;
     let missing = true;
@@ -646,7 +703,7 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
   };
 
   return {
-    createTask, getTask, listTasks, claimTask, submitItems, completeTask, releaseTask, cancelTask,
+    getCollectionSettings, updateCollectionSettings, createTask, getTask, listTasks, claimTask, submitItems, completeTask, releaseTask, cancelTask,
     list, markRead, markStarred, markAllRead, deleteItem, readHtml, lastFetchedAt, countBySource,
   };
 }

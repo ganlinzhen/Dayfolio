@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, call } from '../api';
 import EmbeddedFrame from './EmbeddedFrame';
+import NewsCollectionEditor from './NewsCollectionEditor';
+import type { NewsBrief } from '../../../../../../packages/core/src/types';
 import { IconExternal, IconRefresh, IconSearch, IconStar, IconTrash, IconX } from './icons';
 import { toast } from './Toast';
 import type { WebViewElement } from '../webview';
@@ -24,7 +26,8 @@ interface NewsRow {
   is_starred: boolean;
   task_id: number | null;
   source_name: string | null;
-  content_kind: 'url' | 'html';
+  content_kind: 'url' | 'html' | 'brief';
+  brief: NewsBrief | null;
   html_rel: string | null;
 }
 interface NewsTask {
@@ -101,6 +104,17 @@ export default function NewsPanel() {
   const [sourceNonce, setSourceNonce] = useState(0);
   const [error, setError] = useState('');
   const [collectOpen, setCollectOpen] = useState(false);
+  const [promptDirty, setPromptDirty] = useState(false);
+  const leaveCollection = () => {
+    if (promptDirty && !window.confirm('采集提示词尚未保存，放弃修改并返回新闻？')) return;
+    setPromptDirty(false); setCollectOpen(false);
+  };
+  useEffect(() => {
+    if (!promptDirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [promptDirty]);
   // 新建采集请求（用户在 App 发起；同一 core 硬校验，执行仍由 agent 经 MCP 认领）
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState({ title: '', instructions: '', max_items: 10, window_hours: 24 });
@@ -354,7 +368,7 @@ export default function NewsPanel() {
         {t.inserted_count > 0 && (
           <button
             className="btn slim"
-            onClick={() => { setTaskFilter(t.id); setSelected(null); setCollectOpen(false); }}
+            onClick={() => { if (promptDirty && !window.confirm('采集提示词尚未保存，放弃修改并查看结果？')) return; setPromptDirty(false); setTaskFilter(t.id); setSelected(null); setCollectOpen(false); }}
           >查看 {t.inserted_count} 篇</button>
         )}
         {t.status === 'pending' && (
@@ -373,6 +387,7 @@ export default function NewsPanel() {
         </div>
         <button className="btn slim primary" disabled={creating} onClick={() => setFormOpen((v) => !v)}>{formOpen ? '收起表单' : '新建采集'}</button>
       </header>
+      <NewsCollectionEditor onCreated={() => { void refreshTasks().catch((e: Error) => setError(e.message)); }} onDirtyChange={setPromptDirty} />
       {createdHint > 0 && (
         <p className="mono news3-agent-hint" data-testid="created-hint">
           采集请求已创建，等待下一次 AI 会话执行。
@@ -394,7 +409,7 @@ export default function NewsPanel() {
             onChange={(e) => setDraft((d) => ({ ...d, instructions: e.target.value }))}
           />
           <div className="news3-request-form-row">
-            <label>最多收录 <input type="number" aria-label="最多收录条数" min={1} max={10} value={draft.max_items} onChange={(e) => setDraft((d) => ({ ...d, max_items: Number(e.target.value) }))} /> 篇</label>
+            <label>最多收录 <input type="number" aria-label="最多收录条数" min={1} max={11} value={draft.max_items} onChange={(e) => setDraft((d) => ({ ...d, max_items: Number(e.target.value) }))} /> 篇</label>
             <label>只看最近 <input type="number" aria-label="时间范围小时" min={1} max={720} value={draft.window_hours} onChange={(e) => setDraft((d) => ({ ...d, window_hours: Number(e.target.value) }))} /> 小时</label>
           </div>
           <div className="news3-request-form-row">
@@ -414,7 +429,7 @@ export default function NewsPanel() {
         {tasks.map(requestCard)}
       </div>
       <p className="mono news3-agent-hint">
-        待执行的请求会一直保留；下次助手会话自动接力。每个请求累计最多入库 10 条，新闻库的历史展示不受这个上限影响。
+        待执行的请求会一直保留；下次助手会话自动接力。每个请求累计最多入库 11 条，新闻库的历史展示不受这个上限影响。
       </p>
     </>
   );
@@ -427,6 +442,7 @@ export default function NewsPanel() {
           <h2 className="news3-title">{detail.title}</h2>
           <div className="news3-detail-meta mono">
             <span className="ref-badge">{sourceBadge(detail)}</span>
+            {detail.brief && <span className="ref-badge">专题简报 · {detail.brief.items.length} 则</span>}
             {detail.content_kind === 'html' && <span className="ref-badge">本地快照</span>}
             {publishedTime(detail)}
             <span className="spacer" />
@@ -438,7 +454,21 @@ export default function NewsPanel() {
           </div>
           {/* 只展示真实入库的内容（agent 核实后的摘要），绝不伪造全文 */}
           <div className="news3-content">{detail.summary || '（这条内容没有可用摘要，点下方原文入口查看来源页面）'}</div>
-          {detail.content_kind === 'html' && detail.html_rel ? (
+          {detail.brief ? (
+            <article className="news3-brief" aria-label="专题简报正文">
+              <h3>本期看点</h3><p className="news3-brief-overview">{detail.brief.overview}</p>
+              <ol>{detail.brief.items.map((entry, index) => <li key={`${index}:${entry.source_url}`}>
+                <h3>{entry.title}</h3><p>{entry.summary}</p>
+                <div className="news3-brief-source">
+                  <span>{publishedTime({ ...detail, published_at: entry.published_at })}（北京时间）</span>
+                  <a href={entry.source_url} onClick={(event) => {
+                    event.preventDefault();
+                    void call(() => api.news.openUrl({ url: entry.source_url })).catch((e: Error) => setError(e.message));
+                  }}>阅读来源：{entry.source_name || sourceHost(entry.source_url)} <IconExternal width={12} height={12} /></a>
+                </div>
+              </li>)}</ol>
+            </article>
+          ) : detail.content_kind === 'html' && detail.html_rel ? (
             <EmbeddedFrame
               label="新闻本地快照内嵌阅读"
               className="news-source-embed"
@@ -523,7 +553,7 @@ export default function NewsPanel() {
         </section>
       ) : collectOpen ? (
         <section className="news3-collect" aria-label="AI 采集页">
-          <button className="backlink news3-back" onClick={() => setCollectOpen(false)}>← 返回新闻</button>
+          <button className="backlink news3-back" onClick={leaveCollection}>← 返回新闻</button>
           {error && <div className="notice error" onClick={() => setError('')}>{error}</div>}
           {collectPage}
         </section>
@@ -576,6 +606,7 @@ export default function NewsPanel() {
                 {n.summary && n.summary !== n.title && <span className="news3-row-summary">{n.summary}</span>}
                 <span className="news3-row-meta mono">
                   <span className="ref-badge">{sourceBadge(n)}</span>
+                  {n.brief && <span className="ref-badge">专题简报 · {n.brief.items.length} 则</span>}
                   {n.content_kind === 'html' && <span className="ref-badge">快照</span>}
                   {publishedTime(n)}
                 </span>

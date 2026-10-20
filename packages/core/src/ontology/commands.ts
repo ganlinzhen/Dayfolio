@@ -61,10 +61,12 @@ for (const [name,title,method,params] of [
   ['mark_all_news_read','批量标记已读','markAllRead',[['filter','json',false]]],
   ['delete_news_item','删除新闻','deleteItem',[id('news_item')]],
 ] as Array<[string,string,string,Param[]]>) command(name,title,'news',method,name.includes('task')||name==='submit_news_items'?['news_task','news_item']:['news_item'],params);
+command('update_news_collection_settings','更新新闻采集提示词','news','updateCollectionSettings',[],[input]);
 command('import_course','导入课程','courses','importCourse',['course','course_lesson','course_overview'],[['staging_dir','string']]);
+command('delete_course','删除课程','courses','remove',['course','course_lesson','course_overview','course_request'],[id('course'),['expected_slug','string']]);
 command('mark_lesson_read','标记讲义已读','courses','markLessonRead',['course','course_lesson'],[['course_id','integer',true,'course'],['day','integer']]);
 command('submit_lesson_quiz','提交讲义自测','courses','submitQuiz',['course','course_lesson'],[['course_id','integer',true,'course'],['day','integer'],['answers','json']]);
-command('confirm_course_sample','确认样课','courses','confirmSample',['course'],[id('course')],'args',true);
+command('confirm_course_sample','确认样课','courses','confirmSample',['course'],[id('course'),['expected_hash','string',false]],'args',true,true);
 command('create_course_request','请求生成课程','courses','createGenerationRequest',['course','course_request'],[['course_id','integer',true,'course'],['requested_by','string',false]]);
 command('claim_course_request','认领课程生成','courses','claimRequest',['course_request'],[id('course_request'),['claimed_by','string']]);
 command('complete_course_request','完成课程生成','courses','completeRequest',['course_request'],[id('course_request'),['claimed_by','string']]);
@@ -123,7 +125,7 @@ export const COMMAND_DEFS = defs;
 export const COMPOSABLE_COMMANDS = new Set(['add_todo', 'update_todo', 'complete_todo', 'reopen_todo', 'update_plan_item']);
 const paramSchema=(d:CommandDef,index:number):unknown=>{const schemas=COMMAND_INPUTS[d.apiName]??[];if(d.apiName==='submit_media_version'&&index===1)return schemas[2]??{};if(d.apiName==='delete_study_plan'&&index===1)return {type:'boolean'};if(d.form==='flat')return (schemas[0] as {properties?:Record<string,unknown>})?.properties?.[d.parameters[index].name]??{};return schemas[index]??{};};
 export const commandMetadata = (d: CommandDef): Omit<ActionTypeDef,'createdAt'|'updatedAt'> => ({
-  apiName:d.apiName,title:d.title,description:`${d.title}：调用既有业务服务并遵守统一写入规则。${d.human?'人工审核请到对应业务面板操作。':''}`,
+  apiName:d.apiName,title:d.title,description:`${d.title}：调用既有业务服务并遵守统一写入规则。${d.apiName==='confirm_course_sample'?'样课在 App 阅读后，由用户在对话中明确确认并通过专用工具记录。':d.human?'人工审核请到对应业务面板操作。':''}`,
   isBuiltin:true,status:'active',parameters:d.parameters.map((p,i)=>({...p,jsonSchema:paramSchema(d,i),description:p.dataType==='json'?'结构化 JSON，具体字段见 jsonSchema':p.description})),operations:[],sortOrder:200,
   targetBindings:d.targetBindings,allowedChannels:d.human?['app-human']:['app','mcp','core'],
   composable: COMPOSABLE_COMMANDS.has(d.apiName),
@@ -146,7 +148,7 @@ export function createCommandService(db: DbAdapter, ontology: OntologyService, s
     }
 
     if (d.human && !human) {
-      throw new OntologyError('ACTION_CHANNEL_DENIED','请到课程或创作面板完成人工确认');
+      throw new OntologyError('ACTION_CHANNEL_DENIED',d.apiName==='confirm_course_sample'?'请在 App 阅读样课后，在对话中明确确认，由专用样课确认工具记录':'请到对应业务面板完成人工确认');
     }
     if (d.apiName === 'update_todo') {
       const state = (args[1] as {status?: string})?.status;
@@ -196,7 +198,7 @@ export function createCommandService(db: DbAdapter, ontology: OntologyService, s
   };
   const human = {
     authorizeExtensionInstall:(input:Parameters<ExtensionService['authorizeInstall']>[0])=>invoke(defs.find(d=>d.apiName==='authorize_extension_install')!,[input],true) as ReturnType<ExtensionService['authorizeInstall']>,
-    confirmCourseSample: (id:number) => invoke(defs.find(d=>d.apiName==='confirm_course_sample')!,[id],true) as ReturnType<CourseService['confirmSample']>,
+    confirmCourseSample: (id:number,expectedHash?:string) => invoke(defs.find(d=>d.apiName==='confirm_course_sample')!,[id,expectedHash],true) as ReturnType<CourseService['confirmSample']>,
     reviewMediaVersion: (id:number,action:string,note?:string) => invoke(defs.find(d=>d.apiName==='review_media_version')!,[id,action,note],true) as ReturnType<MediaService['reviewVersion']>,
   };
   return {execute,wrap,guard,human};

@@ -91,4 +91,12 @@ for (const name of readdirSync(frameworksDir)) {
   }
 }
 execFileSync('codesign', ['--force', '--sign', '-', appPath], { stdio: 'inherit' });
+execFileSync('codesign', ['--verify', '--deep', '--strict', appPath], { stdio: 'inherit' });
+// 本机打包成功后同步同一份随包技能；CI 与显式隔离验收不写真实 Codex 目录。
+const { shouldSyncCodexSkill, syncCodexSkill } = await import('../../../packages/agent-kit/scripts/sync-codex.mjs');
+if (shouldSyncCodexSkill()) {
+  const synced = syncCodexSkill({ source: join(appPath, 'Contents', 'Resources', 'agent-kit') });
+  console.log(`[package] Codex 技能已同步：${synced.skill}（${synced.version}）`);
+  if (synced.backup) console.log(`[package] 旧技能备份：${synced.backup}`);
+}
 console.log(`[package] 完成：${appPath}`);

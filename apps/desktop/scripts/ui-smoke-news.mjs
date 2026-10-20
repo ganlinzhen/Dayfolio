@@ -74,6 +74,11 @@ for (let i = 0; i < 35; i++) {
     'smoke:legacy:page:' + (i + 1),
   );
 }
+const entryStamp = new Date(Date.now() - 3600000).toISOString();
+raw.prepare('UPDATE news SET content_kind=?, brief_json=? WHERE dedup_key=?').run('brief', JSON.stringify({ overview: 'AI 模型与编程工具今日看点', items: [
+  {title:'AI 子新闻一',summary:'第一条消息摘要',source_url:'https://example.com/brief-a',published_at:entryStamp},
+  {title:'AI 子新闻二',summary:'第二条消息摘要',source_url:'https://example.com/brief-b',published_at:entryStamp}
+]}), 'smoke:legacy:page:1');
 raw.close();
 // 已完成任务：2 条 agent 新闻（真实提交路径；新闻二为 X 快照形态）
 const task = core.news.createTask({ title: '冒烟任务：已完成收录', instructions: '冒烟规则', max_items: 5 });
@@ -86,7 +91,8 @@ core.news.submitItems(task.id, claim.claim_token, [
     source_url: 'https://x.com/smoke_demo/status/2222222222222222222',
     source_name: 'X',
     published_at: new Date(Date.now() - 7200_000).toISOString(),
-    html: '<article><h3>smoke_demo · 演示推文</h3><p>冒烟快照正文：本地 HTML 快照占位内容。</p><img src="https://pbs.twimg.com/media/smoke.jpg" alt="演示配图"></article>',
+    // 本地快照验收不依赖外部图片加载，避免外网握手阻塞 iframe 的 load。
+    html: '<article><h3>smoke_demo · 演示推文</h3><p>冒烟快照正文：本地 HTML 快照占位内容。</p></article>',
   },
 ]);
 core.news.completeTask(task.id, claim.claim_token, '冒烟完成');
@@ -104,9 +110,10 @@ await new Promise((res, rej) => {
 });
 
 // ---------- 隔离拉起 Electron ----------
-const electronBin = join(repo, 'node_modules', '.bin', 'electron');
-if (!existsSync(electronBin)) throw new Error('未找到 electron 可执行文件');
-const app = spawn(electronBin, ['.', `--remote-debugging-port=${PORT}`], {
+const packagedBin = process.env.TODODESK_SMOKE_APP || process.env.DAYFOLIO_SMOKE_APP;
+const electronBin = packagedBin || join(repo, 'node_modules', '.bin', 'electron');
+if (!existsSync(electronBin)) throw new Error('未找到待验收 App 可执行文件');
+const app = spawn(electronBin, [...(packagedBin ? [] : ['.']), `--remote-debugging-port=${PORT}`], {
   cwd: join(repo, 'apps/desktop'),
   stdio: ['ignore', 'pipe', 'pipe'],
   env: isolatedEnv,
@@ -177,7 +184,7 @@ const stopAndCleanup = async (runDbCheck = false) => {
 try {
   const page = await waitFor(async () => {
     const list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
-    return list.find((t) => t.type === 'page');
+    return list.find((t) => t.type === 'page' && t.url.startsWith('dayfolio-app://app/') && t.title.startsWith('Dayfolio —'));
   }, 30000, 'CDP 页面 target');
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
@@ -187,14 +194,16 @@ try {
     const m = JSON.parse(ev.data);
     if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
   };
-  const send = (method, params = {}) =>
-    new Promise((res) => { const id = ++msgId; pending.set(id, res); ws.send(JSON.stringify({ id, method, params })); });
+  const send = (method, params = {}, sessionId) =>
+    new Promise((res, rej) => { const id = ++msgId; const timer = setTimeout(() => { pending.delete(id); rej(new Error(`CDP 请求超时：${method}`)); }, 10000); pending.set(id, (value) => { clearTimeout(timer); res(value); }); ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) })); });
   const evalJs = async (expression) => {
     const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    if (r.error) throw new Error('CDP 执行失败：' + JSON.stringify(r.error));
     if (r.result?.exceptionDetails) throw new Error('页面执行失败: ' + JSON.stringify(r.result.exceptionDetails).slice(0, 400));
     return r.result?.result?.value;
   };
   await send('Page.enable');
+  await send('Runtime.enable');
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const assert = (cond, label) => {
     if (!cond) throw new Error('断言失败：' + label);
@@ -240,6 +249,21 @@ try {
   assert(await evalJs(`[...document.querySelectorAll('.news3-request-status')].some(s => s.textContent.includes('已完成'))`), '已完成状态可见');
   assert(await evalJs(`[...document.querySelectorAll('.news3-request-count')].some(s => s.textContent.includes('已收录 2 篇') && s.textContent.includes('上限 5 篇'))`), '采集结果进度显示（已收录 2 篇 / 上限 5 篇）');
   assert(await evalJs(`document.body.textContent.includes('不联网抓取') || document.body.textContent.includes('AI 助手')`), 'agent-only 说明文案可见');
+
+  // 持久提示词：编辑 → 保存 → 返回后重读 → 创建快照请求。
+  await waitFor(() => evalJs(`document.querySelector('[aria-label="新闻采集提示词内容"]')?.value.includes('国际新闻')`), 10000, '读取默认提示词');
+  await evalJs(`(() => { const input = document.querySelector('[aria-label="新闻采集提示词内容"]'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, '国际 3–5 条，国内 3–5 条，AI 专题合并一条简报，重点关注 AI 编程'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  assert(await evalJs(`[...document.querySelectorAll('button')].find(b => b.textContent === '按已保存提示词创建采集').disabled`), '未保存时禁止创建快照请求');
+  await clickUntil(`[...document.querySelectorAll('button')].find(b => b.textContent === '保存提示词')?.click()`,
+    () => evalJs(`document.querySelector('.news3-prompt-head').textContent.includes('版本 1')`), 10000, '提示词保存并递增版本');
+  await clickUntil(`[...document.querySelectorAll('button')].find(b => b.textContent === '按已保存提示词创建采集')?.click()`,
+    () => evalJs(`[...document.querySelectorAll('.news3-request')].some(t => t.textContent.includes('AI 编程') && t.textContent.includes('上限 11 篇'))`), 10000, '使用保存的提示词创建 11 条预算请求');
+  await clickUntil(`document.querySelector('.news3-back')?.click()`, () => evalJs(`!!document.querySelector('[aria-label="新闻列表页"]')`), 10000, '返回列表后重进验证持久化');
+  await clickUntil(`[...document.querySelectorAll('.news3-toolbar button')].find(b => b.textContent.includes('AI 采集'))?.click()`,
+    () => evalJs(`document.querySelector('[aria-label="新闻采集提示词内容"]')?.value.includes('重点关注 AI 编程')`), 10000, '再次进入仍读到保存的提示词');
+
+  const promptShot = await send('Page.captureScreenshot', { format: 'png' });
+  writeFileSync('/tmp/dayfolio-news-prompt.png', Buffer.from(promptShot.result.data, 'base64'));
 
   // 无抓取/源配置/定时入口（结构性断言）
   assert(await evalJs(`!document.querySelector('.news3-drawer')`), '无源与定时设置抽屉');
@@ -349,8 +373,38 @@ try {
   assert(await evalJs(`[...document.querySelectorAll('.news-source-embed .btn')].some(b => b.textContent.includes('重新加载'))`), '快照区可重新加载');
   // 快照 frame 真实加载：NewsPanel 给 iframe 接了 onLoad → 状态徽标变「已加载」（跨源 iframe 的 load
   // 事件不会传到 window 捕获监听，元素级 React 回调是可靠信号）
+  try {
   await waitFor(() => evalJs(`(() => { const s = document.querySelector('.news3-source-status'); return !!s && s.classList.contains('s-ready') && s.textContent.includes('已加载'); })()`), 10000, '快照 iframe onLoad 已触发（news-file:// 内容真实加载）');
+  } catch (error) {
+    console.error('[快照诊断]', JSON.stringify(await evalJs(`({status: document.querySelector('.news3-source-status')?.outerHTML, frame: document.querySelector('iframe.news3-source-view')?.outerHTML})`)));
+    console.error('[框架诊断]', JSON.stringify((await send('Page.getFrameTree')).result));
+    throw error;
+  }
   console.log('  ✓ 快照 iframe onLoad 已触发（状态徽标「已加载」）');
+  // 读取跨源子框架的真实正文，避免把错误页的 load 事件当成成功。
+  const snapshotUrl = await evalJs(`document.querySelector('iframe.news3-source-view').src`);
+  await waitFor(async () => {
+    const targets = (await send('Target.getTargets')).result.targetInfos;
+    const child = targets.find(target => target.type === 'iframe' && target.url === snapshotUrl);
+    let context = {};
+    if (child) {
+      const attached = await send('Target.attachToTarget', { targetId: child.targetId, flatten: true });
+      context.sessionId = attached.result.sessionId;
+    } else {
+      const tree = (await send('Page.getFrameTree')).result.frameTree;
+      const findFrame = node => node.frame.url === snapshotUrl ? node.frame : (node.childFrames || []).map(findFrame).find(Boolean);
+      const frame = findFrame(tree);
+      if (!frame) return false;
+      context.contextId = (await send('Page.createIsolatedWorld', { frameId: frame.id, worldName: 'news-snapshot-smoke' })).result.executionContextId;
+    }
+    const result = await send('Runtime.evaluate', {
+      expression: "document.body?.textContent.includes('冒烟快照正文：本地 HTML 快照占位内容。')", returnByValue: true,
+      ...(context.contextId ? { contextId: context.contextId } : {}),
+    }, context.sessionId);
+    return result.result?.result?.value === true;
+  }, 10000, '本地快照正文实际可读');
+  console.log('  ✓ news-file 子框架实际读到播种的快照正文');
+
   // 重新加载会重建 iframe 并回到「加载中…」，随后再次就绪（协议第二次服务同一文件）
   await evalJs(`[...document.querySelectorAll('.news-source-embed .btn')].find(b => b.textContent.includes('重新加载'))?.click()`);
   await waitFor(() => evalJs(`(() => { const s = document.querySelector('.news3-source-status'); return !!s && s.classList.contains('s-ready') && s.textContent.includes('已加载'); })()`), 10000, '重新加载后快照再次就绪');
@@ -429,6 +483,14 @@ try {
     () => evalJs(`document.querySelectorAll('.news3-row').length === 30`),
     10000, '清除筛选：旧新闻仍在（删除只影响目标条目）',
   );
+
+  await clickUntil(`[...document.querySelectorAll('.news3-row')].find(r => r.textContent.includes('冒烟分页旧闻 01'))?.click()`,
+    () => evalJs(`!!document.querySelector('[aria-label="专题简报正文"]')`), 10000, '专题简报在独立详情显示');
+  assert(await evalJs(`document.querySelectorAll('.news3-brief li').length === 2`), '一条新闻包含两则子消息');
+  assert(await evalJs(`document.querySelector('.news3-brief').textContent.includes('第二条消息摘要') && document.querySelectorAll('.news3-brief a')[1].getAttribute('href') === 'https://example.com/brief-b'`), '逐条摘要与对应来源链接正确');
+  assert(await evalJs(`!document.querySelector('.news3-detail webview') && !document.querySelector('.news3-detail iframe')`), '简报本地呈现无需加载外部页面');
+  const screenshot = await send('Page.captureScreenshot', { format: 'png' });
+  writeFileSync('/tmp/dayfolio-news-brief.png', Buffer.from(screenshot.result.data, 'base64'));
 
   console.log('[smoke] 全部断言通过');
   await stopAndCleanup(true);

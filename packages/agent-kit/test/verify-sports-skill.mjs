@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validatePage } from '../skills/tododesk-sports/scripts/validate-page.mjs';
+import { validatePage } from '../skills/dayfolio/scripts/validate-page.mjs';
 
 const plugin = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const work = mkdtempSync(join(tmpdir(), 'dayfolio-sports-'));

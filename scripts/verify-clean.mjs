@@ -25,6 +25,7 @@ const env = {
   TODODESK_DB: join(work, 'acceptance.db'),
   TODODESK_USER_DATA: join(work, 'userData'),
   npm_config_cache: join(work, 'npm-cache'),
+  DAYFOLIO_SKIP_CODEX_SYNC: '1',
 };
 const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 const report = { version: JSON.parse(readFileSync(join(source, 'package.json'))).version, node: process.version, platform: process.platform, arch: process.arch, startedAt: new Date().toISOString(), directory: work, sourceFiles: {}, steps: [], passed: false };

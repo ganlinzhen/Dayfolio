@@ -79,9 +79,9 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
 const TABS: Array<{ key: Tab; label: string; Icon: typeof IconList }> = [
   { key: 'today', label: '今日', Icon: IconCalendar },
   { key: 'todos', label: '待办', Icon: IconList },
+  { key: 'news', label: '新闻', Icon: IconNews },
   { key: 'plans', label: '学习', Icon: IconBook },
   { key: 'knowledge', label: '知识库', Icon: IconVault },
-  { key: 'news', label: '新闻', Icon: IconNews },
   { key: 'media', label: '自媒体', Icon: IconMegaphone },
   { key: 'tools', label: '工具箱', Icon: IconToolbox },
 ];

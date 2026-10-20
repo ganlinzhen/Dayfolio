@@ -3,6 +3,13 @@ import { z } from 'zod';
 import { wrap } from '../shared/response';
 
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
+  server.tool(
+    'delete_course',
+    '用户明确确认删除某门课程时调用。永久删除该课程的总览、全部讲义、阅读与自测记录、生成请求及课程资产，解除学习草案对课程的引用；保留学习计划及其待办，删除计划请另用 delete_study_plan。不可恢复，请先核对 list_courses 的 ID、slug、标题并与用户确认；expected_slug 必须匹配确认目标',
+    { course_id: z.number().int().positive(), expected_slug: z.string().min(1) },
+    async ({ course_id, expected_slug }) => wrap(() => core.courses.remove(course_id, expected_slug))(),
+  );
+
   // ---------- 教学课程（v6：导入/阅读/确认/生成请求队列，agent 可发现并处理待执行请求） ----------
 
   server.tool(
@@ -15,10 +22,10 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
         return {
           course_id: r.course.id, slug: r.course.slug, status: r.course.status, plan_id: r.course.plan_id,
           has_overview: core.courses.getOverview(r.course.id) != null,
-          lessons: r.lessons.map((l) => ({ day: l.day, title: l.title, is_sample: l.is_sample, estimated_minutes: l.estimated_minutes })),
+          lessons: r.lessons.map((l) => ({ day: l.day, title: l.title, revision: l.revision, is_sample: l.is_sample, estimated_minutes: l.estimated_minutes })),
           idempotent: r.idempotent,
           confirmation_expired: r.confirmation_expired,
-          hint: r.confirmation_expired ? '样课内容已变更：用户先前的确认已过期，需在 App 重新确认' : undefined,
+          hint: r.confirmation_expired ? '样课内容已变更：用户先前的确认已过期，请用户在 App 阅读后回到对话重新确认' : undefined,
         };
       })(),
   );
@@ -49,7 +56,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
 
   server.tool(
     'get_course_lessons',
-    '查询课程全部讲义元数据（day/标题/样课/概念/代码导读/答题状态）',
+    '查询课程全部讲义元数据（day/标题/revision 逐课版本号/样课/概念/代码导读/答题状态）。revision 从 1 开始，正文或教学资料实际更新才递增；重复导入与阅读答题不递增，由导入服务维护',
     { course_id: z.number().int().positive() },
     async ({ course_id }) => wrap(() => core.courses.listLessons(course_id))(),
   );
@@ -76,8 +83,23 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
     async ({ course_id, day, answers }) => wrap(() => core.courses.submitQuiz(course_id, day, answers))(),
   );
 
-  // 注：样课确认（confirmSample）不暴露为 MCP 工具——确认是用户在 App 内的亲自动作，
-  // agent 不得代用户确认（core confirmSample 同时校验样课已读）。App 走自己的 IPC 通道调用。
+  server.tool(
+    'confirm_course_sample',
+    '仅当用户在对话中明确同意当前样课后，记录该确认。先通过 get_course_lessons 获取样课 content_hash，用户须已在 App 打开阅读；确认绑定该版本，内容变更后须重新阅读并询问。不得根据导入、已读或旧版同意自动确认。用户若同时要求生成完整版，确认成功后继续 create_course_request → claim → 生成 → import → complete，无需回 App 点击按钮',
+    {
+      course_id: z.number().int().positive(),
+      sample_content_hash: z.string().regex(/^[a-f0-9]{64}$/).describe('用户本次同意的样课 content_hash（来自 get_course_lessons）'),
+      confirmed: z.literal(true).describe('用户已在本次对话中明确确认该课程当前样课，才可传 true'),
+    },
+    async ({ course_id, sample_content_hash }) => wrap(() => {
+      const sample = core.courses.listLessons(course_id).find((lesson) => lesson.is_sample);
+      if (!sample || sample.content_hash !== sample_content_hash) {
+        throw new Error('样课版本已变更或不存在：请用户在 App 阅读当前样课后，在对话中重新确认');
+      }
+      // 此专用工具承接用户在对话中的明确确认；通用本体动作仍不能代替人工确认。
+      return core.commands.human.confirmCourseSample(course_id, sample_content_hash);
+    })(),
+  );
 
   server.tool(
     'create_course_request',

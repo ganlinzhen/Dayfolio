@@ -373,7 +373,8 @@ export function mapNews(row: Record<string, unknown>): NewsItem {
     is_starred: Number(row.is_starred ?? 0) === 1,
     task_id: row.task_id == null ? null : Number(row.task_id),
     source_name: (row.source_name as string | null) ?? null,
-    content_kind: row.content_kind === 'html' ? 'html' : 'url',
+    content_kind: row.content_kind === 'brief' ? 'brief' : row.content_kind === 'html' ? 'html' : 'url',
+    brief: row.brief_json ? JSON.parse(String(row.brief_json)) : null,
     html_rel: (row.html_rel as string | null) ?? null,
   };
 }

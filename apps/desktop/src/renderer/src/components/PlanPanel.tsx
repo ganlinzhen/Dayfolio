@@ -9,7 +9,10 @@ import { api, call } from '../api';
 import CoursePanel, { COURSE_STATUS_LABEL } from './CoursePanel';
 import EmptyState from './EmptyState';
 import { toast } from './Toast';
-import { IconBook, IconChevronLeft, IconItemType } from './icons';
+import { IconBook, IconChevronLeft } from './icons';
+import { AiStudyAction, LearningSignals, LearningTotals, StudyNoteEditor } from './StudyLearning';
+import { PlanLessonContent } from './StudyLesson';
+import type { PlanLearningProgress } from '../../../../../../packages/core/src/services/study-progress';
 
 export interface PlanItem {
   id: number;
@@ -29,12 +32,14 @@ interface BoundCourse {
   title: string;
   status: 'imported' | 'sample_confirmed' | 'generating' | 'complete';
   plan_id: number | null;
+  sample_confirmed_at: string | null;
 }
 
 interface BoundLesson {
   day: number;
   title: string;
   is_sample: boolean;
+  revision: number;
   status: 'pending' | 'generated' | 'read';
   estimated_minutes: number;
   concepts: Array<{ name: string }>;
@@ -115,6 +120,7 @@ export interface StudySession {
 
 export interface StudyAssessment {
   id: string;
+  plan_item_id: number | null;
   session_id: string | null;
   knowledge_key: string;
   topic: string;
@@ -188,7 +194,7 @@ function MasteryBadge({ status, title }: { status: MasteryStatus; title?: string
 }
 
 /** 内嵌课程导航：from 记录入口视图（详情/首页），返回时回对应视图并恢复滚动位置；day 非 null 表示直达该天讲义 */
-interface CourseView { courseId: number; day: number | null; from: 'detail' | 'list' }
+interface CourseView { courseId: number; day: number | null; from: 'detail' | 'list' | 'item' }
 
 export default function PlanPanel() {
   const [homeTab, setHomeTab] = useState<'plans' | 'courses'>('plans');
@@ -197,6 +203,13 @@ export default function PlanPanel() {
   const [detail, setDetail] = useState<Plan | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const [learningProgress, setLearningProgress] = useState<PlanLearningProgress[]>([]);
+  const [learningError, setLearningError] = useState('');
+  const [loadingLearning, setLoadingLearning] = useState(false);
+  const activePlanRef = useRef<number | null>(null);
+  const detailRequest = useRef(0);
+  const evidenceRequest = useRef(0);
+  const [statusBusy, setStatusBusy] = useState(false);
   const [courseError, setCourseError] = useState('');
   // 课程导航（原「课程」页并入：总览与讲义都在本面板内部打开，侧栏仅此一个学习入口）
   const [courseView, setCourseView] = useState<CourseView | null>(null);
@@ -225,6 +238,7 @@ export default function PlanPanel() {
       setPlans(planList);
       setDrafts(draftList);
       setError('');
+      setLearningProgress(await call<PlanLearningProgress[]>(() => api.study.getProgress()));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -241,9 +255,9 @@ export default function PlanPanel() {
   }, [refresh]);
 
   // 视图切换的滚动位置记忆（列表 ↔ 详情 ↔ 内嵌课程视图）：离开前记录，返回后恢复原位
-  const scrollMemo = useRef<Record<'list' | 'detail', number>>({ list: 0, detail: 0 });
-  const restoreKeyRef = useRef<'list' | 'detail' | null>(null);
-  const saveScroll = (k: 'list' | 'detail') => {
+  const scrollMemo = useRef<Record<'list' | 'detail' | 'item', number>>({ list: 0, detail: 0, item: 0 });
+  const restoreKeyRef = useRef<'list' | 'detail' | 'item' | null>(null);
+  const saveScroll = (k: 'list' | 'detail' | 'item') => {
     const el = document.querySelector<HTMLElement>('.content');
     if (el) scrollMemo.current[k] = el.scrollTop;
   };
@@ -276,9 +290,9 @@ export default function PlanPanel() {
 
   // 进入课程：详情内进入回详情，列表课程区进入回列表；day 非 null 时直达该天讲义
   const enterCourse = (courseId: number, day: number | null) => {
-    if (detail) saveScroll('detail');
+    if (detail) saveScroll(selectedItemId != null ? 'item' : 'detail');
     else saveScroll('list');
-    setCourseView({ courseId, day, from: detail ? 'detail' : 'list' });
+    setCourseView({ courseId, day, from: detail ? selectedItemId != null ? 'item' : 'detail' : 'list' });
   };
 
   // 退出课程视图：回到入口视图并恢复滚动；讲义已读状态与课程状态回流同步（不重置其他详情状态）
@@ -287,6 +301,7 @@ export default function PlanPanel() {
     setCourseView(null);
     restoreKeyRef.current = from;
     void refresh();
+    if (detail) void reloadLearning(detail.id);
     if (detail && boundCourse) {
       void call<BoundLesson[]>(() => api.courses.lessons({ course_id: boundCourse.id }))
         .then(setBoundLessons)
@@ -294,45 +309,83 @@ export default function PlanPanel() {
     }
   };
 
+  const reloadLearning = useCallback(async (id: number) => {
+    const request = ++evidenceRequest.current;
+    setLoadingLearning(true);
+    const results = await Promise.allSettled([
+      call<PlanLearningProgress[]>(() => api.study.getProgress()),
+      call<MasteryReport>(() => api.study.getMastery({ plan_id: id })),
+      call<StudySession[]>(() => api.study.listSessions({ plan_id: id, limit: 1000 })),
+      call<StudyAssessment[]>(() => api.study.listAssessments({ plan_id: id, limit: 1000 })),
+      (async () => {
+        const list = await call<BoundCourse[]>(() => api.courses.list());
+        const bound = list.find(c => c.plan_id === id) ?? null;
+        const lessons = bound ? await call<BoundLesson[]>(() => api.courses.lessons({ course_id: bound.id })) : [];
+        return { bound, lessons };
+      })(),
+    ]);
+    if (activePlanRef.current !== id || request !== evidenceRequest.current) return;
+    const [p, m, sessionsResult, assessmentsResult, c] = results;
+    if (p.status === 'fulfilled') setLearningProgress(p.value);
+    if (m.status === 'fulfilled') setMastery(m.value);
+    if (sessionsResult.status === 'fulfilled') setSessions(sessionsResult.value);
+    if (assessmentsResult.status === 'fulfilled') setAssessments(assessmentsResult.value);
+    if (c.status === 'fulfilled') { setBoundCourse(c.value.bound); setBoundLessons(c.value.lessons); }
+    const failed = results.find(r => r.status === 'rejected');
+    setLearningError(failed?.status === 'rejected' ? `部分学习进度未能同步，请重试：${String(failed.reason instanceof Error ? failed.reason.message : failed.reason)}` : '');
+    setLoadingLearning(false);
+  }, []);
+
+  useEffect(() => {
+    const id = detail?.id ?? null;
+    activePlanRef.current = id;
+    if (id != null) void reloadLearning(id);
+    const sync = () => {
+      void refresh();
+      if (id != null) {
+        void reloadLearning(id);
+        void call<Plan>(() => api.plans.get({ id })).then(p => {
+          if (activePlanRef.current === id) setDetail(p);
+        }).catch(e => setLearningError((e as Error).message));
+      }
+    };
+    window.addEventListener('focus', sync);
+    window.addEventListener('dayfolio:changed', sync);
+    return () => {
+      activePlanRef.current = null;
+      window.removeEventListener('focus', sync);
+      window.removeEventListener('dayfolio:changed', sync);
+    };
+  }, [detail?.id, refresh, reloadLearning]);
+
   const openDetail = async (id: number) => {
-    saveScroll('list');
-    const plan = await call<Plan>(() => api.plans.get({ id }));
-    setSelectedItemId(null);
-    setDetail(plan);
-    setSuggestions(null);
-    setCards(null);
-    setExportResult(null);
-    // 绑定课程与讲义概要（失败不阻塞详情展示）
-    setBoundCourse(null);
-    setBoundLessons([]);
+    const request = ++detailRequest.current;
     try {
-      const list = await call<BoundCourse[]>(() => api.courses.list());
-      const bound = list.find((c) => c.plan_id === id) ?? null;
-      setBoundCourse(bound);
-      if (bound) setBoundLessons(await call<BoundLesson[]>(() => api.courses.lessons({ course_id: bound.id })));
-    } catch { /* 课程数据加载失败按无课程展示 */ }
-    // 学习闭环数据只读加载：掌握证据 + 会话 + 测评记录（失败不阻塞详情展示）
-    try {
-      const [m, s, a] = await Promise.all([
-        call<MasteryReport>(() => api.study.getMastery({ plan_id: id })),
-        call<StudySession[]>(() => api.study.listSessions({ plan_id: id })),
-        call<StudyAssessment[]>(() => api.study.listAssessments({ plan_id: id })),
-      ]);
-      setMastery(m);
-      setSessions(s);
-      setAssessments(a);
-    } catch {
-      setMastery(null);
-      setSessions([]);
-      setAssessments([]);
-    }
+      const plan = await call<Plan>(() => api.plans.get({ id }));
+      if (request !== detailRequest.current) return;
+      if (!detail) saveScroll('list');
+      setSelectedItemId(null);
+      setMastery(null); setSessions([]); setAssessments([]);
+      setBoundCourse(null); setBoundLessons([]); setLearningError('');
+      setLoadingLearning(true);
+      setDetail(plan);
+      setSuggestions(null); setCards(null); setExportResult(null);
+    } catch (e) { setError((e as Error).message); }
   };
 
   const setItemStatus = async (item: PlanItem, status: PlanItem['status']) => {
-    await call(() => api.plans.updateItemStatus({ id: item.id, status }));
-    setDetail(await call<Plan>(() => api.plans.get({ id: detail!.id })));
-    setSuggestions(null);
-    await refresh();
+    if (!detail || statusBusy) return;
+    const planId = detail.id;
+    setStatusBusy(true);
+    try {
+      await call(() => api.plans.updateItemStatus({ id: item.id, status }));
+      const plan = await call<Plan>(() => api.plans.get({ id: planId }));
+      if (activePlanRef.current === planId) setDetail(plan);
+      setSuggestions(null);
+      await refresh();
+      await reloadLearning(planId);
+    } catch (e) { setLearningError(`学习状态未能更新：${(e as Error).message}`); }
+    finally { setStatusBusy(false); }
   };
 
   const archive = async (id: number) => {
@@ -500,7 +553,7 @@ export default function PlanPanel() {
       <CoursePanel
         key={`course-${courseView.courseId}-d${courseView.day ?? 0}`}
         target={{ courseId: courseView.courseId, day: courseView.day }}
-        exitLabel={courseView.from === 'detail' ? '返回计划详情' : homeTab === 'courses' ? '返回课程' : '返回学习'}
+        exitLabel={courseView.from === 'item' ? '返回学习详情' : courseView.from === 'detail' ? '返回计划详情' : homeTab === 'courses' ? '返回课程' : '返回学习'}
         onExit={exitCourse}
       />
     );
@@ -511,41 +564,72 @@ export default function PlanPanel() {
     const byDate = new Map<string, PlanItem[]>();
     for (const it of detail.items ?? []) byDate.set(it.date, [...(byDate.get(it.date) ?? []), it]);
     const masteryByKey = new Map((mastery?.entries ?? []).map((e) => [e.knowledge_key, e]));
+    const sortedDates = [...byDate.keys()].sort();
+    const dayOfDate = new Map(sortedDates.map((d, i) => [d, i + 1]));
+    const lessonOfDate = new Map(sortedDates.map((d) => [d, boundLessons.find((l) => l.day === dayOfDate.get(d)) ?? null]));
+    const planProgress = learningProgress.find(p => p.plan_id === detail.id);
+    const itemProgress = new Map(planProgress?.items.map(i => [i.item_id, i]) ?? []);
     if (selectedItemId !== null) {
       const item = detail.items?.find((it) => it.id === selectedItemId);
       if (item) {
         const itemSessions = sessions.filter((s) => s.plan_item_id === item.id);
         const sessionIds = new Set(itemSessions.map((s) => s.id));
-        const itemAssessments = assessments.filter((a) => a.session_id && sessionIds.has(a.session_id));
+        const itemAssessments = assessments.filter((a) => a.plan_item_id === item.id || (a.plan_item_id == null && a.session_id != null && sessionIds.has(a.session_id)));
+        const lesson = lessonOfDate.get(item.date);
+        const progress = itemProgress.get(item.id);
         const itemMastery = item.knowledge_key ? masteryByKey.get(item.knowledge_key) : undefined;
         const statusLabel = { pending: '待完成', done: '已完成', skipped: '已跳过' }[item.status];
+        const assessmentRecords = <>
+          {itemAssessments.length === 0 && <p className="sub">还没有测评记录。AI 对话结束并保存记录后，会在这里显示。</p>}
+          {itemAssessments.map(a => <div key={a.id} className="assessment-row">
+            <div className="session-head mono">{a.date} · {SOURCE_LABEL[a.source]}{a.source === 'objective' ? ` · ${a.objective_passed ? '客观通过' : '客观未通过'}` : ''}</div>
+            <p>题目：{a.question}</p><p>我的回答：{a.answer}</p>
+            {a.feedback && <p>反馈：{a.feedback}</p>}
+          </div>)}
+        </>;
         return (
           <div className="panel plan-item-detail">
             <button className="backlink" onClick={exitItem}>
               <IconChevronLeft width={14} height={14} /> 返回计划详情
             </button>
-            <header className="panel-head">
-              <div className="head-meta mono">{statusLabel}</div>
-            </header>
-            <p className="sub">所属计划：{detail.title}</p>
-
             <section className="group">
-              <div className="group-label mono">学习安排</div>
-              <p className="plan-item-detail-content">{item.content}</p>
+              <h1 className="plan-item-detail-content">{item.content}</h1>
               <div className="plan-item-detail-facts mono">
                 <span>日期 {item.date}</span>
                 <span>类型 {TYPE_LABEL[item.item_type]}</span>
                 {item.duration_min != null && <span>预计 {item.duration_min} 分钟</span>}
                 <span>状态 {statusLabel}</span>
               </div>
-              <div className="row-gap plan-item-detail-actions">
-                {item.status !== 'done' && <button className="btn primary" onClick={() => void setItemStatus(item, 'done')}>标记完成</button>}
-                {item.status === 'done' && <button className="btn" onClick={() => void setItemStatus(item, 'pending')}>撤销完成</button>}
-                {item.status === 'pending' && <button className="btn ghost" onClick={() => void setItemStatus(item, 'skipped')}>跳过</button>}
-                {item.status === 'skipped' && <button className="btn ghost" onClick={() => void setItemStatus(item, 'pending')}>恢复待办</button>}
-              </div>
             </section>
 
+            {learningError && <div className="notice error" role="alert">{learningError}<button className="btn slim" onClick={() => void reloadLearning(detail.id)}>重试同步</button></div>}
+            {loadingLearning && <p className="sub" role="status">正在同步学习进度…</p>}
+            <LearningSignals progress={progress} />
+            {boundCourse && lesson ? <PlanLessonContent
+              key={`${boundCourse.id}-${lesson.day}-${lesson.revision}`}
+              courseId={boundCourse.id} day={lesson.day}
+              onChanged={() => { void reloadLearning(detail.id); void refresh(); }}
+            >{assessmentRecords}</PlanLessonContent> : <>
+              <section id="learning-materials" className="group learning-detail-section">
+                <h2>课件</h2>
+                <p className="sub">{loadingLearning ? '正在同步课件…' : boundCourse ? '当天课件待生成，可在 AI 对话中继续生成课程。' : '尚未关联课程。可让 AI 为此计划关联课程，或按安排中的材料学习。'}</p>
+              </section>
+              <section id="learning-assessments" className="group learning-detail-section">
+                <h2>评测</h2>
+                <p className="sub">课件自测尚不可用，可在 AI 对话中根据已提供的材料检验理解。</p>
+                {assessmentRecords}
+              </section>
+            </>}
+            <AiStudyAction disabled={loadingLearning || !!learningError} context={{ plan: detail, item, course: boundCourse, day: dayOfDate.get(item.date) }} />
+            <section id="learning-notes" className="group learning-detail-section">
+              <h2>学习笔记 <span className="sub">{itemSessions.filter(s => s.explanation.trim()).length} 篇</span></h2>
+              <StudyNoteEditor key={item.id} planId={detail.id} item={item} onSaved={async () => { await reloadLearning(detail.id); await refresh(); }} />
+              {itemSessions.filter(s => s.explanation.trim()).map(s => <article key={s.id} className="study-note-entry">
+                <div className="session-head mono">{s.date}</div>
+                <div className="session-body">{s.explanation}</div>
+                {s.questions && <p className="sub">待解决：{s.questions}</p>}
+              </article>)}
+            </section>
             {itemMastery && (
               <section className="group">
                 <div className="group-label mono">知识点掌握</div>
@@ -557,39 +641,20 @@ export default function PlanPanel() {
               </section>
             )}
 
-            <section className="group">
-              <div className="group-label mono">关联学习记录<span className="group-count">{itemSessions.length} 次会话</span></div>
-              {itemSessions.length === 0 ? <p className="sub">暂无关联学习记录。</p> : itemSessions.map((s) => (
-                <div key={s.id} className="session-row">
-                  <div className="session-head mono">{s.date} · {s.topic} · 第 {s.attempt} 次 · {s.actual_minutes}m</div>
-                  {s.explanation && <div className="session-body">我的解释：{s.explanation}</div>}
-                  {s.questions && <div className="session-body session-q">疑问：{s.questions}</div>}
-                  {s.material_source && <div className="session-meta mono">材料：{s.material_source}</div>}
-                </div>
-              ))}
+            <section id="learning-completion" className="group learning-completion">
+              <h2>本项学习状态</h2>
+              <p className="sub">核对课件、评测与笔记后，由你决定是否完成本项安排。标记完成会同步关联待办与打卡。</p>
+              <div className="row-gap plan-item-detail-actions">
+                {item.status !== 'done' && <button className="btn primary" disabled={statusBusy} onClick={() => void setItemStatus(item, 'done')}>标记完成</button>}
+                {item.status === 'done' && <button className="btn" disabled={statusBusy} onClick={() => void setItemStatus(item, 'pending')}>撤销完成</button>}
+                {item.status === 'pending' && <button className="btn ghost" disabled={statusBusy} onClick={() => void setItemStatus(item, 'skipped')}>跳过</button>}
+                {item.status === 'skipped' && <button className="btn ghost" disabled={statusBusy} onClick={() => void setItemStatus(item, 'pending')}>恢复待办</button>}
+              </div>
             </section>
-
-            {itemAssessments.length > 0 && (
-              <section className="group">
-                <div className="group-label mono">关联测评<span className="group-count">{itemAssessments.length} 条</span></div>
-                {itemAssessments.map((a) => (
-                  <div key={a.id} className="assessment-row">
-                    <div className="session-head mono">{a.date} · {SOURCE_LABEL[a.source]} · {a.topic}</div>
-                    <div className="session-body">题目：{a.question}</div>
-                    {a.answer && <div className="session-body">原答案：{a.answer}</div>}
-                    {a.feedback && <div className="session-body">反馈：{a.feedback}</div>}
-                  </div>
-                ))}
-              </section>
-            )}
           </div>
         );
       }
     }
-    // 日期 → 课程天序：计划第 N 个日期对应课程第 N 天（与课程包逐日生成对齐）
-    const sortedDates = [...byDate.keys()].sort();
-    const dayOfDate = new Map(sortedDates.map((d, i) => [d, i + 1]));
-    const lessonOfDate = new Map(sortedDates.map((d) => [d, boundLessons.find((l) => l.day === dayOfDate.get(d)) ?? null]));
     return (
       <div className="panel" role="region" aria-label="学习">
         <button className="backlink" onClick={() => { restoreKeyRef.current = 'list'; setDetail(null); }}>
@@ -605,10 +670,13 @@ export default function PlanPanel() {
         <p className="sub">{detail.goal}</p>
         <div className="progress"><div style={{ width: `${Math.round(detail.progress * 100)}%` }} /></div>
 
+        <LearningTotals progress={planProgress} />
+        {learningError && <div className="notice error" role="alert">{learningError}<button className="btn slim" onClick={() => void reloadLearning(detail.id)}>重试同步</button></div>}
+        <AiStudyAction disabled={loadingLearning || !!learningError} context={{ plan: detail, course: boundCourse }} />
         {boundCourse && (
           <div className="notice plan-course-bar">
             <span>
-              关联课程「{boundCourse.title}」：课程讲义与每日安排逐日对应（第 N 天 = 计划第 N 个日期）；
+              关联课程「{boundCourse.title}」 ·
               {boundLessons.length > 0 ? `已生成 ${boundLessons.length} 天` : '讲义尚未生成'}
             </span>
             <button className="btn slim" onClick={() => enterCourse(boundCourse.id, null)}>进入课程总览</button>
@@ -627,44 +695,35 @@ export default function PlanPanel() {
             {boundCourse && lesson && (
               <button className="plan-day-lesson" onClick={() => enterCourse(boundCourse.id, lesson.day)} title="打开当天完整讲义与自测，返回时回到计划详情">
                 <span className="plan-day-lesson-title">
-                  {lesson.title}{lesson.is_sample ? '（样课）' : ''}
+                  {lesson.title}{lesson.is_sample && !boundCourse.sample_confirmed_at ? '（样课）' : ''}
                 </span>
                 <span className="plan-day-lesson-summary">{lesson.concepts.map((c) => c.name).join(' · ') || '讲义已生成'}</span>
-                <span className="plan-day-lesson-meta mono">{lesson.estimated_minutes}m · {LESSON_STATUS_LABEL[lesson.status]}</span>
+                <span className="plan-day-lesson-meta mono">v{lesson.revision} · {lesson.estimated_minutes}m · {LESSON_STATUS_LABEL[lesson.status]}</span>
                 <span className="plan-day-lesson-go">阅读当天讲义 →</span>
               </button>
             )}
             {boundCourse && !lesson && (
               <div className="plan-day-pending">
-                讲义待生成：当日安排按下方大纲执行；在课程总览确认样课并请求完整版后解锁
+                讲义待生成：当日安排按下方大纲执行；阅读样课后在对话中确认并请求完整版后解锁
               </div>
             )}
             {items.map((it) => {
               const m = it.knowledge_key ? masteryByKey.get(it.knowledge_key) : undefined;
               return (
-                <div key={it.id} className={`plan-item ${it.status}`}>
-                  <button
-                    className={`check ${it.status === 'done' ? 'checked' : ''}`}
-                    onClick={() => void setItemStatus(it, it.status === 'done' ? 'pending' : 'done')}
-                    title={it.status === 'done' ? '撤销打卡' : '打卡'}
-                  >
-                    {it.status === 'done' && (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                        <path d="M4 12l5 5L20 6" />
-                      </svg>
-                    )}
-                  </button>
+                <article key={it.id} className={`plan-item learning-item-card ${it.status}`}>
                   <button className="plan-item-open" onClick={() => openItem(it.id)} aria-label={`查看「${it.content}」详情`}>
-                    <IconItemType type={it.item_type} className="type-icon" />
-                    <span className="plan-item-content">{it.content}</span>
-                    {m && <MasteryBadge status={m.mastery} title={`掌握度只看测评证据：${m.reason}（证据 ${m.evidence_count} 条，会话 ${m.session_count} 次）`} />}
-                    <span className="todo-meta mono">{TYPE_LABEL[it.item_type]}{it.duration_min ? ` · ${it.duration_min}m` : ''}</span>
-                    <span className="plan-item-go">详情 →</span>
+                    <div className="learning-item-heading">
+                      <span className="plan-item-content">{it.content}</span>
+                      <span className={`learning-item-status ${it.status}`}>{it.status === 'done' ? '✓ 已完成' : it.status === 'skipped' ? '已跳过' : '待完成'}</span>
+                    </div>
+                    <LearningSignals progress={itemProgress.get(it.id)} />
+                    <div className="learning-item-footer">
+                      <span className="todo-meta mono">{TYPE_LABEL[it.item_type]}{it.duration_min ? ` · ${it.duration_min} 分钟` : ''}</span>
+                      {m && <MasteryBadge status={m.mastery} title={`掌握度依据：${m.reason}`} />}
+                      <span className="plan-item-go">进入学习 →</span>
+                    </div>
                   </button>
-                  {it.status === 'pending' && (
-                    <button className="btn slim ghost" onClick={() => void setItemStatus(it, 'skipped')}>跳过</button>
-                  )}
-                </div>
+                </article>
               );
             })}
           </section>
@@ -678,7 +737,7 @@ export default function PlanPanel() {
             {sessions.map((s) => (
               <div key={s.id} className="session-row">
                 <div className="session-head mono">
-                  {s.date} · {s.topic} · 第 {s.attempt} 次 · {s.actual_minutes}m
+                  {s.date} · {s.topic} · 第 {s.attempt} 次{s.actual_minutes > 0 ? ` · ${s.actual_minutes}m` : ''}
                 </div>
                 {s.explanation && <div className="session-body">我的解释：{s.explanation}</div>}
                 {s.questions && <div className="session-body session-q">疑问：{s.questions}</div>}
@@ -966,7 +1025,7 @@ export default function PlanPanel() {
         />
       )}
       {plans.map((p) => (
-        <div key={p.id} className="plan-card" onClick={() => void openDetail(p.id)}>
+        <div key={p.id} className="plan-card learning-plan-card" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void openDetail(p.id); } }} onClick={() => void openDetail(p.id)}>
           <div className="plan-card-head">
             <span className="plan-title">{p.title}</span>
             <span className={`plan-status mono ${p.status}`}>
@@ -981,7 +1040,10 @@ export default function PlanPanel() {
               ? `关联课程：${courses.filter((c) => c.plan_id === p.id).map((c) => c.title).join('、')}`
               : '待关联课程'}
           </div>
+          <div className="learning-plan-completion"><span>安排已完成 {p.done_items}/{p.total_items}</span><b>{Math.round(p.progress * 100)}%</b></div>
           <div className="progress"><div style={{ width: `${Math.round(p.progress * 100)}%` }} /></div>
+          <LearningTotals progress={learningProgress.find(progress => progress.plan_id === p.id)} />
+          <div className="learning-plan-go">查看学习安排 →</div>
         </div>
       ))}
       </> : <>

@@ -91,6 +91,9 @@ interface TododeskApi {
     delete: (p: { id: number }) => Promise<ApiResult<boolean>>;
   };
   study: {
+    getProgress: (p?: { plan_id?: number }) => Promise<ApiResult<ReturnType<TodoDeskCore['study']['getProgress']>>>;
+    recordSession: (p: Parameters<TodoDeskCore['study']['recordSession']>[0]) => Promise<ApiResult<unknown>>;
+    copyPrompt: (p: { text: string }) => Promise<ApiResult<boolean>>;
     listDrafts: (p?: { status?: 'draft' | 'confirmed' | 'cancelled' }) => Promise<ApiResult<unknown[]>>;
     getDraft: (p: { id: number }) => Promise<ApiResult<unknown>>;
     confirmDraft: (p: { id: number; confirmed_over_dates?: string[] }) => Promise<ApiResult<unknown>>;
@@ -98,7 +101,7 @@ interface TododeskApi {
     previewSchedule: (p: { id: number; start_date: string; daily_minutes: number }) => Promise<ApiResult<unknown>>;
     scheduleDraft: (p: { id: number; start_date: string; daily_minutes: number; confirmed_over_dates?: string[] }) => Promise<ApiResult<unknown>>;
     listSessions: (p?: { plan_id?: number; plan_item_id?: number; knowledge_key?: string; limit?: number }) => Promise<ApiResult<unknown[]>>;
-    listAssessments: (p?: { plan_id?: number; knowledge_key?: string; session_id?: string }) => Promise<ApiResult<unknown[]>>;
+    listAssessments: (p?: { plan_id?: number; knowledge_key?: string; session_id?: string; limit?: number }) => Promise<ApiResult<unknown[]>>;
     getMastery: (p?: { plan_id?: number; knowledge_keys?: string[] }) => Promise<ApiResult<unknown>>;
     suggestAdjustments: (p: { plan_id: number }) => Promise<ApiResult<unknown[]>>;
     applyAdjustments: (p: { plan_id: number; suggestions: Array<{ id: string; to_date: string }> }) => Promise<ApiResult<unknown>>;
@@ -108,6 +111,7 @@ interface TododeskApi {
     pickExportDir: () => Promise<ApiResult<string | null>>;
   };
   courses: {
+    remove: (p: { course_id: number; expected_slug: string }) => Promise<ApiResult<{ assets_removed: boolean; cleanup_warning?: string }>>;
     import: (p: { staging_dir: string }) => Promise<ApiResult<unknown>>;
     list: () => Promise<ApiResult<unknown[]>>;
     lessons: (p: { course_id: number }) => Promise<ApiResult<unknown[]>>;
@@ -120,9 +124,11 @@ interface TododeskApi {
     listRequests: (p?: { status?: string; course_id?: number }) => Promise<ApiResult<unknown[]>>;
   };
   news: {
+    collectionSettings: () => Promise<ApiResult<import('../../../../../packages/core/src/types').NewsCollectionSettings>>;
+    updateCollectionSettings: (p: { prompt: string; max_items: number; window_hours: number; expected_revision: number }) => Promise<ApiResult<import('../../../../../packages/core/src/types').NewsCollectionSettings>>;
     list: (p?: { days?: number; task_id?: number; search?: string; filter?: 'all' | 'unread' | 'starred'; since?: string; limit?: number; offset?: number }) => Promise<ApiResult<unknown[]>>;
     tasks: (p?: { status?: string; limit?: number }) => Promise<ApiResult<unknown[]>>;
-    createTask: (p: { title: string; instructions?: string; max_items?: number; window_hours?: number }) => Promise<ApiResult<unknown>>;
+    createTask: (p: { title: string; instructions?: string; max_items?: number; window_hours?: number; use_collection_prompt?: boolean }) => Promise<ApiResult<unknown>>;
     cancelTask: (p: { id: number }) => Promise<ApiResult<unknown>>;
     markRead: (p: { id: number; read?: boolean }) => Promise<ApiResult<unknown>>;
     markStarred: (p: { id: number; starred?: boolean }) => Promise<ApiResult<unknown>>;
