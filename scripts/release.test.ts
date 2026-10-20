@@ -16,14 +16,15 @@ describe('GitHub 发布合同', () => {
   });
 
   it('覆盖 App、MCP、帮助、依赖和能力包，排除纯测试与仓库说明', () => {
-    for (const path of ['apps/desktop/src/main/index.ts', 'apps/help/docs/01-todo.md', 'apps/mcp/src/server.ts', 'packages/agent-kit/skills/dayfolio/SKILL.md', 'package-lock.json', 'scripts/generate-command-inputs.cjs']) expect(affectsApp(path)).toBe(true);
-    for (const path of ['README.md', 'AGENTS.md', '.github/workflows/release.yml', 'scripts/release.mjs', 'packages/core/test/todo.test.ts']) expect(affectsApp(path)).toBe(false);
+    for (const path of ['apps/desktop/src/main/index.ts', 'apps/desktop/scripts/package.mjs', 'apps/help/docs/01-todo.md', 'apps/mcp/src/server.ts', 'packages/agent-kit/skills/dayfolio/SKILL.md', 'package-lock.json', 'scripts/generate-command-inputs.cjs']) expect(affectsApp(path)).toBe(true);
+    for (const path of ['README.md', 'AGENTS.md', '.github/workflows/release.yml', 'scripts/release.mjs', 'packages/core/test/todo.test.ts', 'apps/desktop/scripts/ui-smoke-course.mjs', 'apps/desktop/scripts/ui-smoke-news.mjs']) expect(affectsApp(path)).toBe(false);
   });
 
   it('应用修改必须升版，纯说明修改可以保留版本，禁止回退', () => {
     expect(() => validateVersionChange({ version: '0.21.0', previousVersion: '0.21.0', paths: ['apps/help/docs/01-todo.md'] })).toThrow('必须递增版本号');
     expect(() => validateVersionChange({ version: '0.21.1', previousVersion: '0.21.0', paths: ['apps/desktop/src/main/index.ts'] })).not.toThrow();
     expect(() => validateVersionChange({ version: '0.21.0', previousVersion: '0.21.0', paths: ['README.md'] })).not.toThrow();
+    expect(() => validateVersionChange({ version: '0.21.0', previousVersion: '0.21.0', paths: ['apps/desktop/scripts/ui-smoke-course.mjs'] })).not.toThrow();
     expect(() => validateVersionChange({ version: '0.20.0', previousVersion: '0.21.0', paths: [] })).toThrow('不能');
   });
 

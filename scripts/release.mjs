@@ -17,6 +17,7 @@ export function compareVersions(left, right) {
 
 export function affectsApp(path) {
   if (/(^|\/)(test|tests)(\/|$)/.test(path) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(path)) return false;
+  if (/^apps\/desktop\/scripts\/ui-smoke-[^/]+\.mjs$/.test(path)) return false;
   return /^(apps\/(desktop|help|mcp|plugin)\/|packages\/|\.agents\/skills\/)/.test(path)
     || /^(package(?:-lock)?\.json|tsconfig[^/]*\.json|scripts\/generate-command-inputs\.cjs)$/.test(path);
 }
