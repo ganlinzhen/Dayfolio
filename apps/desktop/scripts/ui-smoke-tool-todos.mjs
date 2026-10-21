@@ -100,6 +100,13 @@ const capture = async (send, name) => {
 
 try {
   const { send, evaluate, events } = await launch();
+  const viewport = await evaluate('({width: innerWidth, height: innerHeight})');
+  const settleLayout = () => evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  const restoreViewport = async () => {
+    await send('Emulation.clearDeviceMetricsOverride');
+    await until(() => evaluate(`innerWidth === ${viewport.width} && innerHeight === ${viewport.height}`), '恢复原始窗口尺寸');
+    await settleLayout();
+  };
   const invoke = async expression => {
     const result = await evaluate(expression);
     if (!result.ok) throw new Error(result.error || '业务调用失败');
@@ -208,7 +215,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride',{width:760,height:800,deviceScaleFactor:1,mobile:false});
   assert(await evaluate('document.querySelector(".todo-toolbar").scrollWidth<=document.querySelector(".todo-toolbar").clientWidth'),'窄窗口待办分类筛选无横向溢出');
   await capture(send,'generic-todo-category-narrow');
-  await send('Emulation.clearDeviceMetricsOverride');
+  await restoreViewport();
   await evaluate('[...document.querySelectorAll(".nav-item")].find(b=>b.textContent.trim()==="今日").click()');
   await until(()=>evaluate('!!document.querySelector("[aria-label=日历更多操作]")&&!document.querySelector("[aria-label=日历更多操作]").disabled'),'日历分类入口就绪');
   assert(await evaluate('!document.querySelector(".cal-display-panel")'),'显示内容已收进更多菜单');
@@ -243,9 +250,11 @@ try {
   assert(await evaluate('(()=>{const modal=document.querySelector(".cal-collections-modal"),r=modal.getBoundingClientRect();return modal.scrollWidth<=modal.clientWidth&&r.left>=0&&r.right<=innerWidth})()'),'窄窗口分类管理不溢出');
   assert(await evaluate('(()=>{const toolbar=document.querySelector(".cal-toolbar"),actions=document.querySelector(".cal-create-actions"),buttons=actions.querySelectorAll("button");return toolbar.scrollWidth<=toolbar.clientWidth&&buttons[0].getBoundingClientRect().right<=buttons[1].getBoundingClientRect().left&&Math.abs(buttons[0].getBoundingClientRect().top-buttons[1].getBoundingClientRect().top)<2})()'),'窄窗口新建日程与更多按钮始终相邻');
   await capture(send,'calendar-category-narrow');
-  await send('Emulation.clearDeviceMetricsOverride');
+  await restoreViewport();
   await click('[aria-label=关闭弹窗]');
   await until(()=>evaluate('!document.querySelector(".cal-collections-modal")'),'关闭分类管理');
+  await until(()=>evaluate('document.activeElement?.getAttribute("aria-label")==="日历更多操作"'),'关闭后焦点归位');
+  await settleLayout();
   await manage();
   assert(await evaluate('document.querySelector("[aria-label=显示读书会]").checked'),'重开弹窗保留分类与显示偏好');
   await click('[aria-label=删除读书会]');
