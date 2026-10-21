@@ -116,6 +116,8 @@ try {
   };
   const escape = async () => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' }); await until(() => evaluate('!document.querySelector(".modal")'), '关闭弹窗'); };
   const layout = async (footer = true) => {
+    await until(() => evaluate('!!document.querySelector(".modal")'), '弹窗已渲染');
+    await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     const result = await evaluate(`(() => {
       const m = document.querySelector('.modal'), h = m.querySelector('.modal-head'), b = m.querySelector('.modal-body'), c = m.querySelector('.modal-close'), f = m.querySelector('.modal-foot');
       const r = m.getBoundingClientRect(), cr = c.getBoundingClientRect(), br = b.getBoundingClientRect(), fr = f?.getBoundingClientRect();
