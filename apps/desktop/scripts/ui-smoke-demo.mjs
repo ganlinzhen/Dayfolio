@@ -279,6 +279,9 @@ try {
       Object.getOwnPropertyDescriptor(${select ? 'HTMLSelectElement' : 'HTMLInputElement'}.prototype, 'value').set.call(el, ${JSON.stringify(value)});
       el.dispatchEvent(new Event('${select ? 'change' : 'input'}', { bubbles: true })); })()`);
   };
+  assert(await evalJs(`!document.querySelector('.todo-composer-details')`), '新增待办默认收起');
+  await evalJs(`document.querySelector('[aria-label="待办标题"]').focus()`);
+  await waitFor(() => evalJs(`!!document.querySelector('[aria-label="时间安排"]')`), 10000, '聚焦后展开待办排期');
   assert(await evalJs(`document.querySelector('[aria-label="时间安排"]').value === 'time' && document.querySelectorAll('.todo-schedule input[type=time]').length === 2`), '新增默认时间段，显示开始与结束时间');
   await setField('待办标题', '【验收】09点阅读');
   await evalJs(`document.querySelector('.composer .btn.primary').click()`);
@@ -293,16 +296,16 @@ try {
   assert(timed.ok && timed.data[0].start_time === '09:00' && timed.data[0].end_time === '10:30', '起止时间经 IPC 保存并读回');
   await evalJs(`[...document.querySelectorAll('.todo-title')].find(el => el.textContent === '【验收】09点阅读').click()`);
   await setField('编辑结束时间', '08:00');
-  await evalJs(`[...document.querySelectorAll('.todo-card-meta .btn')].find(b => b.textContent === '保存').click()`);
+  await evalJs(`[...document.querySelectorAll('.todo-editor-actions .btn')].find(b => b.textContent === '保存待办').click()`);
   await waitFor(() => evalJs(`document.querySelector('.notice.error')?.textContent.includes('晚于')`), 10000, '倒序时间提示明确且保留编辑');
   await setField('编辑时间安排', 'date', true);
-  await evalJs(`[...document.querySelectorAll('.todo-card-meta .btn')].find(b => b.textContent === '保存').click()`);
+  await evalJs(`[...document.querySelectorAll('.todo-editor-actions .btn')].find(b => b.textContent === '保存待办').click()`);
   await waitFor(() => evalJs(`!document.querySelector('[aria-label="编辑时间安排"]') && [...document.querySelectorAll('.todo-card')].some(r => r.textContent.includes('【验收】09点阅读') && r.textContent.includes('仅日期'))`), 10000, '编辑切换仅日期');
   await evalJs(`[...document.querySelectorAll('.todo-title')].find(el => el.textContent === '【验收】09点阅读').click()`);
   await setField('编辑时间安排', 'time', true);
   await setField('编辑开始时间', '09:00');
   await setField('编辑结束时间', '10:30');
-  await evalJs(`[...document.querySelectorAll('.todo-card-meta .btn')].find(b => b.textContent === '保存').click()`);
+  await evalJs(`[...document.querySelectorAll('.todo-editor-actions .btn')].find(b => b.textContent === '保存待办').click()`);
   await waitFor(() => evalJs(`!document.querySelector('[aria-label="编辑时间安排"]')`), 10000, '编辑时段保存');
   // 完成另一条时段待办，保留一条未完成时段用于截图检查。
   const doneResult = await evalJs(`window.tododesk.todos.add({ title: '【验收】精确完成时间', due_date: ${JSON.stringify(nextDate)}, start_time: '11:00', end_time: '12:00' })`);
@@ -378,6 +381,8 @@ try {
 
   // 调整后的关键控件仍能完成筛选，低频管理默认收起且可展开。
   await clickUntil(nav('待办'), () => evalJs(`!!document.querySelector('.todo-toolbar')`), 10000, '优先级筛选验收');
+  await evalJs(`document.querySelector('[aria-label="待办标题"]').focus()`);
+  await waitFor(() => evalJs(`!!document.querySelector('[aria-label="时间安排"]')`), 10000, '重新展开新增表单');
   await evalJs(`(() => { const el = document.querySelector('[aria-label="待办标题"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, '界面验收临时待办'); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   await setField('时间安排', 'date', true);
   await evalJs(`document.querySelector('.composer .btn.primary').click()`);
@@ -497,14 +502,16 @@ try {
   await waitFor(() => evalJs(`[...document.querySelectorAll('.cal-ev-row')].some(r => r.textContent.includes('【演示】晨会') && r.textContent.includes('09:30') && r.querySelector('.cal-item-open'))`), 10000, '当日明细与日历查询就绪');
   assert(true, '当日明细可打开日程编辑');
   await evalJs(`[...document.querySelectorAll('.cal-ev-row')].find(r => r.textContent.includes('【演示】晨会')).querySelector('.cal-item-open').click()`);
+  await clickUntil(`[...document.querySelectorAll('.cal-event-preview button')].find(b => b.textContent === '编辑日程')?.click()`, () => evalJs(`document.querySelector('.cal-form')?.getAttribute('aria-label') === '编辑日程'`), 10000, '详情浮层进入编辑');
   await waitFor(() => evalJs(`document.querySelector('.cal-form')?.getAttribute('aria-label') === '编辑日程'`), 10000, '既有日程编辑表单');
   assert(await evalJs(`document.querySelector('[aria-label="日程备注"]').value === '演示定时日程' && document.querySelector('[aria-label="开始时间"]').value === '09:30'`), '既有日程备注和钟点保留');
   await evalJs(`[...document.querySelectorAll('.cal-form .btn')].find(b => b.textContent.includes('取消')).click()`);
-  // 周视图点击空档 → 表单预填时段（非全天）
-  await evalJs(`(() => { const col = [...document.querySelectorAll('.cal-col')][3]; const rect = col.getBoundingClientRect(); const ev = new MouseEvent('click', { bubbles: true, clientX: rect.left + rect.width / 2, clientY: rect.top + 300 }); col.dispatchEvent(ev); })()`);
+  // 周视图键盘新建草稿；指针点击与拖动由日历浮层专项验收覆盖。
+  await evalJs(`(() => { const col = [...document.querySelectorAll('.cal-col')][3]; col.focus(); col.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+  await waitFor(() => evalJs(`!!document.querySelector('.cal-form')`), 10000, '空档草稿浮层');
   const slotForm = await evalJs(`(() => { const f = document.querySelector('.cal-form'); if (!f) return null; const allDay = f.querySelector('input[type=checkbox]'); const times = [...f.querySelectorAll('input[type=time]')].map(i => i.value); return { allDay: allDay.checked, times }; })()`);
   console.log('空档预填表单:', JSON.stringify(slotForm));
-  assert(slotForm && slotForm.allDay === false && (slotForm.times[0].endsWith(':00') || slotForm.times[0].endsWith(':30')), '点空档按 30 分钟粒度预填时段');
+  assert(slotForm && slotForm.allDay === false && slotForm.times[0] === '09:00' && slotForm.times[1] === '09:15', '空档草稿预填 15 分钟时段');
   await evalJs(`[...document.querySelectorAll('.cal-form .btn')].find(b => b.textContent.includes('取消')).click()`);
   // 新建 → 出现 → 删除 → 消失（走真实 IPC）
   const calTitle = `【演示】冒烟日程 ${new Date().toLocaleTimeString('sv-SE')}`;
@@ -516,6 +523,7 @@ try {
   await waitFor(() => evalJs(`[...document.querySelectorAll('.cal-ev-row')].some(r => r.textContent.includes(${JSON.stringify(calTitle)}))`), 10000, '新建日程落库并显示');
   assert(await evalJs(`document.querySelector('.cal-allday-lane').textContent.includes(${JSON.stringify(calTitle)})`), '全天日程进入周视图全天区');
   await evalJs(`[...document.querySelectorAll('.cal-ev-row')].find(r => r.textContent.includes(${JSON.stringify(calTitle)})).querySelector('.cal-item-open').click()`);
+  await clickUntil(`[...document.querySelectorAll('.cal-event-preview button')].find(b => b.textContent === '编辑日程')?.click()`, () => evalJs(`document.querySelector('.cal-form')?.getAttribute('aria-label') === '编辑日程'`), 10000, '详情浮层进入编辑');
   await waitFor(() => evalJs(`document.querySelector('.cal-form')?.getAttribute('aria-label') === '编辑日程'`), 10000, '新建日程编辑入口');
   await evalJs(`[...document.querySelectorAll('.cal-form .btn')].find(b => b.textContent.includes('删除')).click()`);
   await waitFor(() => evalJs(`![...document.querySelectorAll('.cal-ev-row')].some(r => r.textContent.includes(${JSON.stringify(calTitle)}))`), 10000, '删除日程后消失');
