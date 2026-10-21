@@ -15,6 +15,7 @@ export interface ApiResult<T> {
 }
 
 interface TododeskApi {
+  toolFollowing:{[K in keyof TodoDeskCore['toolFollowing']]:(p:Parameters<TodoDeskCore['toolFollowing'][K]>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['toolFollowing'][K]>>>};
   toolTodos: {
     preview: (p: Parameters<TodoDeskCore['toolTodos']['preview']>[0]) => Promise<ApiResult<ReturnType<TodoDeskCore['toolTodos']['preview']>>>;
     create: (p: Parameters<TodoDeskCore['toolTodos']['create']>[0]) => Promise<ApiResult<ReturnType<TodoDeskCore['toolTodos']['create']>>>;

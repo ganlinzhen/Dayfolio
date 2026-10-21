@@ -46,8 +46,16 @@ export const TOOL_SDK = String.raw`(() => {
     create: (item, options = {}) => request('todos.create', { ...options, items: [item] }),
     createMany: (items, options = {}) => request('todos.create', { ...options, items }),
     getStatus: sourceKeys => request('todos.getStatus', { sourceKeys }),
+    open:sourceKey=>request('todos.open',{sourceKey}),
   });
-  Object.defineProperty(window, 'dayfolio', { value: Object.freeze({ apiMajor: 1, ready, todos }), writable: false, configurable: false });
+  const following=Object.freeze({
+    publish:snapshot=>request('following.publish',{snapshot}),
+    preview:scope=>request('following.preview',{scope}),
+    follow:scope=>request('following.follow',{scope}),
+    unfollow:scope=>request('following.unfollow',{scope}),
+    getState:(options={})=>request('following.getState',options),
+  });
+  Object.defineProperty(window, 'dayfolio', { value: Object.freeze({ apiMajor: 1, apiMinor:1,ready, todos,following }), writable: false, configurable: false });
   window.addEventListener('pagehide', () => {
     clearInterval(timer); port?.close();
     for (const task of pending.values()) { clearTimeout(task.timer); task.reject(fail('工具页面已关闭', 'SESSION_CLOSED')); }

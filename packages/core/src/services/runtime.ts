@@ -35,6 +35,8 @@ export function createRuntimeService(db: DbAdapter, deps: { todos: () => TodoSer
   const deleteCollection = (input:{collectionId:string;expectedTitle:string}) => inTx(db,()=>{
     const row=currentCollection(input.collectionId,input.expectedTitle), reason=deleteReason(row);
     if(reason) return runtimeError('REFERENCE_CONFLICT',reason);
+    // 删除分类也撤销该分类已授权的自动新增，避免后续来源更新又把分类建回来。
+    db.prepare('UPDATE tool_follow_rules SET active=0,updated_at=? WHERE category_id=? AND active=1').run(new Date().toISOString(),input.collectionId);
     // 只移除分类归属，待办仍走公共业务入口，保留完成、计划、来源与去重关联。
     const todos=db.prepare('SELECT id FROM todos WHERE collection_id=?').all(input.collectionId);
     deps.managedWrite(()=>{for(const todo of todos) deps.todos().update(Number(todo.id),{collection_id:'builtin.todo'});});

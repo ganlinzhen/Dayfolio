@@ -36,6 +36,6 @@ export function registerRuntimeTools(server: ToolRegistrar, core: TodoDeskCore, 
   server.tool('list_calendar_collections', '查询日历分类和持久显示偏好；隐藏只影响展示，不删除订阅或待办。', {}, async () => wrap(() => core.runtime.listCollections())());
   server.tool('set_calendar_collection_visibility', '设置指定分类的显示偏好；不会取消订阅，主动隐藏后新订阅不会覆盖。', { collectionId: z.string(), visible: z.boolean() }, async p => wrap(() => core.runtime.setVisibility(p))());
   server.tool('update_calendar_collection', '编辑日历和待办共用分类的名称、颜色；先读取 list_calendar_collections，并携带原名称和颜色避免覆盖其他修改。稳定分类身份及显示偏好不变。', {collectionId:z.string(),expectedTitle:z.string(),expectedColor:z.string(),title:z.string().min(1).max(80),color:z.enum(['blue','green','violet','amber','rose','slate'])}, async p=>wrap(()=>core.runtime.updateCollection(p))());
-  server.tool('delete_calendar_collection', '用户确认删除分类后调用；先读取 list_calendar_collections 核对 ID、名称和 deleteBlockedReason。待办转基础待办、本地日程转本地日程分类，保留内容和状态；系统及事件来源分类拒绝删除，可隐藏。HTML 工具下次确认添加新事项时可重新创建分类。', {collectionId:z.string(),expectedTitle:z.string()}, async p=>wrap(()=>core.runtime.deleteCollection(p))());
+  server.tool('delete_calendar_collection', '用户确认删除分类后调用；先读取 list_calendar_collections 核对 ID、名称和 deleteBlockedReason。待办转基础待办、本地日程转本地日程分类，保留内容和状态，同时停止该分类的持续关注；系统及事件来源分类拒绝删除，可隐藏。HTML 工具下次确认添加新事项时可重新创建分类。', {collectionId:z.string(),expectedTitle:z.string()}, async p=>wrap(()=>core.runtime.deleteCollection(p))());
   server.tool('set_display_timezone', '修改所有入口共用的 IANA 显示时区；只移动固定时刻的日期镜像，浮动时间不动，更新在一个事务内完成。', { zone: z.string() }, async p => wrap(() => core.runtime.setDisplayTimezone(p.zone))());
 }

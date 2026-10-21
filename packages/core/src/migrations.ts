@@ -697,6 +697,32 @@ MIGRATIONS.push({ version: 27, name: 'html_tool_todo_links', up: db => {
   CREATE INDEX idx_tool_todo_id ON tool_todo_links(todo_id);`);
 }});
 
+MIGRATIONS.push({ version: 28, name: 'html_tool_following', up: db => {
+  db.exec(`ALTER TABLE tool_todo_links ADD COLUMN follow_mode TEXT NOT NULL DEFAULT 'snapshot' CHECK(follow_mode IN ('snapshot','follow','manual'));
+    ALTER TABLE tool_todo_links ADD COLUMN last_applied_json TEXT;
+    ALTER TABLE tool_todo_links ADD COLUMN applied_source_revision INTEGER;
+    ALTER TABLE tool_todo_links ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0 CHECK(excluded IN (0,1));
+    CREATE TABLE tool_follow_catalogs (
+      tool_id INTEGER PRIMARY KEY REFERENCES tools(id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL, digest TEXT NOT NULL, groups_json TEXT NOT NULL, category_json TEXT, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE tool_follow_sources (
+      id TEXT PRIMARY KEY, tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+      source_key TEXT NOT NULL, draft_json TEXT NOT NULL, groups_json TEXT NOT NULL,
+      source_status TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(tool_id,source_key)
+    );
+    CREATE TABLE tool_follow_rules (
+      id TEXT PRIMARY KEY, tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('item','group')), target_key TEXT NOT NULL, title TEXT NOT NULL,
+      active INTEGER NOT NULL CHECK(active IN (0,1)), category_id TEXT NOT NULL, category_json TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(tool_id,kind,target_key)
+    );
+    CREATE INDEX idx_tool_follow_sources_tool ON tool_follow_sources(tool_id);
+    CREATE INDEX idx_tool_follow_rules_tool ON tool_follow_rules(tool_id,active);`);
+  for(const table of ['tool_follow_catalogs','tool_follow_sources','tool_follow_rules','tool_todo_links'])for(const op of ['INSERT','UPDATE','DELETE'])db.exec(`CREATE TRIGGER rev_${table}_${op.toLowerCase()} AFTER ${op} ON ${table} BEGIN UPDATE runtime_revision SET revision=revision+1 WHERE id=1; END`);
+}});
+
 export function runMigrations(db: DbAdapter): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
   const current = Number(row?.user_version ?? 0);

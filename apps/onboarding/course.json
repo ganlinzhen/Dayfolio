@@ -3,7 +3,7 @@
   "slug": "tododesk-tour",
   "title": "Dayfolio 上手之旅",
   "goal": "五分钟认识 Dayfolio 的本地数据、学习闭环与 AI 协作方式",
-  "version": "1.20.0",
+  "version": "1.24.0",
   "overview": {
     "html": "overview.html"
   },
@@ -29,6 +29,10 @@
         {
           "name": "学习进度与 AI 检验",
           "explanation": "在学习详情依次阅读课件、提交自测、使用 AI 检验并保存笔记，无需填写学习用时；底部可标记完成。复制提示词本身不自动完成。"
+        },
+        {
+          "name": "待办聚焦与编辑",
+          "explanation": "按需展开新增，叠加日期、分类与搜索，按组排序；备注与标签编辑保留排期和来源跟随，保存冲突须显式重载。"
         }
       ],
       "is_sample": true

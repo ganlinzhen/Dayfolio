@@ -1,29 +1,17 @@
-// 今日页：日历置顶（周/月视图）+ 逾期/今日学习行动列表（Codex 风格）
+// 今日页：日历置顶（周/月视图）+ 逾期待办行动列表
 // 2026-10-14 起头部日期条、统计条与手动「每日打卡」入口移除，打开即是日历
 import { useCallback, useState } from 'react';
 import { api, call } from '../api';
 import CalendarSection from './CalendarSection';
 import { useRuntimeRefresh } from './useRuntimeRefresh';
 import EmptyState from './EmptyState';
-import { IconItemType } from './icons';
 import type { Todo } from './TodoPanel';
-
-interface PlanItemToday {
-  id: number;
-  date: string;
-  content: string;
-  item_type: 'learn' | 'review' | 'practice' | 'rest';
-  status: 'pending' | 'done' | 'skipped';
-  plan_title: string;
-}
 
 interface Overview {
   date: string;
   overdue_todos: Todo[];
-  today_plan_items: PlanItemToday[];
 }
 
-const TYPE_LABEL: Record<string, string> = { learn: '学习', review: '复习', practice: '练习', rest: '休息' };
 const PRIORITY_LABEL: Record<Todo['priority'], string> = { high: '高', medium: '中', low: '低' };
 
 export default function TodayPanel() {
@@ -45,10 +33,6 @@ export default function TodayPanel() {
     await call(() => api.todos.complete({ id }));
     await refresh();
   };
-  const doneItem = async (id: number) => {
-    await call(() => api.plans.updateItemStatus({ id, status: 'done' }));
-    await refresh();
-  };
 
   if (!ov)
     return (
@@ -68,8 +52,6 @@ export default function TodayPanel() {
         )}
       </div>
     );
-
-  const planPending = ov.today_plan_items.filter((i) => i.status === 'pending');
 
   return (
     <div className="panel work-panel today-panel" role="region" aria-label="今日">
@@ -107,35 +89,6 @@ export default function TodayPanel() {
           })}
         </section>
       )}
-
-      <section className="group">
-        <div className="group-label mono">
-          今日学习<span className="group-count">{planPending.length} 待打卡</span>
-        </div>
-        {ov.today_plan_items.length === 0 && <div className="sub row-pad">今天没有学习安排</div>}
-        {ov.today_plan_items.map((it) => (
-          <div key={it.id} className={`todo-card study-card ${it.status}`}>
-            <div className="todo-card-main">
-              <button
-                className={`check ${it.status === 'done' ? 'checked' : ''}`}
-                onClick={() => it.status !== 'done' && void doneItem(it.id)}
-                title={it.status === 'done' ? '已完成' : '打卡'}
-              >
-                {it.status === 'done' && (
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                    <path d="M4 12l5 5L20 6" />
-                  </svg>
-                )}
-              </button>
-              <IconItemType type={it.item_type} className="type-icon" />
-              <span className="todo-title">{it.content}</span>
-            </div>
-            <div className="todo-card-meta">
-              <span className="todo-meta mono">{it.plan_title} · {TYPE_LABEL[it.item_type]}</span>
-            </div>
-          </div>
-        ))}
-      </section>
     </div>
   );
 }

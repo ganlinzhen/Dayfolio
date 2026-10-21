@@ -198,7 +198,7 @@ try {
   const denied=await until(async()=>{const result=await evaluate(`window.tododesk.toolTodos.getStatus({toolId:${probe.id},sourceKeys:['test:one']})`);return result.code==='PERMISSION_DENIED'&&result},'原生子 frame 释放');
   assert(denied.code==='PERMISSION_DENIED','已关闭工具不能继续使用宿主接口');
   await evaluate('[...document.querySelectorAll(".nav-item")].find(b=>b.textContent.trim()==="待办").click()');
-  await until(()=>evaluate('!!document.querySelector("select[aria-label=筛选待办分类]")'),'待办分类筛选');
+  await until(()=>evaluate(`!!document.querySelector('select[aria-label=筛选待办分类] option[value="${namedCategory}"]')`),'待办分类选项加载');
   await evaluate(`(()=>{const select=document.querySelector('select[aria-label=筛选待办分类]');select.value=${JSON.stringify(namedCategory)};select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
   await until(()=>evaluate('document.querySelectorAll(".todo-card").length===1&&document.querySelector(".todo-title")?.textContent==="阅读计划事项"'),'待办列表按分类筛选');
   assert(await evaluate('document.querySelector(".todo-category").textContent==="阅读计划"'),'待办行显示真实分类名称');
@@ -286,7 +286,7 @@ try {
   await until(()=>evaluate('!!document.querySelector(".tool-todo-modal")'),'欧冠单场预览');
   await capture(send,'ucl-single-preview');
   await click('.tool-todo-modal .btn.primary');
-  await until(()=>run(`document.querySelector('[data-todo="${chosen.id}"]')?.textContent === '已添加'`),'比赛回读已添加');
+  await until(()=>run(`document.querySelector('[data-todo-details="${chosen.id}"],[data-todo="${chosen.id}"]')?.textContent.startsWith('已添加')`),'比赛回读已添加及详情入口');
   const baseCount=2;
   assert((await invoke('window.tododesk.todos.list({status:"all"})')).length===baseCount+1,'欧冠比赛真实加入待办');
   const uclCategory=(await invoke('window.tododesk.calendar.listCollections()')).find(c=>c.title==='欧冠');

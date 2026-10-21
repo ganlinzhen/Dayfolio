@@ -39,8 +39,10 @@ const today = new Date().toLocaleDateString('sv-SE');
 // 确保切回「待办」面板（上轮脚本可能停留在其他 tab）
 await evalJs(`[...document.querySelectorAll('.nav-item')].find(b => b.textContent.includes('待办'))?.click()`);
 await sleep(400);
+await evalJs(`document.querySelector('.composer-input').focus()`);
+await sleep(100);
 await evalJs(setInput('.composer-input', title));
-await evalJs(setInput('.composer .chip-select', 'high', 'HTMLSelectElement'));
+await evalJs(setInput('.composer [aria-label="优先级"]', 'high', 'HTMLSelectElement'));
 await evalJs(setInput('.composer .chip-date', today));
 await evalJs(setInput('.todo-schedule select', 'date', 'HTMLSelectElement'));
 await evalJs(`document.querySelector('.composer .btn.primary').click()`);

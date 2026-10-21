@@ -7,7 +7,7 @@ import { MAX_TOOL_FILES_BYTES, sanitizeToolPath, toolsRootForDb } from '../utils
 import type { ToolService } from './tool';
 import type { NewToolInput, UpdateToolInput, ToolItem } from '../types';
 
-export function createToolAssetService(db:DbAdapter,service:ToolService,dbPath:string):ToolService {
+export function createToolAssetService(db:DbAdapter,service:ToolService,dbPath:string,onFiles?:(toolId:number,root:string,previousRoot?:string)=>void):ToolService {
   const root=toolsRootForDb(dbPath);
   const write=(input:NewToolInput|UpdateToolInput,id?:number):ToolItem=>{
     const files=input.files;
@@ -29,6 +29,7 @@ export function createToolAssetService(db:DbAdapter,service:ToolService,dbPath:s
         target=join(root,String(tool.id));
         if(existsSync(target)){renameSync(target,backup);oldMoved=true;}
         renameSync(stage,target);published=true;
+        onFiles?.(tool.id,target,oldMoved?backup:undefined);
         return tool;
       });
       // 提交后清理旧目录，失败保留备份，不将已完成的提交伪装为回滚。

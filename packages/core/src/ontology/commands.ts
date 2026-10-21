@@ -113,6 +113,11 @@ for (const [name,title,method,params] of [
 ] as Array<[string,string,string,Param[]]>) command(name,title,'calendar',method,['calendar_event'],params);
 for(const d of defs)for(const p of d.parameters){if(d.apiName==='delete_study_plan'&&p.name==='delete_todos')p.defaultValue=true;if(d.apiName==='checkin'&&p.name==='ref_id')p.defaultValue=0;}
 command('add_tool_todos','添加 HTML 工具待办','toolTodos','create',['tool','todo','calendar_collection'],[input],'args',false,true);
+command('publish_tool_follow_sources','更新 HTML 工具关注来源','toolFollowing','publish',['tool','todo'],[input],'args',false,true);
+command('follow_tool_scope','持续关注 HTML 工具事项','toolFollowing','follow',['tool','todo','calendar_collection'],[input],'args',false,true);
+command('unfollow_tool_scope','取消 HTML 工具持续关注','toolFollowing','unfollow',['tool'],[input],'args',false,true);
+command('resume_tool_todo_following','恢复 HTML 工具待办跟随','toolFollowing','resume',['todo'],[input],'args',false,true);
+command('stop_tool_todo_following','停止 HTML 工具待办跟随','toolFollowing','stopTodo',['todo'],[input],'args',false,true);
 command('set_display_timezone','设置显示时区','runtime','setDisplayTimezone',[],[['zone','string']],'args',false,true);
 command('set_calendar_collection_visibility','设置日历分类显示','runtime','setVisibility',[],[input],'args',false,true);
 command('update_calendar_collection','编辑日历分类','runtime','updateCollection',['calendar_collection'],[input],'args',false,true);

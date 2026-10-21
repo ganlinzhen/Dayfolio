@@ -76,6 +76,25 @@ afterAll(async () => {
 });
 
 describe('MCP 端到端主流程', () => {
+  it('HTML 持续关注通过真实 MCP 同步资料，手动和完成记录受保护，关闭页面更新文件也生效',async()=>{
+    const call=async(name:string,arguments_:Record<string,unknown>)=>arg(await client.callTool({name,arguments:arguments_}));
+    const created=await call('add_tool',{title:'持续关注测试',files:[{name:'index.html',content_base64:Buffer.from('<h1>活动</h1>').toString('base64')}]});const toolId=created.data.tool.id;
+    const items=[{sourceKey:'a',title:'活动 A',startAt:'2099-11-01T00:00:00Z',groupKeys:['all']},{sourceKey:'b',title:'活动 B',startAt:'2099-11-02T00:00:00Z',groupKeys:['all']}];
+    const snapshot={schemaVersion:1,revision:1,groups:[{key:'all',title:'全部活动'}],items};
+    expect((await call('publish_tool_follow_sources',{toolId,snapshot})).ok).toBe(true);
+    const preview=await call('preview_tool_follow',{toolId,scope:{kind:'group',key:'all'}});expect(preview.data.items).toHaveLength(2);
+    const followed=await call('follow_tool_scope',{toolId,scope:{kind:'group',key:'all'},expectedRevision:preview.data.revision});expect(followed.data.created).toBe(2);
+    const a=followed.data.items.find((i:{sourceKey:string})=>i.sourceKey==='a').todoId,b=followed.data.items.find((i:{sourceKey:string})=>i.sourceKey==='b').todoId;
+    await call('update_todo',{id:a,title:'我的安排',notes:'私人备注'});await call('complete_todo',{id:b});
+    const changed={...snapshot,revision:2,items:items.map(i=>({...i,title:'新的 '+i.title,startAt:'2099-11-08T00:00:00Z'}))};
+    const updated=await call('update_tool',{id:toolId,files:[{name:'index.html',content_base64:Buffer.from('<h1>更新活动</h1>').toString('base64')},{name:'dayfolio-follow.json',content_base64:Buffer.from(JSON.stringify(changed)).toString('base64')}]});expect(updated.ok).toBe(true);
+    const state=await call('get_tool_follow_state',{toolId});expect(state.data.items.find((i:{sourceKey:string})=>i.sourceKey==='a').mode).toBe('manual');expect(state.data.items.find((i:{sourceKey:string})=>i.sourceKey==='b').mode).toBe('completed');expect(JSON.stringify(state)).not.toContain('私人备注');
+    const info=(await call('get_tool_todo_following',{todoId:a})).data;
+    expect((await call('resume_tool_todo_following',{todoId:a,expectedSourceRevision:info.sourceRevision,expectedTodoRevision:info.todoRevision})).ok).toBe(true);
+    const todos=(await call('list_todos',{status:'all'})).data.todos;expect(todos.find((t:{id:number})=>t.id===a)).toMatchObject({title:'新的 活动 A',notes:'私人备注'});expect(todos.find((t:{id:number})=>t.id===b)).toMatchObject({title:'活动 B',status:'done'});
+    expect((await call('unfollow_tool_scope',{toolId,scope:{kind:'group',key:'all'}})).ok).toBe(true);
+    for(const id of [a,b])await call('delete_todo',{id});await call('delete_tool',{id:toolId});
+  });
   it('HTML 工具待办可预览、批量创建与去重，MCP 和 App 共用关联状态', async () => {
     const created = arg(await client.callTool({ name: 'add_tool', arguments: { title: '待办桥接测试', files: [{ name: 'index.html', content_base64: Buffer.from('<h1>测试</h1>').toString('base64') }] } }));
     expect(created.ok).toBe(true);

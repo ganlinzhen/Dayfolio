@@ -99,8 +99,10 @@ export default function App() {
     const settings = () => setTab('settings');
     window.addEventListener('dayfolio:openSettings', settings);
     window.addEventListener('dayfolio:openTool',open);
+    const openTodo=(event:Event)=>{const id=(event as CustomEvent<{id?:unknown}>).detail?.id;if(typeof id==='number'&&Number.isSafeInteger(id)&&id>0)setRuntimeTodo(id);};
+    window.addEventListener('dayfolio:openTodo',openTodo);
     const remove=api.extensions.onOpenTodo(target=>{if(target.objectType==='todo'&&Number.isSafeInteger(target.id))setRuntimeTodo(target.id);});
-    return()=>{window.removeEventListener('dayfolio:openSettings',settings);window.removeEventListener('dayfolio:openTool',open);remove();};
+    return()=>{window.removeEventListener('dayfolio:openSettings',settings);window.removeEventListener('dayfolio:openTool',open);window.removeEventListener('dayfolio:openTodo',openTodo);remove();};
   },[]);
 
   // 窗口标题跟随当前面板，便于 Mission Control 辨认

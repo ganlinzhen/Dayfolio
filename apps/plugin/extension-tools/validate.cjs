@@ -7265,7 +7265,7 @@ var manifest_schema_default = {
 var package_default = {
   name: "tododesk-monorepo",
   private: true,
-  version: "0.28.0",
+  version: "0.42.0",
   license: "MIT",
   engines: {
     node: "^22.13.0 || ^24.0.0"
@@ -7281,7 +7281,7 @@ var package_default = {
     "test:core": "vitest run packages/core/test",
     "test:mcp": "npm run build:mcp && vitest run apps/mcp/test",
     typecheck: "tsc -p packages/core --noEmit && tsc -p apps/desktop --noEmit && tsc -p apps/mcp --noEmit",
-    "build:desktop": "npm run agent:build && npm run ontology:sync && npm run rebuild:native && npm run build:web && node apps/desktop/scripts/build.mjs",
+    "build:desktop": "node node_modules/electron/install.js && npm run agent:build && npm run ontology:sync && npm run rebuild:native && npm run build:web && node apps/desktop/scripts/build.mjs",
     "package:desktop": "npm run build:desktop && node apps/desktop/scripts/package.mjs",
     "build:web": "npm run help:sync && npm run agent:catalog && cd apps/desktop && npx vite build",
     "rebuild:native": "cd apps/desktop && npx @electron/rebuild -f -w better-sqlite3",

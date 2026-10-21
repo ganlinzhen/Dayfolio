@@ -22,7 +22,8 @@ describe('bootstrap 与校验', () => {
     expect(objects.map((o) => o.apiName)).toEqual(
       expect.arrayContaining(['todo', 'study_plan', 'plan_item', 'checkin', 'news_item', 'tool', 'tool_category', 'day']),
     );
-    expect(objects).toHaveLength(35);
+    expect(objects).toHaveLength(37);
+    expect(objects.map(o=>o.apiName)).toEqual(expect.arrayContaining(['tool_follow_source','tool_follow_rule']));
     expect(objects.find(o => o.apiName === 'action_execution')?.writeMode).toBe('read_only');
     expect(objects.filter((o) => o.isVirtual)).toHaveLength(1);
     expect(c.ontology.listLinkTypes()).toHaveLength(35);
@@ -65,7 +66,7 @@ describe('bootstrap 与校验', () => {
     const db2 = openNodeSqliteDb(path);
     // dbPath 必传：老库升级路径同样不得让资产根回退到真实应用数据目录
     const c2 = createCore(db2, { dbPath: path });
-    expect(c2.ontology.listObjectTypes()).toHaveLength(35);
+    expect(c2.ontology.listObjectTypes()).toHaveLength(37);
     expect(c2.todos.list()).toHaveLength(1);
     db2.close();
     rmSync(dir, { recursive: true, force: true });

@@ -19,6 +19,10 @@ describe('HTML 待办宿主边界', () => {
     const valid = { sender: { mainFrame: main }, senderFrame: main };
     const request = { toolId: tool.id, items: [{ sourceKey: 'a', title: 'A' }] };
     expect(handlers.get('toolTodos:preview')!(valid, request).ok).toBe(true);
+    const snapshot={toolId:tool.id,snapshot:{schemaVersion:1,revision:1,groups:[{key:'g',title:'活动'}],items:[{sourceKey:'a',title:'A',groupKeys:['g']}]}};
+    expect(handlers.get('toolFollowing:publish')!(valid,snapshot).ok).toBe(true);
+    expect(handlers.get('toolFollowing:publish')!({...valid,senderFrame:main.frames[0]},snapshot).code).toBe('PERMISSION_DENIED');
+    expect(handlers.get('toolFollowing:getState')!(valid,{toolId:other.id}).code).toBe('PERMISSION_DENIED');
     expect(ctx.core.todos.list()).toHaveLength(0);
     expect(handlers.get('toolTodos:create')!({ ...valid, senderFrame: main.frames[0] }, request).code).toBe('PERMISSION_DENIED');
     expect(handlers.get('toolTodos:create')!(valid, { ...request, toolId: other.id }).code).toBe('PERMISSION_DENIED');

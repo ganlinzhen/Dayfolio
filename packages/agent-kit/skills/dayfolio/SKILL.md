@@ -14,6 +14,7 @@ Dayfolio 是用户 macOS 上的桌面待办/学习应用（曾用名 TodoDesk、
 - 用户明确要求「教我 X」「学习 X」、生成/优化课程或导入课程时，读取 [教学流程](references/teaching.md)，再调用 `get_study_workflow` 获取当前规范。只查学习进度或课程列表时直接查询，不主动启动教学。
 - 用户要生成或更新体育、电竞赛事页面时，读取 [赛事页面流程](references/sports.md)，按需进入赛事模型、视觉生成与验收、页面契约、来源更新及运行时订阅参考。仅问比分或赛制不自动创建页面。
 - 制作或修改任意 HTML 工具时，先按内容判断待办接入价值，读取 [HTML 待办接口](references/html-todos.md) 的判断规则。赛事、活动、截止事项及可执行的学习或行动清单，默认补上合适的单项或批量「加入待办」入口，并在交付时说明；纯计算、解码、只读查询工具按实际价值决定。用户明确要求原样导入或只要展示时遵从其范围。
+- 内容会持续改期或补充事项、且有可核实的稳定来源时，读取 [HTML 持续关注](references/html-following.md)，主动提供合适的单项/分组关注入口及通用来源清单；保持一次性添加与持续关注分开，真实关注须用户确认。更新已接入工具时同步发布来源修订，不能只更新页面外观。
 - 联网采集新闻并存入 App 时读取 [新闻任务流程](references/news.md)；只查库内新闻直接使用 `list_news`。
 
 ## 接入方式（先判断，二选一）
@@ -67,6 +68,7 @@ Node 要求 22.13+ 的 22.x 或 24.x。若 shell 报 `node: command not found`�
 - `list_tools` / `update_tool` / `delete_tool`
 - `preview_tool_todos` / `add_tool_todos` / `get_tool_todo_status`：将已定位 HTML 工具的事项按用户要求添加为待办快照；稳定来源键去重，不自动覆盖、复活或持续关注。页面接入方式见 [HTML 待办接口](references/html-todos.md)。
 - HTML 待办分类在首次确认并实际创建新待办时创建或复用；默认使用工具名，制作页面时可按内容声明分类键、名称和颜色。预览与取消不创建分类，已有分类的日历隐藏偏好保持不变；待办列表可按分类筛选。日历更多菜单的「管理分类」支持显示控制、编辑及删除自定义分类；MCP 使用共用分类业务工具，删除须核对 ID、原名称和删除限制，并保留内容。
+- 持续关注使用 `publish_tool_follow_sources`、`preview_tool_follow`、`follow_tool_scope`、`unfollow_tool_scope` 与 `get_tool_follow_state`；待办管理用 `get_tool_todo_following`、`stop_tool_todo_following`、`resume_tool_todo_following`。来源更新自动同步已授权规则；恢复个人安排前必须说明覆盖标题和时间的影响并取得用户明确确认。
 - `list_tool_categories` / `add_tool_category` / `rename_tool_category` / `delete_tool_category`
 
 **运行时日程与订阅**

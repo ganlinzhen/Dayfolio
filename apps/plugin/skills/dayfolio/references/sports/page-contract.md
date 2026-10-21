@@ -27,6 +27,9 @@
 - `event.scope` 可为 `single_sport` / `multi_sport`，综合赛事的层级可在额外字段表示；参赛单位和模块是可扩展字符串。
 - `target.kind` 为 `dayfolio` / `local` / `hosted`。Dayfolio 安装回读后在配置中记录数值 `toolId`；托管保存真实项目标识/原地址；本地位置从当前文件目录定位。保存身份不保存密钥。
 - 每个来源有唯一 `id`、类型、覆盖和状态。AI 来源还包含该模块实际生成的 `prompt`，派生来源记录规则与输入来源。允许 `url` 为 null（用户输入或派生来源）；事实原始参考放在 `references` 数组。
+- 来源状态使用校验器支持的 `ok` / `pending` / `failed` / `stale`；`api` / `official_page` / `web_page` 必须有真实网址。第三方报道用 `web_page`，页面标明发布者与核实范围。未接入的接口不伪造为成功来源，可在页面缺口中说明。
+- 新建页面按视觉参考保存本届主图、slogan 和专属工具图标；可通过 `branding` 记录届次、资源路径、风格 token、官方来源与自制说明，图片与图标随完整包交付。
+- 运行时工具页遵守宿主 CSP（外置脚本与样式、包内图片）。晋级卡等动态节点不得依赖 `innerHTML` 中的内联定位或事件属性；必须补测宿主策略下的实际布局，不只验证普通 `file://` 预览。
 - `records` 每项具有唯一 `id`、可扩展 `type`、有效 `sourceId`、`data` 对象；可选 `stageId` 引用已有阶段，`entityIds` 关联参赛者。`publishedAt` 未知可为 null，成功观察时间可用 `observedAt`。
 - 人工记录使用 `owner: "user"`；混合记录用 `fieldOwners: {"note": "user"}` 保护顶层 `data.note`。其他层级人工内容使用独立记录或明确维护更细归属。
 - `preferences` 是页面配置默认值；浏览器实时偏好以稳定 pageId 保存。更新默认值需用户要求，不能覆盖实际浏览器关注。

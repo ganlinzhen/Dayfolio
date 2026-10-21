@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 今日页隔离验收：日历查看并完成待办、无重复到期分组、逾期完成与学习打卡。
+// 今日页隔离验收：日历查看并完成待办、无重复到期分组、移除今日学习分组、逾期完成与学习面板打卡。
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -110,12 +110,12 @@ try {
   const studyTitle = '演示：今天的学习，阅读课件后记录理解并完成自测，核对较长学习内容仍能完整展示';
   const due = await invoke(`window.tododesk.todos.add(${JSON.stringify({ title: dueTitle, due_date: today, priority: 'high' })})`);
   await invoke(`window.tododesk.todos.add(${JSON.stringify({ title: overdueTitle, due_date: pastDate })})`);
-  await invoke(`window.tododesk.plans.create(${JSON.stringify({ title: '演示学习计划', start_date: today, items: [{ date: today, content: studyTitle }] })})`);
+  const plan = await invoke(`window.tododesk.plans.create(${JSON.stringify({ title: '演示学习计划', start_date: today, items: [{ date: today, content: studyTitle }] })})`);
   const nav = async (label) => evaluate(`([...document.querySelectorAll('.nav-item')].find(b => b.textContent.trim() === ${JSON.stringify(label)})).click()`);
   await nav('待办');
   await until(() => evaluate('!!document.querySelector(".composer-input")'), '待办页');
   await nav('今日');
-  await until(() => evaluate(`document.querySelector('.cal-day')?.textContent.includes(${JSON.stringify(dueTitle)}) && document.querySelector('.study-card')?.textContent.includes(${JSON.stringify(studyTitle)})`), '日历与今日学习加载');
+  await until(() => evaluate(`document.querySelector('.cal-day')?.textContent.includes(${JSON.stringify(dueTitle)}) && document.querySelector('.cal-day')?.textContent.includes(${JSON.stringify(studyTitle)})`), '日历加载当天待办和学习安排');
   const layout = await evaluate(`(() => {
     const panel = document.querySelector('.today-panel');
     const labels = [...panel.querySelectorAll('.group-label')].map(e => e.textContent);
@@ -124,15 +124,17 @@ try {
   assert(layout.calendarFirst && layout.week, '默认周视图日历置顶');
   assert(!layout.labels.some(label => /今天到期|今日到期/.test(label)), '移除重复的到期列表');
   assert(!layout.cards.some(text => text.includes(dueTitle)), '当天待办仅在日历区域展示');
-  assert(layout.labels.some(label => label.includes('已逾期')) && layout.labels.some(label => label.includes('今日学习')), '保留逾期与今日学习分组');
+  assert(layout.labels.some(label => label.includes('已逾期')), '保留逾期待办分组');
+  const noStudyGroup = () => evaluate(`!document.querySelector('.today-panel .study-card') && !document.querySelector('.today-panel').textContent.match(/今日学习|待打卡|今天没有学习安排/)`);
+  assert(await noStudyGroup(), '有学习安排时不再展示今日学习分组与待打卡计数');
   const checkCards = async () => evaluate(`(() => {
-    const cards = [...document.querySelectorAll('.cal-agenda-card, .today-panel .study-card')];
-    return cards.length >= 3 && cards.every(card => {
+    const cards = [...document.querySelectorAll('.cal-agenda-card')];
+    return cards.length >= 2 && cards.every(card => {
       const style = getComputedStyle(card), rect = card.getBoundingClientRect();
       return parseFloat(style.borderTopWidth) > 0 && parseFloat(style.borderRadius) > 0 && style.backgroundColor !== 'rgba(0, 0, 0, 0)' && card.scrollWidth <= card.clientWidth && rect.left >= 0 && rect.right <= innerWidth;
     }) && [...document.querySelectorAll('.cal-agenda-card')].every(card => card.querySelector('.cal-agenda-card-meta').getBoundingClientRect().top >= card.querySelector('.cal-agenda-card-main').getBoundingClientRect().bottom);
   })()`);
-  assert(await checkCards(), '当日明细与今日学习均为卡片，元信息位于标题下方且不溢出');
+  assert(await checkCards(), '当日明细保留待办和学习卡片，元信息位于标题下方且不溢出');
   await evaluate('document.querySelector(".cal-day").scrollIntoView({block:"start"})');
   await capture(send, 'today');
   await send('Emulation.setDeviceMetricsOverride', { width: 760, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -143,10 +145,11 @@ try {
 
   await evaluate(`([...document.querySelectorAll('.cal-mode-switch button')].find(b => b.textContent === '月')).click()`);
   await until(() => evaluate('!!document.querySelector(".cal-grid .cal-cell")'), '切换月视图');
+  assert(await noStudyGroup(), '月视图也不展示今日学习分组');
   await evaluate(`([...document.querySelectorAll('.cal-mode-switch button')].find(b => b.textContent === '周')).click()`);
   await until(() => evaluate('!!document.querySelector(".cal-weekview")'), '返回周视图');
   await evaluate(`([...document.querySelectorAll('.cal-item-open')].find(b => b.textContent === ${JSON.stringify(dueTitle)})).click()`);
-  await until(() => evaluate('!!document.querySelector(".cal-item-details input")'), '待办详情');
+  await until(() => evaluate('!!document.querySelector(".cal-item-details .cal-detail-preview h4")'), '待办详情');
   await evaluate(`([...document.querySelectorAll('.cal-item-details button')].find(b => b.textContent === '完成')).click()`);
   await until(async () => (await invoke('window.tododesk.todos.list({status:"done"})')).some(todo => todo.id === due.id), '从日历详情完成待办');
   assert(true, '当天待办仍可从日历详情完成并保存');
@@ -154,12 +157,27 @@ try {
   await until(() => evaluate(`!![...document.querySelectorAll('.todo-card')].find(e => e.textContent.includes(${JSON.stringify(overdueTitle)}))`), '逾期待办');
   await evaluate(`[...document.querySelectorAll('.todo-card')].find(e => e.textContent.includes(${JSON.stringify(overdueTitle)})).querySelector('.check').click()`);
   await until(() => evaluate(`![...document.querySelectorAll('.todo-card')].some(e => e.textContent.includes(${JSON.stringify(overdueTitle)}))`), '逾期待办完成');
-  await evaluate('document.querySelector(".study-card .check").click()');
-  await until(async () => (await invoke('window.tododesk.today.get({})')).today_plan_items.some(item => item.content === studyTitle && item.status === 'done'), '今日学习打卡');
-  await until(() => evaluate('!!document.querySelector(".study-card.done .check.checked")'), '学习打卡状态回流');
-  assert(true, '逾期完成与今日学习打卡保持可用');
+  await nav('学习');
+  await until(() => evaluate(`!![...document.querySelectorAll('.learning-plan-card')].find(e => e.textContent.includes('演示学习计划'))`), '学习面板计划列表');
+  await evaluate(`[...document.querySelectorAll('.learning-plan-card')].find(e => e.textContent.includes('演示学习计划')).click()`);
+  await until(() => evaluate(`!![...document.querySelectorAll('.plan-item-open')].find(e => e.textContent.includes(${JSON.stringify(studyTitle)}))`), '计划条目');
+  await evaluate(`[...document.querySelectorAll('.plan-item-open')].find(e => e.textContent.includes(${JSON.stringify(studyTitle)})).click()`);
+  await until(() => evaluate(`!![...document.querySelectorAll('.plan-item-detail-actions button')].find(e => e.textContent === '标记完成')`), '条目详情完成入口');
+  await evaluate(`[...document.querySelectorAll('.plan-item-detail-actions button')].find(e => e.textContent === '标记完成').click()`);
+  await until(async () => (await invoke('window.tododesk.today.get({})')).today_plan_items.some(item => item.content === studyTitle && item.status === 'done'), '学习面板打卡');
+  assert(true, '逾期完成与学习面板打卡保持可用');
+  await nav('今日');
+  await until(() => evaluate('!!document.querySelector(".today-panel .cal-section")'), '返回今日页');
+  assert(await noStudyGroup(), '完成学习后也不恢复今日学习分组');
   const overview = await invoke('window.tododesk.today.get({})');
   assert(overview.checkins.length >= 3, '完成和打卡记录保留');
+  await invoke(`window.tododesk.plans.delete({id:${plan.id}})`);
+  assert((await invoke('window.tododesk.today.get({})')).today_plan_items.length === 0, '已清空隔离库中的当天学习安排');
+  await nav('待办');
+  await until(() => evaluate('!!document.querySelector(".composer-input")'), '待办页刷新');
+  await nav('今日');
+  await until(() => evaluate('!!document.querySelector(".today-panel .cal-section")'), '无学习安排的今日页');
+  assert(await noStudyGroup(), '无学习安排时也不显示学习空态或分组');
   console.log('今日页隔离验收通过');
 } catch (error) {
   console.error(error);

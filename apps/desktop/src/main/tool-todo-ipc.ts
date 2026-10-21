@@ -7,6 +7,11 @@ export function registerToolTodoIpc(core: TodoDeskCore) {
     'toolTodos:preview': core.toolTodos.preview,
     'toolTodos:create': core.toolTodos.create,
     'toolTodos:getStatus': core.toolTodos.getStatus,
+    'toolFollowing:publish':core.toolFollowing.publish,
+    'toolFollowing:preview':core.toolFollowing.preview,
+    'toolFollowing:follow':core.toolFollowing.follow,
+    'toolFollowing:unfollow':core.toolFollowing.unfollow,
+    'toolFollowing:getState':core.toolFollowing.getState,
   };
   for (const [channel, handler] of Object.entries(routes)) ipcMain.handle(channel, (event, input) => {
     try {

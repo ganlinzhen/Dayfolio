@@ -69,7 +69,7 @@ export default function CalendarCollections({ collections, timezone, onChanged, 
             <div className="cal-form-row"><span className="cal-colors" role="group" aria-label="分类颜色">{COLORS.map(([color,label])=><button key={color} type="button" className={`cal-color-btn ${edit.color===color?'on':''}`} aria-label={label} aria-pressed={edit.color===color} disabled={busy} onClick={()=>setEdit({...edit,color})}><i className={`cal-dot ${color}`}/></button>)}</span><span className="spacer"/><button type="button" className="btn slim" disabled={busy} onClick={()=>setEdit(null)}>取消编辑</button><button type="submit" className="btn primary slim" disabled={busy||!edit.title.trim()}>{busy?'保存中…':'保存分类'}</button></div>
           </form>}
           {deleting?.id===collection.id&&<div className="cal-collection-confirm" role="group" aria-label={`确认删除分类${collection.title}`}>
-            <p>删除「{collection.title}」？待办移至「{titleOf('builtin.todo','基础待办')}」，日程移至「{titleOf('builtin.local','本地日程')}」，保留内容、日期和完成状态。</p>
+            <p>删除「{collection.title}」？待办移至「{titleOf('builtin.todo','基础待办')}」，日程移至「{titleOf('builtin.local','本地日程')}」，保留内容、日期和完成状态，同时停止该分类的持续关注。</p>
             <p className="cal-managed-hint">再次从 HTML 工具确认添加新事项时，该分类可重新创建。</p>
             <div className="cal-form-row"><button type="button" className="btn slim" disabled={busy} onClick={()=>setDeleting(null)}>取消删除</button><button type="button" className="btn slim danger-btn" disabled={busy} onClick={remove}>{busy?'删除中…':'确认删除分类'}</button></div>
           </div>}

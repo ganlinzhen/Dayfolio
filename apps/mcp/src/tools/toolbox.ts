@@ -2,8 +2,10 @@ import type { ToolRegistrar, McpContext } from '../shared/context';
 import { z } from 'zod';
 import { collectToolFilesFromPaths, listToolFiles, pickEntryFile, sanitizeToolPath } from '../../../../packages/core/src/index';
 import { wrap } from '../shared/response';
+import { registerToolFollowingTools } from './tool-following';
 
 export function registerTools(server: ToolRegistrar, { core, toolFilesRoot }: McpContext): void {
+  registerToolFollowingTools(server,core);
   // ---------- 工具箱 ----------
   const draftSchema = z.object({
     sourceKey: z.string().min(1).max(240).describe('本工具内稳定且唯一的来源键，改期时不变'),
@@ -124,7 +126,7 @@ export function registerTools(server: ToolRegistrar, { core, toolFilesRoot }: Mc
 
   server.tool(
     'delete_tool',
-    '从工具箱删除一个工具（连同其全部文件，不可恢复，请先与用户确认）',
+    '从工具箱删除一个工具及全部文件，停止持续关注但保留个人待办。不可恢复，请先与用户确认',
     { id: z.number().int().positive() },
     async ({ id }) =>
       wrap(() => {

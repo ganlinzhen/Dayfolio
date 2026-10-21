@@ -789,9 +789,6 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .checkin-card .subtle-icon { flex-shrink: 0; margin-top: 2px; }
 .checkin-card .todo-card-meta { padding-left: 45px; }
 
-/* 今日学习卡片：元信息行对齐标题（圆钮 17 + 间距 10 + 类型图标 16 + 间距 10） */
-.todo-card.study-card .todo-card-meta { padding-left: 53px; }
-
 /* ---------- 今日仪表盘 ---------- */
 .stat-row { display: flex; flex-wrap: wrap; gap: 0; margin: 0 0 28px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .stat { flex: 1 1 140px; min-height: 72px; padding: 14px 20px; display: flex; flex-direction: column; justify-content: center; gap: 7px; border-right: 1px solid var(--line); }
@@ -2154,13 +2151,8 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .cal-agenda-card .cal-ev-title { flex: 1; font-size: 14px; font-weight: 550; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
 .cal-agenda-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding-left: 16px; color: var(--text-2); font-size: 12px; overflow-wrap: anywhere; }
 .cal-agenda-card-meta .cal-ev-time { min-width: 0; color: var(--text-2); }
-.today-panel .todo-card.study-card { margin: 0 0 10px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
-.today-panel .study-card:hover, .today-panel .study-card:focus-within { border-color: var(--line-strong); }
-.today-panel .study-card .todo-title { cursor: default; }
-.today-panel .study-card .todo-card-meta { color: var(--text-2); overflow-wrap: anywhere; }
-.today-panel .study-card .todo-meta { white-space: normal; }
 @media (max-width: 760px) {
-  .cal-ev-row.cal-agenda-card, .today-panel .todo-card.study-card { padding: 14px; }
+  .cal-ev-row.cal-agenda-card { padding: 14px; }
 }
 .cal-ev-row.cont { opacity: 0.72; }
 .cal-ev-time { font-size: 11.5px; color: var(--text-3); min-width: 96px; }
@@ -2386,3 +2378,37 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   .agent-provider-copy { padding-right: 30px; }
   .agent-settings-actions { flex-wrap: wrap; }
 }
+
+/* 日历草稿按真实分钟占位，下边缘独立负责调整结束时间。 */
+.cal-daycols { background-size: 100% 60px; background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--line) 0); }
+.cal-col { touch-action: none; }
+.cal-col:focus-visible { outline: 2px solid var(--line-strong); outline-offset: -2px; }
+.cal-draft { position: absolute; inset-inline: 1px; z-index: 3; border: 1px solid #3168d6; border-radius: 4px; background: #e8effd; color: #214e9d; user-select: none; }
+.cal-draft-label { display: flex; flex-direction: column; padding: 0 4px; overflow: hidden; height: 100%; font-size: 11px; line-height: 13px; white-space: nowrap; }
+.cal-draft-label .mono { font-size: 10px; }
+.cal-draft-resize { position: absolute; bottom: -5px; left: 0; right: 0; height: 10px; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; }
+.cal-draft-resize span { width: 22px; height: 4px; border: 1px solid #3168d6; border-radius: 3px; background: var(--surface); }
+.cal-draft-resize:focus-visible { outline: 2px solid #3168d6; outline-offset: 1px; }
+.cal-draft.dragging { cursor: ns-resize; }
+.cal-popover { position: fixed; z-index: 55; width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 16px 18px; background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); border-radius: 10px; }
+.cal-popover-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.cal-popover-head h3 { flex: 1; margin: 0; font: 500 13px var(--sans); color: var(--text-2); }
+.cal-popover .cal-form, .cal-popover .cal-item-details { padding: 0; margin: 0; border: 0; background: transparent; }
+.cal-popover .cal-title-input { font-size: 20px; padding-block: 9px; }
+.cal-popover .cal-title-input::placeholder { color: var(--text-2); }
+.cal-popover .cal-form { gap: 18px; }
+.cal-popover .cal-form > .cal-form-row:last-child { padding-top: 14px; border-top: 1px solid var(--line); }
+.cal-popover .cal-field { flex-wrap: wrap; }
+.cal-popover .cal-item-details .cal-field { align-items: flex-start; }
+.cal-popover .cal-item-details .inline-input { min-width: 0; }
+.cal-popover .todo-schedule { margin-block: 16px; }
+.cal-popover .cal-day-head { flex-wrap: wrap; }
+.cal-event-preview h4, .cal-detail-preview h4 { display: flex; align-items: baseline; gap: 10px; font-size: 19px; line-height: 1.5; overflow-wrap: anywhere; margin: 0 0 12px; }
+.cal-event-preview p, .cal-detail-preview p { line-height: 1.7; overflow-wrap: anywhere; font-size: 13px; color: var(--text-2); }
+.cal-preview-note { white-space: pre-wrap; }
+.cal-popover .cal-source-detail { overflow-wrap: anywhere; }
+.cal-popover .cal-form-row { row-gap: 10px; }
+.cal-month-cell { text-align: left; }
+.cal-month-date { border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; }
+.cal-month-item { width: 100%; border: 0; padding: 1px 0; text-align: left; background: transparent; color: inherit; cursor: pointer; }
+.cal-month-item:hover { background: var(--sel); }

@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { sliceItems, placeTimed, placeAllDay, type CalendarItem, type CalendarResult } from '../src/renderer/src/components/calendar-view';
 import { loadCalendarPages } from '../src/renderer/src/components/calendar-pages';
+import { slotMinute, draftEnd, draftTimes } from '../src/renderer/src/components/calendar-draft';
 const event = (id: string, startAt: string, endAt: string | null): CalendarItem => ({ id, title: id, collectionId: 'builtin.todo', kind: 'todo', timeKind: 'timed', startAt, endAt, startDate: null, endDateExclusive: null, status: 'open', sourceStatus: null, target: { objectType: 'todo', id }, allowedActions: ['open'] });
 const days = ['2026-11-01', '2026-11-02'];
+describe('日历草稿时间边界', () => {
+  it('空白位置按 15 分钟向下取整，并限制在当天', () => {
+    expect(slotMinute(-10)).toBe(0);
+    expect(slotMinute(9 * 60 + 29)).toBe(9 * 60 + 15);
+    expect(slotMinute(1500)).toBe(1425);
+  });
+  it('拖动至少保留 15 分钟，吸附刻度且不越过当天末尾', () => {
+    expect(draftEnd(540, 520)).toBe(555);
+    expect(draftEnd(540, 578)).toBe(585);
+    expect(draftEnd(1425, 1500)).toBe(1440);
+  });
+  it('24:00 保存为次日零点，其他时段不产生跨日日期', () => {
+    expect(draftTimes({day:'2026-12-31',start:1425,end:1440})).toEqual({date:'2026-12-31',start:'23:45',end:'00:00',endDate:'2027-01-01'});
+    expect(draftTimes({day:'2026-12-31',start:540,end:555})).toEqual({date:'2026-12-31',start:'09:00',end:'09:15',endDate:''});
+  });
+});
 describe('统一日历显示切片', () => {
   it('跨午夜是两个定时切片，未知结束只保留视觉高度且不写业务结束', () => {
     const cross = event('cross', '2026-11-01T23:30:00Z', '2026-11-02T01:30:00Z'), unknown = event('unknown', '2026-11-02T03:00:00Z', null);

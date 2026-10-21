@@ -109,7 +109,7 @@ export default function ToolsPanel() {
   }, [cats, tools]);
 
   const deleteTool = async (t: ToolRow) => {
-    if (!window.confirm(`删除工具「${t.title}」？其文件会一并删除，不可恢复。`)) return;
+    if (!window.confirm(`删除工具「${t.title}」？其文件会一并删除，不可恢复；停止该工具的持续关注，保留已创建的待办。`)) return;
     try {
       await call(() => api.tools.delete({ id: t.id }));
       toast('已删除工具');

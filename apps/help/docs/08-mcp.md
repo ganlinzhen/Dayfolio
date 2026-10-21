@@ -175,3 +175,5 @@ npm run agent:doctor -- --target /自选目录/Dayfolio-Agent
 也可以在已接入 Dayfolio 的 Agent 对话中要求更新新闻，助手在本次对话中读取保存要求、核实来源、提交并完成，不只创建请求等待以后处理。`get_agent_settings` / `update_agent_settings` 读写后台连接偏好，不读取或保存登录凭证；修改必须来自用户明确要求并携带最新 expected_revision。对话采集不需要修改后台连接。
 
 `list_news_agent_runs` 读取后台进度、`cancel_news_agent_run` 按用户要求停止；运行依赖 Dayfolio App 保持运行。新闻认领、提交和完成工具继续用于同一次对话内的采集流程。
+
+HTML 持续关注通过 publish_tool_follow_sources 发布已核实资料，preview_tool_follow 只读预览，用户确认后 follow_tool_scope 保存规则，get_tool_follow_state 回读，unfollow_tool_scope 停止并保留待办。单条待办通过 get_tool_todo_following 核对，再按用户授权 stop_tool_todo_following 或 resume_tool_todo_following；恢复须携带最新来源和待办修订。更新 HTML 的 dayfolio-follow.json 时，资料发布与原有待办同步在同一事务中完成，页面关闭仍生效。

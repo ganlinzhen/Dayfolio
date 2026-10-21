@@ -4,12 +4,13 @@ import { contextBridge, ipcRenderer } from 'electron';
 const WRITE_CHANNEL = /^(?:todos:(?:add|update|complete|reopen|delete)|study:recordSession|plans:(?:create|update|updateItemStatus|delete)|calendar:(?:add|update|delete|setVisibility|updateCollection|deleteCollection)|runtime:setTimezone|events:(?:refresh|import|updateProvider|archive|deleteUnused)|subscriptions:(?:subscribe|unsubscribe|resumeFollowing)|data:(?:invokeAction|updateObject|createLink|deleteLink|updateActionType))$/;
 const invoke = (channel: string) => async (payload?: unknown) => {
   const result = await ipcRenderer.invoke(channel, payload);
-  if (result?.ok && (WRITE_CHANNEL.test(channel) || channel === 'toolTodos:create')) window.dispatchEvent(new Event('dayfolio:changed'));
+  if (result?.ok && (WRITE_CHANNEL.test(channel) || channel === 'toolTodos:create' || /^toolFollowing:(publish|follow|unfollow|resume|stopTodo)$/.test(channel))) window.dispatchEvent(new Event('dayfolio:changed'));
   return result;
 };
 
 const api = {
   toolTodos: { preview: invoke('toolTodos:preview'), create: invoke('toolTodos:create'), getStatus: invoke('toolTodos:getStatus') },
+  toolFollowing:{publish:invoke('toolFollowing:publish'),preview:invoke('toolFollowing:preview'),follow:invoke('toolFollowing:follow'),unfollow:invoke('toolFollowing:unfollow'),getState:invoke('toolFollowing:getState'),getTodo:invoke('toolFollowing:getTodo'),resume:invoke('toolFollowing:resume'),stopTodo:invoke('toolFollowing:stopTodo')},
   extensions:{describe:invoke('extensions:describe'),list:invoke('extensions:list'),get:invoke('extensions:get'),getHelp:invoke('extensions:getHelp'),bindSession:invoke('extensions:bindSession'),releaseSession:invoke('extensions:releaseSession'),sdkRequest:invoke('extensions:sdkRequest'),onOpenTodo:(listener:(target:{objectType:'todo';id:number})=>void)=>{const receive=(_event:unknown,target:{objectType:'todo';id:number})=>listener(target);ipcRenderer.on('extensions:openTodo',receive);return()=>ipcRenderer.removeListener('extensions:openTodo',receive);}},
   runtime:{revision:invoke('runtime:revision'),timezone:invoke('runtime:timezone'),setTimezone:invoke('runtime:setTimezone')},
   events:{listProviders:invoke('events:listProviders'),refresh:invoke('events:refresh'),getRun:invoke('events:getRun'),getStatus:invoke('events:getStatus'),updateProvider:invoke('events:updateProvider'),import:invoke('events:import'),list:invoke('events:list'),get:invoke('events:get'),archive:invoke('events:archive'),deleteUnused:invoke('events:deleteUnused')},

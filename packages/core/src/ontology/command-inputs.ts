@@ -2810,6 +2810,294 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
       "additionalProperties": false
     }
   ],
+  "publish_tool_follow_sources": [
+    {
+      "type": "object",
+      "properties": {
+        "toolId": {
+          "type": "number"
+        },
+        "snapshot": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "type": "number"
+            },
+            "revision": {
+              "type": "number"
+            },
+            "groups": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "title"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              ]
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "groupKeys": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "sourceStatus": {
+                    "enum": [
+                      "cancelled",
+                      "scheduled",
+                      "postponed",
+                      "finished"
+                    ]
+                  },
+                  "sourceKey": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "priority": {
+                    "enum": [
+                      "high",
+                      "medium",
+                      "low"
+                    ]
+                  },
+                  "tags": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "startAt": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "endAt": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "dueDate": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "sourceUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "sourceKey",
+                  "title"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "category": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "title"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "revision",
+            "items"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "toolId",
+        "snapshot"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "follow_tool_scope": [
+    {
+      "type": "object",
+      "properties": {
+        "toolId": {
+          "type": "number"
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "item",
+                "group"
+              ]
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "key"
+          ],
+          "additionalProperties": false
+        },
+        "expectedRevision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "toolId",
+        "scope",
+        "expectedRevision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "unfollow_tool_scope": [
+    {
+      "type": "object",
+      "properties": {
+        "toolId": {
+          "type": "number"
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "item",
+                "group"
+              ]
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "key"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "toolId",
+        "scope"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "resume_tool_todo_following": [
+    {
+      "type": "object",
+      "properties": {
+        "todoId": {
+          "type": "number"
+        },
+        "expectedSourceRevision": {
+          "type": "number"
+        },
+        "expectedTodoRevision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "todoId",
+        "expectedSourceRevision",
+        "expectedTodoRevision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "stop_tool_todo_following": [
+    {
+      "type": "object",
+      "properties": {
+        "todoId": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "todoId"
+      ],
+      "additionalProperties": false
+    }
+  ],
   "set_display_timezone": [
     {
       "type": "string"

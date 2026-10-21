@@ -3,7 +3,7 @@ import { createNewsRunService, type NewsRunService } from './services/news-run';
 import { createAgentSettingsService, type AgentSettingsService } from './services/agent-settings';
 export * from './services/agent-settings';
 export type { NewsRun, NewsRunStatus } from './services/news-run';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync,existsSync,readFileSync,statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { initDb, inTx, type DbAdapter } from './db';
@@ -35,6 +35,8 @@ import { createVaultService, type VaultService } from './services/vault';
 import { todayStr } from './utils/date';
 import { createExtensionService,type ExtensionService } from './services/extensions';
 import { createRuntimeService, type RuntimeService } from './services/runtime';
+import { createToolFollowingService, TOOL_FOLLOW_FILE, TOOL_FOLLOW_BYTES, type ToolFollowingService } from './services/tool-following';
+export type { ToolFollowSnapshot,ToolFollowScope,ToolFollowInput,ToolFollowSource,ToolFollowingService } from './services/tool-following';
 import { createSubscriptionService,scopeSubscriptionService,type SubscriptionService } from './services/subscriptions';
 import { createExternalEventService,type ExternalEventService } from './services/external-events';
 import { createProviderRefreshService } from './services/provider-refresh';
@@ -145,6 +147,7 @@ export interface TodoDeskCore {
   tools: ToolService;
   /** HTML 工具的待办预览、幂等创建与本工具状态查询。 */
   toolTodos: ToolTodoService;
+  toolFollowing: ToolFollowingService;
   today: { getToday: (date?: string) => import('./types').TodayOverview };
   /** 个人本地日历：日程 CRUD + 区间聚合（今日页月视图） */
   calendar: CalendarService & CalendarQueryService & Pick<RuntimeService,'listCollections'|'setVisibility'|'updateCollection'|'deleteCollection'>;
@@ -192,8 +195,8 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   const checkins = createCheckinService(db);
   const todos = createTodoService(db, {
     isManagedWrite:()=>managedDepth>0,
-    onManagedEdited:(id)=>{db.prepare("UPDATE event_subscriptions SET sync_mode='manual',updated_at=? WHERE todo_id=? AND status='active'").run(new Date().toISOString(),id);},
-    onBeforeRemoved:(id)=>{db.prepare("UPDATE event_subscriptions SET status='unsubscribed',updated_at=? WHERE todo_id=? AND status='active'").run(new Date().toISOString(),id);},
+    onManagedEdited:(id)=>{db.prepare("UPDATE event_subscriptions SET sync_mode='manual',updated_at=? WHERE todo_id=? AND status='active'").run(new Date().toISOString(),id);db.prepare("UPDATE tool_todo_links SET follow_mode='manual' WHERE todo_id=? AND follow_mode='follow'").run(id);},
+    onBeforeRemoved:(id)=>{db.prepare("UPDATE event_subscriptions SET status='unsubscribed',updated_at=? WHERE todo_id=? AND status='active'").run(new Date().toISOString(),id);db.prepare('UPDATE tool_todo_links SET excluded=1 WHERE todo_id=?').run(id);},
     onCompleted: (todoId, date, recordCheckin) => {
       if (recordCheckin) { commands.guard('checkin'); checkins.checkin({ ref_type: 'todo', ref_id: todoId, date }); }
     },
@@ -224,8 +227,20 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   const guardedPlans: PlanService={...plans, create:(p)=>publicPlans.create(p), updateItemStatus:(id,status)=>publicPlans.updateItemStatus(id,status), remove:(id,opts)=>publicPlans.remove(id,opts)};
   const reviews = createReviewService({ plans:guardedPlans });
   const study = createStudyService(db, { plans:guardedPlans, todos:{...todos,add:(p)=>publicTodos.add(p),update:(id,p)=>publicTodos.update(id,p),remove:(id)=>publicTodos.remove(id)} });
-  const tools = createToolAssetService(db,createToolService(db),opts.dbPath ?? defaultDbPath());
+  let toolFollowing:ToolFollowingService;
+  const tools = createToolAssetService(db,createToolService(db),opts.dbPath ?? defaultDbPath(),(toolId,root,previousRoot)=>{
+    const path=join(root,TOOL_FOLLOW_FILE);
+    if(!existsSync(path)){
+      if(previousRoot&&existsSync(join(previousRoot,TOOL_FOLLOW_FILE))&&db.prepare('SELECT 1 FROM tool_follow_rules WHERE tool_id=? AND active=1 LIMIT 1').get(toolId))throw new Error('持续关注已启用，请在完整文件更新中保留来源清单；停止关注后才可移除');
+      return;
+    }
+    if(statSync(path).size>TOOL_FOLLOW_BYTES)throw new Error('持续关注来源清单超过 512 KiB');
+    const content=readFileSync(path,'utf8');
+    if(Buffer.byteLength(content)>TOOL_FOLLOW_BYTES)throw new Error('持续关注来源清单超过 512 KiB');
+    commands.wrap('toolFollowing',toolFollowing).publish({toolId,snapshot:JSON.parse(content)});
+  });
   const toolTodos = createToolTodoService(db, { tools, todos: () => publicTodos });
+  toolFollowing=createToolFollowingService(db,{tools,toolTodos:()=>commands.wrap('toolTodos',toolTodos),todos:()=>publicTodos,managedWrite});
   const vaults = createVaultService(db);
   const media = createMediaService(db);
   const calendar = createCalendarService(db, queries);
@@ -245,7 +260,7 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   const extensionModule=createExtensionService(db,{dbPath:opts.dbPath??defaultDbPath(),events:()=>commands.wrap('externalEvents',externalEvents),guard:name=>commands.guard(name)});
   const extensions=extensionModule.service;extensionModule.recover();
   const agentSettings = createAgentSettingsService(db);
-  const services = { toolTodos, agentSettings, newsRuns, extensions,todos, plans, checkins, news, reviews, study, tools, courses, vaults, media, calendar, runtime,subscriptions,externalEvents };
+  const services = { toolFollowing,toolTodos, agentSettings, newsRuns, extensions,todos, plans, checkins, news, reviews, study, tools, courses, vaults, media, calendar, runtime,subscriptions,externalEvents };
   commands = createCommandService(db, ontology, services);
   publicNews=commands.wrap('news',news);
   publicTodos=commands.wrap('todos',todos); publicPlans=commands.wrap('plans',plans);
@@ -285,7 +300,7 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   return { db, today, ontology, objects, queries, actions, actionRuns: actionRunStore.public, commands, relations,providerWorker:refreshModule.worker,extensions:commands.wrap('extensions',extensions),runtime:commands.wrap('runtime',runtime),externalEvents:commands.wrap('externalEvents',externalEvents),subscriptions:commands.wrap('subscriptions',subscriptions),forExtension,
     todos:publicTodos, plans:publicPlans, checkins:commands.wrap('checkins',checkins),
     news:publicNews, newsRuns:commands.wrap('newsRuns',newsRuns), agentSettings:commands.wrap('agentSettings',agentSettings), reviews:commands.wrap('reviews',reviews), study:commands.wrap('study',study),
-    toolTodos:commands.wrap('toolTodos',toolTodos), tools:commands.wrap('tools',tools), courses:commands.wrap('courses',courses), vaults:commands.wrap('vaults',vaults), media:commands.wrap('media',media),
+    toolFollowing:commands.wrap('toolFollowing',toolFollowing),toolTodos:commands.wrap('toolTodos',toolTodos), tools:commands.wrap('tools',tools), courses:commands.wrap('courses',courses), vaults:commands.wrap('vaults',vaults), media:commands.wrap('media',media),
     calendar:{...commands.wrap('calendar',calendar),...createCalendarQueryService(db,runtime),listCollections:runtime.listCollections,setVisibility:commands.wrap('runtime',runtime).setVisibility,updateCollection:commands.wrap('runtime',runtime).updateCollection,deleteCollection:commands.wrap('runtime',runtime).deleteCollection},
   };
 }

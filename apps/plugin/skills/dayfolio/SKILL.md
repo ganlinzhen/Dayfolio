@@ -12,7 +12,9 @@ Dayfolio 是用户 macOS 上的桌面待办/学习应用（曾用名 TodoDesk、
 本技能是 Dayfolio 唯一对外入口，教学和赛事是内部工作流，不单独注册或展示技能。
 
 - 用户明确要求「教我 X」「学习 X」、生成/优化课程或导入课程时，读取 [教学流程](references/teaching.md)，再调用 `get_study_workflow` 获取当前规范。只查学习进度或课程列表时直接查询，不主动启动教学。
-- 用户要生成或更新体育、电竞赛事页面时，读取 [赛事页面流程](references/sports.md)，按需进入赛事模型、页面契约、来源更新及运行时订阅参考。仅问比分或赛制不自动创建页面。
+- 用户要生成或更新体育、电竞赛事页面时，读取 [赛事页面流程](references/sports.md)，按需进入赛事模型、视觉生成与验收、页面契约、来源更新及运行时订阅参考。仅问比分或赛制不自动创建页面。
+- 制作或修改任意 HTML 工具时，先按内容判断待办接入价值，读取 [HTML 待办接口](references/html-todos.md) 的判断规则。赛事、活动、截止事项及可执行的学习或行动清单，默认补上合适的单项或批量「加入待办」入口，并在交付时说明；纯计算、解码、只读查询工具按实际价值决定。用户明确要求原样导入或只要展示时遵从其范围。
+- 内容会持续改期或补充事项、且有可核实的稳定来源时，读取 [HTML 持续关注](references/html-following.md)，主动提供合适的单项/分组关注入口及通用来源清单；保持一次性添加与持续关注分开，真实关注须用户确认。更新已接入工具时同步发布来源修订，不能只更新页面外观。
 - 联网采集新闻并存入 App 时读取 [新闻任务流程](references/news.md)；只查库内新闻直接使用 `list_news`。
 
 ## 接入方式（先判断，二选一）
@@ -60,13 +62,17 @@ Node 要求 22.13+ 的 22.x 或 24.x。若 shell 报 `node: command not found`�
 - `cancel_news_task` — 用户明确同意后取消任务，已有新闻保留；`delete_news_item` — 用户确认后删除单条新闻
 - 新闻采集与异常处理见下文；旧 `fetch_news`、源/话题管理和 `news:fetch` 命令已移除
 
-**工具箱（HTML 小工具）**
-- `add_tool` — 装入工具：`files`（base64 内容，现场生成的 HTML 用这个，无需落盘）或 `file_paths`（本地文件/目录）；`category_name` 不存在会自动建
+**工具箱（仅 HTML）**
+- App 工具管理只有「导入 HTML」和删除，没有编辑、启停、卸载或版本管理；不再生成、预览或安装运行时工具包。
+- `add_tool` — 导入 HTML：`files`（base64 内容，现场生成的 HTML 用这个，无需落盘）或 `file_paths`（本地文件/目录）；`category_name` 不存在会自动建
 - `list_tools` / `update_tool` / `delete_tool`
+- `preview_tool_todos` / `add_tool_todos` / `get_tool_todo_status`：将已定位 HTML 工具的事项按用户要求添加为待办快照；稳定来源键去重，不自动覆盖、复活或持续关注。页面接入方式见 [HTML 待办接口](references/html-todos.md)。
+- HTML 待办分类在首次确认并实际创建新待办时创建或复用；默认使用工具名，制作页面时可按内容声明分类键、名称和颜色。预览与取消不创建分类，已有分类的日历隐藏偏好保持不变；待办列表可按分类筛选。日历更多菜单的「管理分类」支持显示控制、编辑及删除自定义分类；MCP 使用共用分类业务工具，删除须核对 ID、原名称和删除限制，并保留内容。
+- 持续关注使用 `publish_tool_follow_sources`、`preview_tool_follow`、`follow_tool_scope`、`unfollow_tool_scope` 与 `get_tool_follow_state`；待办管理用 `get_tool_todo_following`、`stop_tool_todo_following`、`resume_tool_todo_following`。来源更新自动同步已授权规则；恢复个人安排前必须说明覆盖标题和时间的影响并取得用户明确确认。
 - `list_tool_categories` / `add_tool_category` / `rename_tool_category` / `delete_tool_category`
 
 **运行时日程与订阅**
-- `get_runtime_tool_contract` / `list_extensions` / `list_event_providers`：发现实际底座、工具身份、来源修订和更新状态。
+- `get_runtime_tool_contract` / `list_extensions` / `list_event_providers`：查询历史事件来源身份、修订和更新状态；当前 HTML 工具箱通过 `list_tools` 发现。
 - `import_external_events`：标准事件完整快照，稳定 externalId、batchId 与 provider 基线保证幂等；不因缺失条目删除旧活动。
 - `subscribe_event` / `unsubscribe_event` / `resume_event_following`：单事件唯一待办；手动标题/排期与完成记录受保护，取消默认显式 keep。
 - `query_calendar_items` / `set_calendar_collection_visibility`：统一日历及显示偏好；隐藏不取消订阅。
@@ -110,6 +116,6 @@ Node 要求 22.13+ 的 22.x 或 24.x。若 shell 报 `node: command not found`�
 
 **采集 AI 最近 24 小时新闻存入 App**：查看同主题未完成任务 → 按需 `create_news_task {"title":"AI 最近 24 小时重要新闻","instructions":"中文摘要，优先官方发布与一手报道","max_items":10,"window_hours":24}` → 指定任务 `claim_news_task` → 搜索并打开来源核实 → `submit_news_items` → `complete_news_task` → `list_news` 按任务回读。创建任务只是排队，提交成功才算收录。
 
-**做一个网页小工具装进 App**：直接 `add_tool`，把生成的 HTML 放进 `files:[{name:"index.html", content_base64:…}]`（base64 编码后传）→ 告诉用户在 App 工具箱可见。
+**做一个网页小工具装进 App**：先判断内容是否适合待办，适合时生成单项或批量入口，复用 [HTML 待办接口](references/html-todos.md) → `add_tool` 导入完整文件集 → 实际验证页面及添加预览，告诉用户入口与能力边界。只生成入口不自动创建真实待办。
 
 **建自定义数据**：`list_object_types` 看现状 → `create_object_type` 定义属性 → 需要关联就 `create_link_type` → 日常读写用 `create_object`/`query_objects`；高频组合可 `create_action_type` 封装成 `invoke_action`。
