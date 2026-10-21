@@ -113,6 +113,8 @@ try {
   const fill = (selector, value, prototype = 'HTMLInputElement') => evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('找不到输入框'); Object.getOwnPropertyDescriptor(${prototype}.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); })()`);
   const button = text => evaluate(`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(text)})?.click()`);
   const list = () => invoke('window.tododesk.todos.list({status:"all"})');
+  // 固定使用 UTC，覆盖固定时刻早于浮动 09:00 的云端场景。
+  await invoke('window.tododesk.runtime.setTimezone({zone:"UTC"})');
   const overview = await invoke('window.tododesk.today.get()');
   const today = overview.date;
   const day = n => { const d = new Date(today+'T12:00:00'); d.setDate(d.getDate()+n); return d.toLocaleDateString('sv-SE'); };
@@ -126,7 +128,7 @@ try {
   await evaluate('[...document.querySelectorAll(".nav-item")].find(b=>b.textContent.trim()==="待办").click()');
   await until(()=>evaluate('document.querySelectorAll(".todo-card").length===6&&!document.querySelector(".todo-groups[aria-busy=true]")'),'待办列表');
   assert(await evaluate('!document.querySelector(".todo-composer-details")'),'新增初始收起');
-  assert(await evaluate('[...document.querySelectorAll(".todo-card")].filter(r=>r.closest(".group").querySelector(".group-label").textContent.includes("今天"))[0].textContent.includes("整理项目资料")'),'默认组内按时间而非优先级');
+  assert(await evaluate(`(() => { const ids = [...document.querySelectorAll('.todo-card')].filter(r => r.closest('.group').querySelector('.group-label').textContent.includes('今天')).map(r => Number(r.dataset.todoId)); return ids.indexOf(${early.id}) >= 0 && ids.indexOf(${late.id}) > ids.indexOf(${early.id}); })()`),'默认组内低优先级 09:00 排在高优先级 18:00 前');
   await capture(send,'todo-overview');
 
   await evaluate('document.activeElement?.blur()');
