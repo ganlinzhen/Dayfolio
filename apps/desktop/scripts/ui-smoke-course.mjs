@@ -271,8 +271,9 @@ try {
         if (!root) return null;
         const r = root.getBoundingClientRect();
         const body = getComputedStyle(document.body);
-        return { viewport: innerWidth, width: r.width, left: r.left, right: innerWidth-r.right,
-          padding: parseFloat(body.paddingLeft), overflow: document.documentElement.scrollWidth > innerWidth,
+        const contentWidth = document.documentElement.clientWidth;
+        return { viewport: innerWidth, contentWidth, width: r.width, left: r.left, right: contentWidth-r.right,
+          padding: parseFloat(body.paddingLeft), overflow: document.documentElement.scrollWidth > contentWidth,
           reading: !!document.querySelector('[data-dayfolio-reading-layout]'), h1Size: parseFloat(getComputedStyle(document.querySelector('h1')).fontSize), paragraphSize: parseFloat(getComputedStyle(document.querySelector('p')).fontSize), align: getComputedStyle(root).textAlign, ink: body.getPropertyValue('--smoke-ink').trim() };
       })()`,
       }, context.sessionId);
@@ -280,7 +281,7 @@ try {
       const value = result.result?.result?.value;
       return value && Math.abs(value.viewport - expectedWidth) < 2 ? value : null;
     }, 10000, '课程正文完成加载');
-    assert(Math.abs(box.width - (box.reading ? Math.min(860, box.viewport - 2 * box.padding) : box.viewport - 2 * box.padding)) < 2 && Math.abs(box.left-box.right) < 2 && !box.overflow,
+    assert(Math.abs(box.width - (box.reading ? Math.min(860, box.contentWidth - 2 * box.padding) : box.contentWidth - 2 * box.padding)) < 2 && Math.abs(box.left-box.right) < 2 && !box.overflow,
       `${label}：正文自适应铺开、两侧对称且无页面横向溢出 ${JSON.stringify(box)}`);
     assert(box.align !== 'center', `${label}：段落保留左对齐`);
     if (box.reading) assert(box.h1Size >= 21 && box.h1Size <= 24 && box.paragraphSize === 14, `${label}：讲义标题与正文使用连续阅读字号`);
