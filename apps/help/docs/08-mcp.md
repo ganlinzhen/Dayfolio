@@ -166,4 +166,12 @@ npm run agent:doctor -- --target /自选目录/Dayfolio-Agent
 
 导入必须携带 batchId 与 provider 修订，并显式给出四个时间字段；相同批次、相同内容幂等重放，不同内容拒绝。取消订阅须显式选择 keep 或 delete_open。恢复跟随必须携带来源及待办的最新修订。固定时刻待办传 `time_mode: instant` 与 `scheduled_start_at`、可空 `scheduled_end_at`，不能同时传本地排期字段；浮动安排允许仅开始时间，跨日通过 `end_date` 表达。专用 `update_todo` 支持 `expected_revision` 防并发覆盖。
 
-统一日历工具 `query_calendar_items` 已接入 App 分类面板，使用共享偏好；显式空分类数组返回空。查询包含完整过滤统计和分页游标，数据变化后须整轮重查。工具包正式安装和联网刷新后续开放。
+统一日历工具 `query_calendar_items` 已接入 App 分类面板，使用共享偏好；显式空分类数组返回空。查询包含完整过滤统计和分页游标，数据变化后须整轮重查。工具箱只导入 HTML，不再提供旧工具包安装与版本管理。
+
+## App 内后台 Agent 与对话采集
+
+「设置 → 配置 Agent」统一管理 Codex、Claude Code、Gemini CLI 的本机路径与可选模型。App 不携带 Agent 运行时；CLI 在本机安装并登录后，新闻页「更新今日新闻」直接调用所选 Agent，完成后自动刷新。
+
+也可以在已接入 Dayfolio 的 Agent 对话中要求更新新闻，助手在本次对话中读取保存要求、核实来源、提交并完成，不只创建请求等待以后处理。`get_agent_settings` / `update_agent_settings` 读写后台连接偏好，不读取或保存登录凭证；修改必须来自用户明确要求并携带最新 expected_revision。对话采集不需要修改后台连接。
+
+`list_news_agent_runs` 读取后台进度、`cancel_news_agent_run` 按用户要求停止；运行依赖 Dayfolio App 保持运行。新闻认领、提交和完成工具继续用于同一次对话内的采集流程。

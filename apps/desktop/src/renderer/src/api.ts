@@ -15,6 +15,11 @@ export interface ApiResult<T> {
 }
 
 interface TododeskApi {
+  toolTodos: {
+    preview: (p: Parameters<TodoDeskCore['toolTodos']['preview']>[0]) => Promise<ApiResult<ReturnType<TodoDeskCore['toolTodos']['preview']>>>;
+    create: (p: Parameters<TodoDeskCore['toolTodos']['create']>[0]) => Promise<ApiResult<ReturnType<TodoDeskCore['toolTodos']['create']>>>;
+    getStatus: (p: Parameters<TodoDeskCore['toolTodos']['getStatus']>[0]) => Promise<ApiResult<ReturnType<TodoDeskCore['toolTodos']['getStatus']>>>;
+  };
   extensions:{
     bindSession:(p:{extensionId:string;nonce:string})=>Promise<ApiResult<{sessionToken:string;releaseDigest:string}>>;
     releaseSession:(p:{sessionToken:string})=>Promise<ApiResult<boolean>>;
@@ -84,6 +89,8 @@ interface TododeskApi {
     queryItems:(p:CalendarQuery)=>Promise<ApiResult<CalendarResult>>;
     listCollections:()=>Promise<ApiResult<CalendarCollection[]>>;
     setVisibility:(p:{collectionId:string;visible:boolean})=>Promise<ApiResult<void>>;
+    updateCollection:(p:Parameters<TodoDeskCore['runtime']['updateCollection']>[0])=>Promise<ApiResult<CalendarCollection>>;
+    deleteCollection:(p:Parameters<TodoDeskCore['runtime']['deleteCollection']>[0])=>Promise<ApiResult<ReturnType<TodoDeskCore['runtime']['deleteCollection']>>>;
     list: (p?: { from?: string; to?: string; search?: string; limit?: number }) => Promise<ApiResult<unknown[]>>;
     rangeAgenda: (p: { from: string; to: string }) => Promise<ApiResult<unknown>>;
     add: (p: { title: string; date: string; end_date?: string | null; start_time?: string | null; end_time?: string | null; note?: string; color?: string; source?: string }) => Promise<ApiResult<unknown>>;
@@ -123,12 +130,22 @@ interface TododeskApi {
     createRequest: (p: { course_id: number }) => Promise<ApiResult<unknown>>;
     listRequests: (p?: { status?: string; course_id?: number }) => Promise<ApiResult<unknown[]>>;
   };
+  agentSettings: {
+    get: () => Promise<ApiResult<import('../../../../../packages/core/src').AgentSettings>>;
+    update: (p: import('../../../../../packages/core/src').AgentSettingsInput) => Promise<ApiResult<import('../../../../../packages/core/src').AgentSettings>>;
+    check: (p: import('../../main/agent-adapters').AgentConnection) => Promise<ApiResult<import('../../main/agent-adapters').AgentStatus>>;
+    pickBinary: () => Promise<ApiResult<string | null>>;
+  };
   news: {
+    agentStatus: () => Promise<ApiResult<import('../../main/news-agent-runner').NewsAgentStatus>>;
+    agentRuns: (p?: { task_id?: number }) => Promise<ApiResult<import('../../../../../packages/core/src').NewsRun[]>>;
+    runAgent: (p?: { task_id?: number }) => Promise<ApiResult<import('../../../../../packages/core/src').NewsRun>>;
+    stopAgent: (p: { run_id: string }) => Promise<ApiResult<import('../../../../../packages/core/src').NewsRun>>;
+
     collectionSettings: () => Promise<ApiResult<import('../../../../../packages/core/src/types').NewsCollectionSettings>>;
     updateCollectionSettings: (p: { prompt: string; max_items: number; window_hours: number; expected_revision: number }) => Promise<ApiResult<import('../../../../../packages/core/src/types').NewsCollectionSettings>>;
     list: (p?: { days?: number; task_id?: number; search?: string; filter?: 'all' | 'unread' | 'starred'; since?: string; limit?: number; offset?: number }) => Promise<ApiResult<unknown[]>>;
     tasks: (p?: { status?: string; limit?: number }) => Promise<ApiResult<unknown[]>>;
-    createTask: (p: { title: string; instructions?: string; max_items?: number; window_hours?: number; use_collection_prompt?: boolean }) => Promise<ApiResult<unknown>>;
     cancelTask: (p: { id: number }) => Promise<ApiResult<unknown>>;
     markRead: (p: { id: number; read?: boolean }) => Promise<ApiResult<unknown>>;
     markStarred: (p: { id: number; starred?: boolean }) => Promise<ApiResult<unknown>>;

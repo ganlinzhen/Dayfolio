@@ -210,7 +210,7 @@ try {
     () => evalJs(`document.querySelectorAll('.news3-request').length === 2`),
     15000, '采集请求卡渲染（已完成 + 待执行）',
   );
-  assert(await evalJs(`[...document.querySelectorAll('.news3-request-status')].some(s => s.textContent.includes('等待 AI'))`), '待执行任务可见（离线不唤醒）');
+  assert(await evalJs(`[...document.querySelectorAll('.news3-request-status')].some(s => s.textContent.includes('未完成'))`), '旧未完成记录可见（未配置 Agent 不自动执行）');
   await clickUntil(
     `[...document.querySelectorAll('.news3-back')].find(b => b.textContent.includes('返回新闻'))?.click()`,
     () => evalJs(`!!document.querySelector('[aria-label="新闻列表页"]')`),

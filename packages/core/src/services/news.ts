@@ -10,7 +10,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import type { DbAdapter } from '../db';
+import { inTx, type DbAdapter } from '../db';
 import { mapNews } from '../db';
 import type { NewsBrief, NewsCollectionSettings, NewsDeleteResult, NewsItem, NewsSubmissionItem, NewsTask } from '../types';
 import { newsDedupKey } from '../utils/news-dedup';
@@ -164,22 +164,8 @@ export function validateSourceUrl(raw: string): string {
   return u.toString();
 }
 
-/** 跨进程原子段：BEGIN IMMEDIATE 立即取写锁（认领/提交的并发边界） */
-function immediateTx<T>(db: DbAdapter, fn: () => T): T {
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const r = fn();
-    db.exec('COMMIT');
-    return r;
-  } catch (e) {
-    try {
-      db.exec('ROLLBACK');
-    } catch {
-      /* 保留原始错误 */
-    }
-    throw e;
-  }
-}
+// 与共享事务使用同一保存点机制，支持后台运行记录与新闻认领原子提交。
+const immediateTx = inTx;
 
 export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseMs?: number } = {}) {
   const LEASE_MS = Math.max(opts.leaseMs ?? NEWS_TASK_LEASE_MS, 1);

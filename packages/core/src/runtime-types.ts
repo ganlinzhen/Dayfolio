@@ -29,5 +29,5 @@ export type CalendarItem = Exclude<EventTime,{timeKind:'tbd'}> & {
   allowedActions:('open'|'complete'|'reopen'|'edit'|'delete'|'unsubscribe')[];
 };
 export interface CalendarQuery {fromDate:string;toDateExclusive:string;displayTimezone:string;collectionIds?:string[];cursor?:string;limit?:number}
-export interface CalendarCollection {id:string;title:string;color:string;sortOrder:number;archived:boolean;ownerExtensionId:string|null;extensionStatus:'active'|'disabled'|'uninstalled'|null;visible:boolean}
+export interface CalendarCollection {id:string;title:string;color:string;sortOrder:number;archived:boolean;ownerExtensionId:string|null;extensionStatus:'active'|'disabled'|'uninstalled'|null;visible:boolean;deleteBlockedReason:string|null}
 export interface CalendarResult {revision:number;items:CalendarItem[];nextCursor:string|null;truncated:boolean;collections:CalendarCollection[];countsByDay:Record<string,number>;itemColors?:Record<string,string>}

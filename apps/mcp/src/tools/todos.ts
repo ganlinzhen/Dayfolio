@@ -8,18 +8,19 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
   const { dateSchema, nullableDateSchema } = dateSchemas(core);
   server.tool(
     'list_todos',
-    '查询待办事项列表。可按状态(open/done/all，默认 open)、优先级(high/medium/low)、是否过期、关键词、标签筛选；结果按"未完成优先、优先级高优先、截止日期近优先"排序',
+    '查询待办事项列表。可按状态(open/done/all，默认 open)、优先级(high/medium/low)、是否过期、关键词、标签和分类 collection_id 筛选；分类 ID 可从 list_calendar_collections 获取。结果按"未完成优先、优先级高优先、截止日期近优先"排序',
     {
       status: z.enum(['open', 'done', 'all']).optional().describe("默认 'open'"),
       priority: z.enum(['high', 'medium', 'low']).optional(),
       overdue: z.boolean().optional().describe('只看已过期未完成'),
       search: z.string().optional().describe('按标题/备注模糊搜索'),
       tag: z.string().optional().describe('按标签过滤'),
+      collection_id: z.string().min(1).optional().describe('待办分类 ID'),
       limit: z.number().int().positive().max(500).optional().describe('默认 500'),
     },
-    async ({ status, priority, overdue, search, tag, limit }) =>
+    async ({ status, priority, overdue, search, tag, collection_id, limit }) =>
       wrap(() => {
-        const todos = core.todos.list({ status, priority, overdue, search, tag, limit });
+        const todos = core.todos.list({ status, priority, overdue, search, tag, collection_id, limit });
         return { count: todos.length, todos };
       })(),
   );

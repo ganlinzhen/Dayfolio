@@ -2,6 +2,23 @@ import type { ToolRegistrar, McpContext } from '../shared/context';
 import { z } from 'zod';
 import { wrap } from '../shared/response';
 
+export const newsItemsSchema = z.array(z.object({
+        title: z.string().min(1).max(300).describe('新闻标题'),
+        summary: z.string().min(1).max(2000).describe('你核实后写的内容摘要（不接受空摘要）'),
+        source_url: z.string().min(1).max(2048).describe('原始来源网页链接（http(s)，你亲自核实过的公开页面）'),
+        source_name: z.string().max(120).optional().describe('来源站点名，如「TechCrunch」'),
+        published_at: z.string().min(1).describe('来源页面的真实发布时间（ISO 格式）'),
+        brief: z.object({
+          overview: z.string().min(1).max(2000).describe('专题总体看点'),
+          items: z.array(z.object({
+            title: z.string().min(1).max(300), summary: z.string().min(1).max(2000),
+            source_url: z.string().min(1).max(2048), source_name: z.string().max(120).optional(),
+            published_at: z.string().min(1),
+          })).min(1).max(20),
+        }).optional().describe('专题简报：整份只算一条新闻，子条目均须核实来源与时间。外层 source_url 和 published_at 使用第一则新闻的值，不能同时传 html'),
+        html: z.string().max(1000000).optional().describe('本地 HTML 快照（可选）：X/Twitter 等无法内嵌展示的来源用。写成自包含 HTML（作者/发布时间/正文/图片 https 外链/原帖链接），脚本与事件属性会被剥离，保存后用 read_news_html 核对'),
+      })).min(1).max(10).describe('本批条目（1~10 条）');
+
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
   server.tool('get_news_collection_settings',
     '读取 App 当前保存的新闻采集提示词、收录上限和时间窗。什么场景调用我：每日采集开始前读取最新规则；不要把旧自动任务里的固定要求当作当前规则。读取不会创建任务或联网。', {},
@@ -11,6 +28,13 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
       prompt: z.string().min(1).max(12000), max_items: z.number().int().min(1).max(11),
       window_hours: z.number().int().min(1).max(720), expected_revision: z.number().int().min(0),
     }, async (input) => wrap(() => core.news.updateCollectionSettings(input))());
+
+  server.tool('list_news_agent_runs', '查看新闻后台运行记录。什么场景调用我：用户询问采集进度、失败原因或停止状态；只读，不启动 Agent。', {
+    task_id: z.number().int().positive().optional(),
+  }, async ({ task_id }) => wrap(() => core.newsRuns.list(task_id))());
+  server.tool('cancel_news_agent_run', '停止一条后台新闻运行。什么场景调用我：用户要求停止采集；已提交新闻保留，业务请求保留供重试。执行中需等待 App 停止子进程后释放认领。', {
+    run_id: z.string().min(1),
+  }, async ({ run_id }) => wrap(() => core.newsRuns.cancel(run_id))());
 
   // ---------- 每日新闻（agent-only：任务 → 认领 → 提交；本地不抓取任何 RSS/X） ----------
 
@@ -78,22 +102,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
     {
       task_id: z.number().int().positive(),
       claim_token: z.string().min(1).describe('claim_news_task 返回的认领令牌'),
-      items: z.array(z.object({
-        title: z.string().min(1).max(300).describe('新闻标题'),
-        summary: z.string().min(1).max(2000).describe('你核实后写的内容摘要（不接受空摘要）'),
-        source_url: z.string().min(1).max(2048).describe('原始来源网页链接（http(s)，你亲自核实过的公开页面）'),
-        source_name: z.string().max(120).optional().describe('来源站点名，如「TechCrunch」'),
-        published_at: z.string().min(1).describe('来源页面的真实发布时间（ISO 格式）'),
-        brief: z.object({
-          overview: z.string().min(1).max(2000).describe('专题总体看点'),
-          items: z.array(z.object({
-            title: z.string().min(1).max(300), summary: z.string().min(1).max(2000),
-            source_url: z.string().min(1).max(2048), source_name: z.string().max(120).optional(),
-            published_at: z.string().min(1),
-          })).min(1).max(20),
-        }).optional().describe('专题简报：整份只算一条新闻，子条目均须核实来源与时间。外层 source_url 和 published_at 使用第一则新闻的值，不能同时传 html'),
-        html: z.string().max(1000000).optional().describe('本地 HTML 快照（可选）：X/Twitter 等无法内嵌展示的来源用。写成自包含 HTML（作者/发布时间/正文/图片 https 外链/原帖链接），脚本与事件属性会被剥离，保存后用 read_news_html 核对'),
-      })).min(1).max(10).describe('本批条目（1~10 条）'),
+      items: newsItemsSchema,
     },
     async ({ task_id, claim_token, items }) => wrap(() => core.news.submitItems(task_id, claim_token, items as never))(),
   );

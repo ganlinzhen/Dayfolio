@@ -61,7 +61,16 @@ for (const [name,title,method,params] of [
   ['mark_all_news_read','批量标记已读','markAllRead',[['filter','json',false]]],
   ['delete_news_item','删除新闻','deleteItem',[id('news_item')]],
 ] as Array<[string,string,string,Param[]]>) command(name,title,'news',method,name.includes('task')||name==='submit_news_items'?['news_task','news_item']:['news_item'],params);
+for (const [name,title,method,params] of [
+  ['enqueue_news_agent_run','排队后台新闻采集','enqueue',[['task_id','integer',false,'news_task']]],
+  ['cancel_news_agent_run','停止后台新闻采集','cancel',[['id','string']]],
+  ['claim_news_agent_run','执行器认领新闻运行','claimNext',[['owner','string'],['host_pid','integer']]],
+  ['update_news_agent_run','执行器更新新闻进度','progress',[['id','string'],['owner','string'],['message','string'],['thread_id','string',false]]],
+  ['finish_news_agent_run','执行器结束新闻运行','finish',[['id','string'],['owner','string'],['status','string'],['error','string',false]]],
+  ['recover_news_agent_run','恢复已退出执行器的运行','recover',[['id','string']]],
+] as Array<[string,string,string,Param[]]>) command(name,title,'newsRuns',method,[],params);
 command('update_news_collection_settings','更新新闻采集提示词','news','updateCollectionSettings',[],[input]);
+command('update_agent_settings','更新 Agent 连接配置','agentSettings','update',[],[input]);
 command('import_course','导入课程','courses','importCourse',['course','course_lesson','course_overview'],[['staging_dir','string']]);
 command('delete_course','删除课程','courses','remove',['course','course_lesson','course_overview','course_request'],[id('course'),['expected_slug','string']]);
 command('mark_lesson_read','标记讲义已读','courses','markLessonRead',['course','course_lesson'],[['course_id','integer',true,'course'],['day','integer']]);
@@ -103,8 +112,11 @@ for (const [name,title,method,params] of [
   ['delete_calendar_event','删除日程','remove',[id('calendar_event')]],
 ] as Array<[string,string,string,Param[]]>) command(name,title,'calendar',method,['calendar_event'],params);
 for(const d of defs)for(const p of d.parameters){if(d.apiName==='delete_study_plan'&&p.name==='delete_todos')p.defaultValue=true;if(d.apiName==='checkin'&&p.name==='ref_id')p.defaultValue=0;}
+command('add_tool_todos','添加 HTML 工具待办','toolTodos','create',['tool','todo','calendar_collection'],[input],'args',false,true);
 command('set_display_timezone','设置显示时区','runtime','setDisplayTimezone',[],[['zone','string']],'args',false,true);
 command('set_calendar_collection_visibility','设置日历分类显示','runtime','setVisibility',[],[input],'args',false,true);
+command('update_calendar_collection','编辑日历分类','runtime','updateCollection',['calendar_collection'],[input],'args',false,true);
+command('delete_calendar_collection','删除日历分类并保留内容','runtime','deleteCollection',['calendar_collection','todo','calendar_event'],[input],'args',false,true);
 for(const [name,title,service,method,targets]of [
   ['import_external_events','导入标准事件','externalEvents','import',['external_event','event_provider']],
   ['archive_external_event','归档外部事件','externalEvents','archive',['external_event']],

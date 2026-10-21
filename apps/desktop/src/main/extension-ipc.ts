@@ -1,19 +1,12 @@
-// 安装和授权仅供受信主页面；工具 iframe 不获得这些管理接口。
-import { dialog,ipcMain } from 'electron';
+// 历史事件工具只读接口；工具导入和删除统一使用 HTML 工具箱。
+import { ipcMain } from 'electron';
 import { runtimeErrorInfo,type TodoDeskCore } from '../../../../packages/core/src';
 export function registerExtensionIpc(core:TodoDeskCore) {
   const routes:Record<string,(input:never)=>unknown>={
     'extensions:describe':()=>({api:{major:1,minor:0},limits:{packageBytes:20*1024*1024,eventBatchCount:500,eventBatchBytes:5*1024*1024,pageSize:500,maxRangeDays:100,requestBytes:65536}}),
-    'extensions:pickDirectory':async()=>{const selected=await dialog.showOpenDialog({title:'选择运行时工具包目录',properties:['openDirectory']});return selected.canceled?null:selected.filePaths[0]??null;},
-    'extensions:previewInstall':core.extensions.previewInstall,
-    'extensions:authorizeInstall':core.commands.human.authorizeExtensionInstall,
-    'extensions:install':core.extensions.install,
     'extensions:list':core.extensions.list,
     'extensions:get':core.extensions.get,
     'extensions:getHelp':core.extensions.getHelp,
-    'extensions:setEnabled':core.extensions.setEnabled,
-    'extensions:rollback':core.extensions.rollback,
-    'extensions:uninstall':core.extensions.uninstall,
   };
   for(const[channel,handler]of Object.entries(routes))ipcMain.handle(channel,async(event,input:unknown)=>{
     try{if(!event.senderFrame||event.senderFrame!==event.sender.mainFrame)throw Object.assign(new Error('管理操作只允许受信宿主主页面'),{code:'PERMISSION_DENIED'});return {ok:true,data:await handler(input as never)};}

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // 赛事页面最小契约与更新边界校验；不读取 App 数据库，也不获取网络数据。
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const text = value => typeof value === 'string' && value.trim().length > 0;
-const kinds = new Set(['api', 'official_page', 'derived', 'ai', 'user']);
+const kinds = new Set(['api', 'official_page', 'web_page', 'derived', 'ai', 'user']);
 const timestamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
 
 export function validatePage(page, previous) {
@@ -53,7 +53,7 @@ export function validatePage(page, previous) {
       try { valid = ['https:', 'http:'].includes(new URL(source.url).protocol); } catch { /* 非网址 */ }
       require(valid, `来源 ${source.id} 网址无效`);
     }
-    if (['api', 'official_page'].includes(source.kind)) require(text(source.url), `事实来源 ${source.id} 缺少网址`);
+    if (['api', 'official_page', 'web_page'].includes(source.kind)) require(text(source.url), `事实来源 ${source.id} 缺少网址`);
     checkTime(source.checkedAt, `来源 ${source.id}.checkedAt`);
     checkTime(source.lastSuccessAt, `来源 ${source.id}.lastSuccessAt`);
     if (timestamp(source.checkedAt) && timestamp(source.lastSuccessAt)) require(Date.parse(source.lastSuccessAt) <= Date.parse(source.checkedAt), `来源 ${source.id} 成功时间不能晚于检查时间`);
@@ -93,7 +93,8 @@ export function validatePage(page, previous) {
   return errors;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// 技能发现入口通常是目录软链接，需比较解析后的路径，避免静默跳过命令行校验。
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href) {
   try {
     if (!process.argv[2]) throw new Error('用法：node validate-page.mjs <sports-page.json> [旧配置.json]');
     const page = JSON.parse(readFileSync(process.argv[2], 'utf8'));

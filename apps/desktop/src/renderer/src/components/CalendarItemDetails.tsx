@@ -1,3 +1,4 @@
+import Modal from './Modal';
 // 固定目标路由：待办、学习条目与本地日程使用各自业务入口。
 import { useEffect, useState } from 'react';
 import { api, call } from '../api';
@@ -8,7 +9,7 @@ import type { Todo, ExternalEventRecord, EventSubscription } from '../../../../.
 interface ObjectData { row: Record<string, unknown>; links: Array<{ targetType: string; targetId: string | number }> }
 const STATUS: Record<string, string> = { scheduled: '已排期', postponed: '已改期', cancelled: '来源已取消', finished: '来源已结束' };
 export type CalendarDetailsTarget = Pick<CalendarItem, 'id'|'kind'|'target'|'allowedActions'>;
-export default function CalendarItemDetails({ item, onClose, onChanged }: { item: CalendarDetailsTarget; onClose: () => void; onChanged: () => Promise<void> }) {
+export default function CalendarItemDetails({ item, onClose, onChanged, inModal = false }: { inModal?: boolean; item: CalendarDetailsTarget; onClose: () => void; onChanged: () => Promise<void> }) {
   const [row, setRow] = useState<Record<string, unknown> | null>(null), [title, setTitle] = useState(''), [notes, setNotes] = useState('');
   const [schedule, setSchedule] = useState<TodoScheduleValue>({ due: '', dateOnly: true, start: '', end: '' });
   const [event, setEvent] = useState<ExternalEventRecord | null>(null), [subscription, setSubscription] = useState<EventSubscription | null>(null);
@@ -54,8 +55,18 @@ export default function CalendarItemDetails({ item, onClose, onChanged }: { item
     if (!event || !row) return;
     return call(() => api.subscriptions.resumeFollowing({ eventId: event.id, expectedEventRevision: event.revision, expectedTodoRevision: Number(row.revision) }));
   });
-  return <div className="cal-item-details" role="region" aria-label={item.kind === 'plan_item' ? '学习条目详情' : '待办与来源详情'}>
-    <div className="cal-day-head"><strong>{item.kind === 'plan_item' ? '学习条目' : item.kind === 'external_subscription' ? '订阅待办' : '待办'}</strong><span className="spacer" /><button className="btn slim" onClick={onClose}>关闭详情</button></div>
+  const actions = row && (<>
+        {!inModal && <button className="btn primary slim" disabled={busy||!item.allowedActions.includes(row.status==='done'?'reopen':'complete')} onClick={() => void complete()}>{row.status === 'done' ? '重新打开' : '完成'}</button>}
+        {item.allowedActions.includes('edit') && <button className="btn slim" disabled={busy} onClick={() => void saveTodo()}>保存待办修改</button>}
+        {event && <>
+          <button className="btn slim" disabled={busy||!item.allowedActions.includes('unsubscribe')} onClick={() => void execute(() => call(() => api.subscriptions.unsubscribe({ eventId: event.id, todoPolicy: 'keep', expectedTodoRevision: Number(row.revision) })))}>取消订阅并保留待办</button>
+          {row.status !== 'done' && subscription?.syncMode === 'manual' && <button className="btn slim" disabled={busy} onClick={() => setConfirmResume(true)}>恢复跟随…</button>}
+        </>}
+        {item.allowedActions.includes('delete') && <button className="btn slim danger-btn" disabled={busy} onClick={() => deleteArmed?void execute(() => call(() => api.todos.delete({ id: Number(item.target.id) }))):setDeleteArmed(true)}>{deleteArmed?'确认删除待办':'删除待办…'}</button>}
+        {inModal && <button className="btn primary slim" disabled={busy||!item.allowedActions.includes(row.status==='done'?'reopen':'complete')} onClick={() => void complete()}>{row.status === 'done' ? '重新打开' : '完成'}</button>}
+      </>);
+  const content = <div className="cal-item-details" role="region" aria-label={item.kind === 'plan_item' ? '学习条目详情' : '待办与来源详情'}>
+    {!inModal && <div className="cal-day-head"><strong>{item.kind === 'plan_item' ? '学习条目' : item.kind === 'external_subscription' ? '订阅待办' : '待办'}</strong><span className="spacer" /><button className="btn slim" onClick={onClose}>关闭详情</button></div>}
     {error && <div className="notice error">{error}</div>}
     {!row ? <p className="sub">正在读取…</p> : <>
       {item.kind === 'plan_item' ? <><p>{String(row.content)}</p><p className="sub">计划日期 {String(row.date)} · {row.status === 'done' ? '已完成' : row.status === 'skipped' ? '已跳过' : '待完成'}</p></> : <>
@@ -71,15 +82,9 @@ export default function CalendarItemDetails({ item, onClose, onChanged }: { item
         {subscription?.pendingEventRevision !== null && <p className="sub">来源有更新。个人安排和已完成记录保持保护。</p>}
         {confirmResume && <div className="notice">将用上面的来源标题与时间替换当前个人标题和排期；已保存的备注、标签、优先级保留；未保存的编辑不会被提交。<button className="btn slim" disabled={busy} onClick={() => void resume()}>确认恢复跟随</button></div>}
       </div>}
-      <div className="cal-form-row">
-        <button className="btn primary slim" disabled={busy||!item.allowedActions.includes(row.status==='done'?'reopen':'complete')} onClick={() => void complete()}>{row.status === 'done' ? '重新打开' : '完成'}</button>
-        {item.allowedActions.includes('edit') && <button className="btn slim" disabled={busy} onClick={() => void saveTodo()}>保存待办修改</button>}
-        {event && <>
-          <button className="btn slim" disabled={busy||!item.allowedActions.includes('unsubscribe')} onClick={() => void execute(() => call(() => api.subscriptions.unsubscribe({ eventId: event.id, todoPolicy: 'keep', expectedTodoRevision: Number(row.revision) })))}>取消订阅并保留待办</button>
-          {row.status !== 'done' && subscription?.syncMode === 'manual' && <button className="btn slim" disabled={busy} onClick={() => setConfirmResume(true)}>恢复跟随…</button>}
-        </>}
-        {item.allowedActions.includes('delete') && <button className="btn slim danger-btn" disabled={busy} onClick={() => deleteArmed?void execute(() => call(() => api.todos.delete({ id: Number(item.target.id) }))):setDeleteArmed(true)}>{deleteArmed?'确认删除待办':'删除待办…'}</button>}
-      </div>
+      {!inModal && <div className="cal-form-row">{actions}</div>}
+
     </>}
   </div>;
+  return inModal ? <Modal title="工具关联待办详情" onClose={onClose} busy={busy} wide className="runtime-todo-modal" footer={actions}>{content}</Modal> : content;
 }

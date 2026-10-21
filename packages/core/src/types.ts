@@ -120,6 +120,8 @@ export interface UpdateTodoInput {
 }
 
 export interface TodoFilters {
+  /** 按业务归属分类筛选，与日历一致；基础待办包含无其他归属的旧记录。 */
+  collection_id?: string;
   status?: TodoStatus | 'all';
   priority?: Priority;
   overdue?: boolean;

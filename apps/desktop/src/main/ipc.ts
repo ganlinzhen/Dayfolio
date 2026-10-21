@@ -9,11 +9,15 @@ import {
   type TodoDeskCore,
   type ToolItem,
 } from '../../../../packages/core/src/index';
+import type { createNewsAgentRunner } from './news-agent-runner';
 import { registerDataIpc } from './data-ipc';
 import { registerAgentIpc } from './agent-ipc';
 import { toolsRoot } from './tools-store';
 import { registerExtensionIpc } from './extension-ipc';
 import { registerRuntimeIpc } from './runtime-ipc';
+import { registerToolTodoIpc } from './tool-todo-ipc';
+import { checkAgent, type AgentConnection } from './agent-adapters';
+import { AGENT_PROVIDERS } from '../../../../packages/core/src';
 
 // 统一 IPC 信封：{ok, data|error}。async/await 包装——处理器返回 Promise 时先等待再装入 data，
 // 否则 Promise 会被结构化克隆成空对象（pickExportDir 的目录对话框等异步处理器都依赖这一点）
@@ -27,12 +31,24 @@ const handle = (channel: string, fn: (payload: unknown) => unknown) => {
   });
 };
 
-export function registerIpc(core: TodoDeskCore): void {
+export function registerIpc(core: TodoDeskCore, newsAgent: ReturnType<typeof createNewsAgentRunner>): void {
   registerRuntimeIpc(core);
+  registerToolTodoIpc(core);
   registerExtensionIpc(core);
   registerAgentIpc();
   // 数据面板 / 本体管理（对象·链接·动作三类型）
   registerDataIpc(core);
+  handle('agentSettings:get', () => core.agentSettings.get());
+  handle('agentSettings:update', p => core.agentSettings.update(p as never));
+  handle('agentSettings:check', p => {
+    const input = p as AgentConnection;
+    if (!input || !AGENT_PROVIDERS.includes(input.provider)) throw new Error('请选择受支持的 Agent');
+    return checkAgent(input);
+  });
+  handle('agentSettings:pickBinary', async () => {
+    const result = await dialog.showOpenDialog({ title: '选择 Agent CLI 可执行文件', properties: ['openFile', 'showHiddenFiles'] });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
 
   // 待办
   handle('todos:list', (p) => core.todos.list((p as never) ?? {}));
@@ -136,12 +152,20 @@ export function registerIpc(core: TodoDeskCore): void {
   // 每日新闻（agent-only）：App 只持久展示任务/规则/结果与旧收藏，不抓取、不配置源、无定时器。
   // 新闻生产由 agent 经 MCP 认领任务后提交（core 层硬校验）。
   // 用户可在 App 发起任务（createTask，同一 core 硬校验）与取消待执行任务；
-  // 认领/提交/完成/释放不暴露给 App——执行是 agent 经 MCP 的专属动作，离线不会自动唤醒。
+  // 认领/提交/完成/释放不暴露给渲染层；后台 Codex 通过限定任务的 MCP 提交。
+  handle('news:agentStatus', () => newsAgent.status());
+  handle('news:agentRuns', p => core.newsRuns.list((p as { task_id?: number } | undefined)?.task_id));
+  handle('news:runAgent', async p => {
+    const status = await newsAgent.status();
+    if (!status.available) throw new Error(status.message);
+    const run = core.newsRuns.enqueue((p as { task_id?: number } | undefined)?.task_id);
+    newsAgent.tick(); return run;
+  });
+  handle('news:stopAgent', p => core.newsRuns.cancel((p as { run_id: string }).run_id));
   handle('news:collectionSettings', () => core.news.getCollectionSettings());
   handle('news:updateCollectionSettings', (p) => core.news.updateCollectionSettings(p as never));
   handle('news:list', (p) => core.news.list((p as never) ?? {}));
   handle('news:tasks', (p) => core.news.listTasks((p as never) ?? {}));
-  handle('news:createTask', (p) => core.news.createTask(p as never, 'app'));
   handle('news:cancelTask', (p) => core.news.cancelTask((p as { id: number }).id));
   // 已读 / 收藏（与 MCP 双向共享同一持久状态）
   handle('news:markRead', (p) => core.news.markRead((p as { id: number }).id, (p as { read?: boolean }).read ?? true));

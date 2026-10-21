@@ -55,15 +55,16 @@ describe('新闻 agent-only 边界（App 无抓取/凭证/调度入口）', () =
     }
   });
 
-  it('App 可发起任务但不可执行：有 createTask/cancelTask 通道，无认领/提交/完成/释放通道', () => {
+  it('渲染层发起后台采集但不直接认领或提交：业务写入仍经限定 MCP', () => {
     const preload = read('apps/desktop/src/preload/index.ts');
-    expect(preload.includes("invoke('news:createTask')"), 'App 应提供用户发起任务的入口').toBe(true);
+    expect(preload.includes("invoke('news:createTask')"), 'App 不再暴露仅创建等待请求的入口').toBe(false);
+    expect(preload.includes("invoke('news:runAgent')")).toBe(true);
     expect(preload.includes("invoke('news:cancelTask')"), 'App 应提供取消待执行任务的入口').toBe(true);
     for (const banned of ["invoke('news:claimTask')", "invoke('news:submitItems')", "invoke('news:completeTask')", "invoke('news:releaseTask')"]) {
       expect(preload.includes(banned), `preload 不应包含 ${banned}（执行是 agent 经 MCP 的专属动作，离线不自动唤醒）`).toBe(false);
     }
     const ipc = read('apps/desktop/src/main/ipc.ts');
-    expect(ipc.includes("core.news.createTask(p as never, 'app')")).toBe(true);
+    expect(ipc.includes("core.news.createTask(p as never, 'app')")).toBe(false);
     for (const method of ['claimTask', 'submitItems', 'completeTask', 'releaseTask']) {
       expect(ipc.includes(`core.news.${method}`), `ipc 不应调用 core.news.${method}`).toBe(false);
     }

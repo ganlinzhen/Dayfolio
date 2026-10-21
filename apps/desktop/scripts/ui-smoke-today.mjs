@@ -1,96 +1,170 @@
-// 迭代 2 冒烟：今日仪表盘（默认页）→ 添加今日待办 → 今日面板联动完成 → 截图
-import { writeFileSync } from 'node:fs';
+#!/usr/bin/env node
+// 今日页隔离验收：日历查看并完成待办、无重复到期分组、逾期完成与学习打卡。
+import { spawn } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const BASE = 'http://127.0.0.1:9223';
-const page = (await (await fetch(`${BASE}/json`)).json()).find((t) => t.type === 'page');
-if (!page) throw new Error('未找到页面 target');
-
-const ws = new WebSocket(page.webSocketDebuggerUrl);
-await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
-let msgId = 0;
-const pending = new Map();
-ws.onmessage = (ev) => {
-  const m = JSON.parse(ev.data);
-  if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+const repo = fileURLToPath(new URL('../../../', import.meta.url));
+const work = mkdtempSync(join(tmpdir(), 'dayfolio-today-'));
+const env = {
+  PATH: process.env.PATH, TMPDIR: process.env.TMPDIR,
+  HOME: join(work, 'home'), TODODESK_DB: join(work, 'test.db'), TODODESK_USER_DATA: join(work, 'userData'),
 };
-const send = (method, params = {}) =>
-  new Promise((res) => { const id = ++msgId; pending.set(id, res); ws.send(JSON.stringify({ id, method, params })); });
-const evalJs = async (expression) => {
-  const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-  if (r.result?.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails));
-  return r.result?.result?.value;
+mkdirSync(env.HOME);
+mkdirSync(env.TODODESK_USER_DATA);
+const executable = process.env.TODODESK_SMOKE_APP;
+if (executable && (!isAbsolute(executable) || !executable.endsWith('.app/Contents/MacOS/Dayfolio'))) {
+  rmSync(work, { recursive: true, force: true });
+  throw new Error('候选 App 可执行路径不合法');
+}
+let child, socket;
+let stderr = '';
+let inspectorUrl;
+const pause = (ms) => new Promise((resolvePause) => setTimeout(resolvePause, ms));
+const assert = (condition, label) => {
+  if (!condition) throw new Error(`断言失败：${label}`);
+  console.log(`  ✓ ${label}`);
 };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const setInput = (sel, value, proto = 'HTMLInputElement') => `
-  (() => { const el = document.querySelector('${sel}');
-    Object.getOwnPropertyDescriptor(${proto}.prototype, 'value').set.call(el, '${value}');
-    el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); })()
-`;
-const clickNav = (label) =>
-  evalJs(`[...document.querySelectorAll('.nav-item')].find(b => b.textContent.includes('${label}')).click()`);
+const until = async (fn, label) => {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    try { const result = await fn(); if (result) return result; } catch { /* 启动中重试 */ }
+    await pause(200);
+  }
+  throw new Error(`等待超时：${label}\n${stderr}`);
+};
+async function stop() {
+  socket?.close();
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise((resolveStop) => {
+    const timer = setTimeout(() => child.kill('SIGKILL'), 5000);
+    child.once('exit', () => { clearTimeout(timer); resolveStop(); });
+    child.kill('SIGTERM');
+  });
+}
+async function launch() {
+  const port = await new Promise((resolvePort) => {
+    const server = createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const value = server.address().port;
+      server.close(() => resolvePort(value));
+    });
+  });
+  const args = ['--inspect=0', `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1'];
+  child = spawn(executable || join(repo, 'node_modules/.bin/electron'), executable ? args : [join(repo, 'apps/desktop'), ...args], { env, stdio: ['ignore', 'ignore', 'pipe'] });
+  child.stderr.on('data', (value) => { stderr = (stderr + value).slice(-4000); inspectorUrl = stderr.match(/Debugger listening on (ws:\/\/[^\s]+)/)?.[1] ?? inspectorUrl; });
+  const target = await until(async () => {
+    const pages = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(1500) })).json();
+    return pages.find((page) => page.type === 'page' && page.url === 'dayfolio-app://app/index.html');
+  }, '主窗口');
+  socket = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((resolveSocket, reject) => {
+    socket.onopen = resolveSocket;
+    socket.onerror = reject;
+  });
+  let nextId = 0;
+  const pending = new Map();
+  socket.onmessage = ({ data }) => {
+    const message = JSON.parse(data);
+    pending.get(message.id)?.(message);
+  };
+  const send = (method, params = {}) => new Promise((resolveMessage, reject) => {
+    const id = ++nextId;
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`协议超时：${method}`)); }, 10000);
+    pending.set(id, (message) => { pending.delete(id); clearTimeout(timer); message.error ? reject(new Error(message.error.message)) : resolveMessage(message.result); });
+    socket.send(JSON.stringify({ id, method, params }));
+  });
+  const evaluate = async (expression) => {
+    const result = await send('Runtime.evaluate', { expression: `(async () => (${expression}))()`, returnByValue: true, awaitPromise: true });
+    if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
+    return result.result?.value;
+  };
+  await until(() => evaluate('!!window.tododesk && !!document.querySelector(".nav-item")'), '渲染界面');
+  return { send, evaluate };
+}
+const capture = async (send, name) => {
+  if (!process.env.DAYFOLIO_TODAY_SCREENSHOTS) return;
+  const dir = resolve(process.env.DAYFOLIO_TODAY_SCREENSHOTS);
+  mkdirSync(dir, { recursive: true });
+  const shot = await send('Page.captureScreenshot', { format: 'png' });
+  writeFileSync(join(dir, `${name}.png`), Buffer.from(shot.data, 'base64'));
+};
 
-// 1. 落在「今日」页（先显式切回，避免其他冒烟脚本遗留的 tab 状态）
-await clickNav('今日'); await sleep(400);
-const head = await evalJs(`(() => ({
-  calFirst: !!document.querySelector('[aria-label=今日] .cal-section'),
-  beforeGroups: (() => { const p = document.querySelector('[aria-label=今日]'); const cal = p.querySelector('.cal-section'); const g = p.querySelector('.group:not(.cal-section)'); return !g || (cal.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0; })(),
-  statRow: !!document.querySelector('.stat-row'),
-  dayCheckinBtn: [...document.querySelectorAll('button')].some(b => b.textContent.includes('每日打卡')),
-  activeNav: document.querySelector('.nav-item.active')?.textContent?.trim(),
-}))()`);
-console.log('今日面板:', JSON.stringify(head));
-if (!head.calFirst || !head.beforeGroups) throw new Error('日历未置顶');
-if (head.statRow || head.dayCheckinBtn) throw new Error('统计条或每日打卡按钮应已移除');
 
-// 1b. 日历区块：默认周视图（时间网格），可切月视图
-const cal = await evalJs(`(() => ({
-  weekview: !!document.querySelector('.cal-weekview'),
-  cols: document.querySelectorAll('.cal-col').length,
-  modeSwitch: [...document.querySelectorAll('.cal-mode-switch button')].map(b => b.textContent),
-  nowline: !!document.querySelector('.cal-nowline'),
-}))()`);
-console.log('日历区块(默认周视图):', JSON.stringify(cal));
-if (!cal.weekview || cal.cols !== 7 || cal.modeSwitch.join('/') !== '周/月' || !cal.nowline) throw new Error('周视图未按预期渲染');
-await evalJs(`[...document.querySelectorAll('.cal-mode-switch button')].find(b => b.textContent === '月').click()`);
-await sleep(400);
-const monthView = await evalJs(`(() => ({ grid: !!document.querySelector('.cal-grid'), cells: document.querySelectorAll('.cal-cell').length }))()`);
-console.log('切换月视图:', JSON.stringify(monthView));
-if (!monthView.grid || monthView.cells === 0) throw new Error('月视图切换失败');
-await evalJs(`[...document.querySelectorAll('.cal-mode-switch button')].find(b => b.textContent === '周').click()`);
-await sleep(400);
+try {
+  const { send, evaluate } = await launch();
+  const invoke = async (expression) => {
+    const result = await evaluate(expression);
+    if (!result.ok) throw new Error(result.error || '业务调用失败');
+    return result.data;
+  };
+  const today = (await invoke('window.tododesk.today.get({})')).date;
+  const yesterday = new Date(`${today}T12:00:00+08:00`);
+  yesterday.setDate(yesterday.getDate() - 2);
+  const pastDate = yesterday.toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  const dueTitle = '演示：日历里的当天待办，核对长标题能完整换行，时间与分类在下方展示，不再挤在同一行或被截断';
+  const overdueTitle = '演示：逾期待办';
+  const studyTitle = '演示：今天的学习，阅读课件后记录理解并完成自测，核对较长学习内容仍能完整展示';
+  const due = await invoke(`window.tododesk.todos.add(${JSON.stringify({ title: dueTitle, due_date: today, priority: 'high' })})`);
+  await invoke(`window.tododesk.todos.add(${JSON.stringify({ title: overdueTitle, due_date: pastDate })})`);
+  await invoke(`window.tododesk.plans.create(${JSON.stringify({ title: '演示学习计划', start_date: today, items: [{ date: today, content: studyTitle }] })})`);
+  const nav = async (label) => evaluate(`([...document.querySelectorAll('.nav-item')].find(b => b.textContent.trim() === ${JSON.stringify(label)})).click()`);
+  await nav('待办');
+  await until(() => evaluate('!!document.querySelector(".composer-input")'), '待办页');
+  await nav('今日');
+  await until(() => evaluate(`document.querySelector('.cal-day')?.textContent.includes(${JSON.stringify(dueTitle)}) && document.querySelector('.study-card')?.textContent.includes(${JSON.stringify(studyTitle)})`), '日历与今日学习加载');
+  const layout = await evaluate(`(() => {
+    const panel = document.querySelector('.today-panel');
+    const labels = [...panel.querySelectorAll('.group-label')].map(e => e.textContent);
+    return { calendarFirst: panel.firstElementChild.matches('.cal-section'), labels, cards: [...panel.querySelectorAll('.todo-card')].map(e => e.textContent), week: !!panel.querySelector('.cal-weekview') };
+  })()`);
+  assert(layout.calendarFirst && layout.week, '默认周视图日历置顶');
+  assert(!layout.labels.some(label => /今天到期|今日到期/.test(label)), '移除重复的到期列表');
+  assert(!layout.cards.some(text => text.includes(dueTitle)), '当天待办仅在日历区域展示');
+  assert(layout.labels.some(label => label.includes('已逾期')) && layout.labels.some(label => label.includes('今日学习')), '保留逾期与今日学习分组');
+  const checkCards = async () => evaluate(`(() => {
+    const cards = [...document.querySelectorAll('.cal-agenda-card, .today-panel .study-card')];
+    return cards.length >= 3 && cards.every(card => {
+      const style = getComputedStyle(card), rect = card.getBoundingClientRect();
+      return parseFloat(style.borderTopWidth) > 0 && parseFloat(style.borderRadius) > 0 && style.backgroundColor !== 'rgba(0, 0, 0, 0)' && card.scrollWidth <= card.clientWidth && rect.left >= 0 && rect.right <= innerWidth;
+    }) && [...document.querySelectorAll('.cal-agenda-card')].every(card => card.querySelector('.cal-agenda-card-meta').getBoundingClientRect().top >= card.querySelector('.cal-agenda-card-main').getBoundingClientRect().bottom);
+  })()`);
+  assert(await checkCards(), '当日明细与今日学习均为卡片，元信息位于标题下方且不溢出');
+  await evaluate('document.querySelector(".cal-day").scrollIntoView({block:"start"})');
+  await capture(send, 'today');
+  await send('Emulation.setDeviceMetricsOverride', { width: 760, height: 1000, deviceScaleFactor: 1, mobile: false });
+  assert(await checkCards(), '窄窗口长标题与卡片保持完整');
+  await evaluate('document.querySelector(".cal-day").scrollIntoView({block:"start"})');
+  await capture(send, 'today-narrow');
+  await send('Emulation.clearDeviceMetricsOverride');
 
-// 2. 去待办面板加一条今天到期的高优先级
-const today = new Date().toLocaleDateString('sv-SE');
-const title = `今日面板联动 ${new Date().toLocaleTimeString('sv-SE')}`;
-await clickNav('待办'); await sleep(400);
-await evalJs(setInput('.composer-input', title));
-await evalJs(setInput('.composer .chip-select', 'high', 'HTMLSelectElement'));
-await evalJs(setInput('.composer .chip-date', today));
-await evalJs(setInput('.todo-schedule select', 'date', 'HTMLSelectElement'));
-await evalJs(`document.querySelector('.composer .btn.primary').click()`);
-await sleep(600);
+  await evaluate(`([...document.querySelectorAll('.cal-mode-switch button')].find(b => b.textContent === '月')).click()`);
+  await until(() => evaluate('!!document.querySelector(".cal-grid .cal-cell")'), '切换月视图');
+  await evaluate(`([...document.querySelectorAll('.cal-mode-switch button')].find(b => b.textContent === '周')).click()`);
+  await until(() => evaluate('!!document.querySelector(".cal-weekview")'), '返回周视图');
+  await evaluate(`([...document.querySelectorAll('.cal-item-open')].find(b => b.textContent === ${JSON.stringify(dueTitle)})).click()`);
+  await until(() => evaluate('!!document.querySelector(".cal-item-details input")'), '待办详情');
+  await evaluate(`([...document.querySelectorAll('.cal-item-details button')].find(b => b.textContent === '完成')).click()`);
+  await until(async () => (await invoke('window.tododesk.todos.list({status:"done"})')).some(todo => todo.id === due.id), '从日历详情完成待办');
+  assert(true, '当天待办仍可从日历详情完成并保存');
 
-// 3. 回今日面板：出现在「今天到期」
-await clickNav('今日'); await sleep(500);
-const found = await evalJs(`[...document.querySelectorAll('.group')].some(g =>
-  g.querySelector('.group-label')?.textContent?.includes('今天到期') &&
-  [...g.querySelectorAll('.todo-card')].some(r => r.textContent.includes(${JSON.stringify(title)})))`);
-console.log('今日面板出现新待办:', found);
-if (found !== true) throw new Error('今日面板未反映新待办');
-
-// 4. 在今日面板完成它 → 从「今天到期」列表消失（完成态进入打卡记录）
-await evalJs(`[...document.querySelectorAll('.todo-card')].find(r => r.textContent.includes(${JSON.stringify(title)})).querySelector('.check').click()`);
-await sleep(600);
-const after = await evalJs(`(() => ({
-  stillThere: [...document.querySelectorAll('.todo-card')].some(r => r.textContent.includes(${JSON.stringify(title)})),
-}))()`);
-console.log('完成后仍显示:', after.stillThere);
-if (after.stillThere !== false) throw new Error('今日面板完成联动异常');
-
-// 5. 截图
-const shot = await send('Page.captureScreenshot', { format: 'png' });
-writeFileSync('/tmp/tododesk-ui-v3.png', Buffer.from(shot.result.data, 'base64'));
-console.log('截图 → /tmp/tododesk-ui-v3.png');
-console.log('迭代 2 今日面板冒烟通过 ✅');
-ws.close();
-process.exit(0);
+  await until(() => evaluate(`!![...document.querySelectorAll('.todo-card')].find(e => e.textContent.includes(${JSON.stringify(overdueTitle)}))`), '逾期待办');
+  await evaluate(`[...document.querySelectorAll('.todo-card')].find(e => e.textContent.includes(${JSON.stringify(overdueTitle)})).querySelector('.check').click()`);
+  await until(() => evaluate(`![...document.querySelectorAll('.todo-card')].some(e => e.textContent.includes(${JSON.stringify(overdueTitle)}))`), '逾期待办完成');
+  await evaluate('document.querySelector(".study-card .check").click()');
+  await until(async () => (await invoke('window.tododesk.today.get({})')).today_plan_items.some(item => item.content === studyTitle && item.status === 'done'), '今日学习打卡');
+  await until(() => evaluate('!!document.querySelector(".study-card.done .check.checked")'), '学习打卡状态回流');
+  assert(true, '逾期完成与今日学习打卡保持可用');
+  const overview = await invoke('window.tododesk.today.get({})');
+  assert(overview.checkins.length >= 3, '完成和打卡记录保留');
+  console.log('今日页隔离验收通过');
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
+} finally {
+  await stop();
+  rmSync(work, { recursive: true, force: true });
+}

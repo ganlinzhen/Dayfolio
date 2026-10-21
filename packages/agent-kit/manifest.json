@@ -24,8 +24,6 @@
           "get_runtime_tool_contract",
           "list_extensions",
           "list_event_providers",
-          "preview_extension_install",
-          "install_extension",
           "import_external_events",
           "list_external_events",
           "refresh_event_provider",

@@ -55,7 +55,8 @@ describe('预览演示播种（四模块闭环）', () => {
       const lesson = core.courses.getLesson(r.course.id, 1);
       const html = core.courses.readLessonHtml(lesson);
       expect(html).toContain('Dayfolio 上手之旅');
-      expect(html).toContain('创建请求只是排队');
+      expect(html).toContain('当前对话中的助手直接核实并提交');
+      expect(html).toContain('课程等请求仍等待外部助手执行');
       expect(html).toContain('<style>'); // 仓库课程样式经真实导入后内联
       const overview = core.courses.getOverview(r.course.id);
       expect(overview).not.toBeNull();

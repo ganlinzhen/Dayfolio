@@ -1,6 +1,7 @@
 import type { ToolGroup } from './shared/context';
 
 export const TOOL_GROUPS = {
+  settings: { id: 'settings', title: '设置', entity: 'agent_settings', desc: 'App 后台 Agent 的连接偏好，不含登录凭证。', section: '业务模块' },
   runtime: { id: 'runtime', title: '运行时工具与订阅', entity: 'extension / provider / event / subscription', desc: '声明式工具安装、来源事件、订阅与统一日历。', section: '业务模块' },
   today: { id: 'today', title: '今日', entity: 'today', desc: '今日待办、学习与日程概览。', section: '业务模块' },
   todos: { id: 'todos', title: '待办', entity: 'todo / checkin', desc: '待办与完成记录，保留业务联动。', section: '业务模块' },

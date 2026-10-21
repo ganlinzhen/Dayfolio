@@ -1,3 +1,4 @@
+import Modal from './Modal';
 import { ObjectParameter } from './DataObjects';
 import ActionValuesInput from './ActionValuesInput';
 import ActionHistory from './ActionHistory';
@@ -148,34 +149,34 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
       </div>
 
       {addingTo && (
-        <Modal title={`为 ${types.find((t) => t.apiName === addingTo)?.title ?? addingTo} 添加属性`} onClose={() => setAddingTo('')}>
-          <PropertyForm draft={addProp} setDraft={setAddProp} />
-          <footer className="modal-foot">
+        <Modal title={`为 ${types.find((t) => t.apiName === addingTo)?.title ?? addingTo} 添加属性`} onClose={() => setAddingTo('')} footer={<>
             <button className="btn ghost" onClick={() => setAddingTo('')}>
               取消
             </button>
             <button className="btn primary" disabled={!addProp.apiName.trim()} onClick={() => void doAddProperty()}>
               添加
             </button>
-          </footer>
+           </>}>
+          <PropertyForm draft={addProp} setDraft={setAddProp} />
+
         </Modal>
       )}
 
       {deleting && (
-        <Modal title={`删除对象类型「${deleting.title}」`} onClose={() => setDeleting(null)}>
-          <p className="notice">
-            将删除类型定义、物理表 <span className="mono">{deleting.tableName}</span> 与全部数据，且不可恢复。输入 apiName{' '}
-            <span className="mono">{deleting.apiName}</span> 确认：
-          </p>
-          <input className="form-input" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={deleting.apiName} />
-          <footer className="modal-foot">
+        <Modal title={`删除对象类型「${deleting.title}」`} onClose={() => setDeleting(null)} footer={<>
             <button className="btn ghost" onClick={() => setDeleting(null)}>
               取消
             </button>
             <button className="btn danger" disabled={confirmName !== deleting.apiName} onClick={() => void doDelete()}>
               永久删除
             </button>
-          </footer>
+           </>}>
+          <p className="notice">
+            将删除类型定义、物理表 <span className="mono">{deleting.tableName}</span> 与全部数据，且不可恢复。输入 apiName{' '}
+            <span className="mono">{deleting.apiName}</span> 确认：
+          </p>
+          <input className="form-input" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder={deleting.apiName} />
+
         </Modal>
       )}
 
@@ -258,7 +259,14 @@ function CreateObjectTypeModal({ types, links, onClose, onDone }: { types: Objec
   };
 
   return (
-    <Modal title="新建对象类型" onClose={onClose} wide>
+    <Modal title="新建对象类型" onClose={onClose} busy={busy} wide footer={<>
+        <button className="btn ghost" disabled={busy} onClick={onClose}>
+          取消
+        </button>
+        <button className="btn primary" disabled={busy || !apiName.trim() || !title.trim()} onClick={() => void save()}>
+          创建
+        </button>
+       </>}>
       <div className="form-row">
         <label className="form-label">显示名 *</label>
         <input className="form-input" value={title} placeholder="如 书架" onChange={(e) => setTitle(e.target.value)} />
@@ -293,14 +301,7 @@ function CreateObjectTypeModal({ types, links, onClose, onDone }: { types: Objec
       {linkHint > 0 && <p className="sub">提示：创建后可在对象类型详情的「关系」页把它与其他类型关联。</p>}
       <label className="cal-check"><input type="checkbox" checked={generateActions} onChange={e => setGenerateActions(e.target.checked)}/>生成新增、编辑和删除基础动作</label>
       {!generateActions && <p className="sub">关闭后需要另行定义自定义动作才能写入对象。</p>}
-      <footer className="modal-foot">
-        <button className="btn ghost" onClick={onClose}>
-          取消
-        </button>
-        <button className="btn primary" disabled={busy || !apiName.trim() || !title.trim()} onClick={() => void save()}>
-          创建
-        </button>
-      </footer>
+
     </Modal>
   );
 }
@@ -434,7 +435,18 @@ function CreateLinkTypeModal({ types, onClose, onDone, focusedType }: { types: O
   };
 
   return (
-    <Modal title="新建链接类型" onClose={onClose} wide>
+    <Modal title="新建链接类型" onClose={onClose} busy={busy} wide footer={<>
+        <button className="btn ghost" disabled={busy} onClick={onClose}>
+          取消
+        </button>
+        <button
+          className="btn primary"
+          disabled={busy || !apiName.trim() || (cardinality === 'many_to_many' ? !(linkTable && backingLeftProperty && backingRightProperty) : !fkColumn)}
+          onClick={() => void save()}
+        >
+          创建
+        </button>
+       </>}>
       <div className="form-row">
         <label className="form-label">显示名</label>
         <input className="form-input" value={title} placeholder="如 文件的标签" onChange={(e) => setTitle(e.target.value)} />
@@ -513,18 +525,7 @@ function CreateLinkTypeModal({ types, onClose, onDone, focusedType }: { types: O
           </select>
         </div>
       )}
-      <footer className="modal-foot">
-        <button className="btn ghost" onClick={onClose}>
-          取消
-        </button>
-        <button
-          className="btn primary"
-          disabled={busy || !apiName.trim() || (cardinality === 'many_to_many' ? !(linkTable && backingLeftProperty && backingRightProperty) : !fkColumn)}
-          onClick={() => void save()}
-        >
-          创建
-        </button>
-      </footer>
+
     </Modal>
   );
 }
@@ -929,7 +930,14 @@ function CreateActionTypeModal({
   };
 
   return (
-    <Modal title="新建动作类型" onClose={onClose} wide>
+    <Modal title="新建动作类型" onClose={onClose} busy={busy} wide footer={<>
+        <button className="btn ghost" disabled={busy} onClick={onClose}>
+          取消
+        </button>
+        <button className="btn primary" disabled={busy || !apiName.trim() || !title.trim()} onClick={() => void save()}>
+          创建
+        </button>
+       </>}>
       <div className="form-row">
         <label className="form-label">显示名 *</label>
         <input className="form-input" value={title} placeholder="如 记一笔读书" onChange={(e) => setTitle(e.target.value)} />
@@ -981,14 +989,7 @@ function CreateActionTypeModal({
       <button className="btn slim ghost" onClick={() => setOps([...ops, emptyOperation()])}>
         + 添加规则
       </button>
-      <footer className="modal-foot">
-        <button className="btn ghost" onClick={onClose}>
-          取消
-        </button>
-        <button className="btn primary" disabled={busy || !apiName.trim() || !title.trim()} onClick={() => void save()}>
-          创建
-        </button>
-      </footer>
+
     </Modal>
   );
 }
@@ -1035,7 +1036,15 @@ function RunActionModal({ action, onClose, onDone }: { action: ActionTypeDef; on
   };
 
   return (
-    <Modal title={`执行动作「${action.title}」`} onClose={onClose}><p className="sub">执行会真实修改数据，请核对参数。</p>
+    <Modal title={`执行动作「${action.title}」`} onClose={onClose} busy={busy} footer={<>
+        <button className="btn ghost" disabled={busy} onClick={onClose}>
+          关闭
+        </button>
+        <button className="btn primary" disabled={busy || (needsPreview && !preview)} onClick={() => void run()}>
+          执行
+        </button>
+       </>}>
+      <p className="sub">执行会真实修改数据，请核对参数。</p>
       {action.parameters.length === 0 && <p className="sub">该动作无参数，直接执行。</p>}
       {action.parameters.map((p) => (
         <div className="form-row" key={p.name}>
@@ -1052,32 +1061,7 @@ function RunActionModal({ action, onClose, onDone }: { action: ActionTypeDef; on
         </pre>
       )}
       {previewError && <p className="notice error" role="alert">{previewError}</p>}
-      <footer className="modal-foot">
-        <button className="btn ghost" onClick={onClose}>
-          关闭
-        </button>
-        <button className="btn primary" disabled={busy || (needsPreview && !preview)} onClick={() => void run()}>
-          执行
-        </button>
-      </footer>
+
     </Modal>
-  );
-}
-
-// ---------- 通用弹窗 ----------
-
-function Modal({ title, onClose, wide, children }: { title: string; onClose: () => void; wide?: boolean; children: React.ReactNode }) {
-  return (
-    <div className="modal-mask" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal${wide ? ' wide' : ''}`}>
-        <header className="modal-head">
-          <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose}>
-            ×
-          </button>
-        </header>
-        <div className="modal-body">{children}</div>
-      </div>
-    </div>
   );
 }

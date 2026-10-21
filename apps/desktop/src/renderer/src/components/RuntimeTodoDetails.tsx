@@ -1,3 +1,4 @@
+import Modal from './Modal';
 // 导航只接受主进程确认过的实际待办引用，沿用待办和订阅业务详情。
 import { useEffect, useState } from 'react';
 import { api, call } from '../api';
@@ -26,7 +27,8 @@ export default function RuntimeTodoDetails({ id, onClose }: { id: number; onClos
     })();
     return()=>{active=false;};
   },[id]);
-  return <div className="modal-mask" onClick={event=>event.target===event.currentTarget&&onClose()}><div className="modal wide runtime-todo-modal" role="dialog" aria-label="工具关联待办详情">
-    {error?<div className="notice error">{error}<button className="btn slim" onClick={onClose}>关闭</button></div>:item?<CalendarItemDetails item={item} onClose={onClose} onChanged={async()=>{window.dispatchEvent(new Event('dayfolio:changed'));}}/>:<p>正在读取关联待办…</p>}
-  </div></div>;
+  if (item) return <CalendarItemDetails inModal item={item} onClose={onClose} onChanged={async()=>{window.dispatchEvent(new Event('dayfolio:changed'));}}/>;
+  return <Modal title="工具关联待办详情" onClose={onClose} wide>
+    {error ? <div className="notice error" role="alert">{error}</div> : <p>正在读取关联待办…</p>}
+  </Modal>;
 }

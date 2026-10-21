@@ -565,18 +565,61 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .plan-item-open .plan-item-content { flex: 1; min-width: 0; }
 .plan-item-go { flex-shrink: 0; color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .plan-item-open:hover .plan-item-go { color: var(--text); }
-.plan-item-detail-content { margin: 16px 0; font-size: 18px; line-height: 1.7; white-space: pre-wrap; }
-.plan-item-detail-facts { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--text-3); font-size: 12px; }
-.plan-item-detail-actions { margin: 20px 0 4px; }
+/* 学习详情：单列阅读工作区，顶部信息和阅读器使用一致的层级。 */
+.plan-item-detail { max-width: 1040px; margin-inline: auto; overflow-wrap: anywhere; }
+.plan-item-detail .backlink { color: var(--text-2); }
+.plan-learning-overview { padding: 4px 0 18px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+.plan-item-detail-content { max-width: 68ch; margin: 0 0 10px; font-size: 21px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
+.plan-learning-goal { max-width: 74ch; margin: 0 0 14px; color: var(--text-2); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.plan-item-detail-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; color: var(--text-2); font: 12px var(--sans); font-variant-numeric: tabular-nums; }
+.plan-learning-state { margin-left: auto; padding: 3px 8px; background: var(--sel); border-radius: 4px; }
+.plan-learning-state.done { color: var(--ok); background: var(--ok-bg); }
+.plan-learning-overview .learning-signals { margin: 14px 0 0; gap: 8px 18px; }
+.plan-item-detail .learning-detail-section { margin-bottom: 28px; padding-top: 0; }
+.plan-item-detail .learning-detail-section > h2 { font-size: 16px; margin-bottom: 12px; }
+.plan-item-detail .course-embed:not(.is-fullscreen) { height: min(70vh, 760px); min-height: 420px; margin: 0 0 20px; }
+.plan-item-detail .course-embed .embed-frame-toolbar { padding: 10px 12px 10px 16px; gap: 12px; align-items: flex-start; }
+.plan-item-detail .course-embed .embed-frame-heading { flex: 1; flex-direction: column; align-items: flex-start; gap: 3px; }
+.plan-item-detail .course-embed .embed-frame-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+.plan-item-detail .course-embed .embed-frame-meta { white-space: normal; color: var(--text-2); font-size: 11px; line-height: 1.6; }
+.plan-item-detail .course-embed .embed-frame-toolbar > .spacer { display: none; }
+.plan-item-detail .course-embed .embed-frame-actions { flex-shrink: 0; }
+.plan-item-detail .course-quiz { padding: 12px 0 16px; margin: 18px 0; }
+.plan-item-detail .course-quiz-q { font-weight: 550; line-height: 1.7; }
+.plan-item-detail .course-quiz-opt { padding: 9px 12px; margin: 4px 0; align-items: baseline; line-height: 1.7; }
+.plan-item-detail .course-quiz-opt:has(input:checked):not(.correct):not(.wrong) { background: var(--sel); }
+.plan-item-detail .course-quiz-opt.correct { background: var(--ok-bg); }
+.plan-item-detail .course-quiz-opt.wrong { background: var(--danger-bg); }
+.plan-item-detail .study-note-editor { margin: 12px 0 18px; }
+.plan-item-detail .study-note-editor textarea { border: 1px solid var(--line-strong); border-radius: 8px; padding: 12px 14px; background: var(--surface); }
+.plan-item-detail .study-note-editor textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plan-item-detail .learning-completion { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 24px; padding: 20px 0; }
+.plan-item-detail .learning-completion h2 { flex-basis: 100%; font-size: 16px; margin-bottom: 0; }
+.plan-item-detail .learning-completion .sub { flex: 1 1 280px; font-size: 12px; }
+.plan-item-detail-actions { margin: 10px 0; }
 .plan-item-detail-mastery { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 0; }
-.learning-plan-card { padding: 22px 24px; }
+@media (max-width: 760px) {
+  .plan-item-detail-content { font-size: 18px; }
+  .plan-item-detail-facts { gap: 8px 14px; }
+  .plan-learning-state { margin-left: 0; }
+  .plan-item-detail .course-embed .embed-frame-toolbar { padding: 10px 12px; gap: 8px; }
+}
+.study-home { max-width: 1040px; margin-inline: auto; }
+.learning-plan-card { padding: 15px 18px; }
 .learning-plan-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.learning-plan-card .plan-card-head { justify-content: space-between; align-items: start; gap: 16px; }
-.learning-plan-card .plan-title { font-family: var(--sans); font-size: 18px; line-height: 1.5; }
-.learning-plan-card .plan-status { flex-shrink: 0; padding-top: 5px; }
-.learning-plan-completion { display: flex; justify-content: space-between; margin-top: 22px; font-size: 12px; color: var(--text-2); }
-.learning-plan-card .progress { margin-top: 8px; height: 4px; }
-.learning-plan-go { margin-top: 16px; text-align: right; font-size: 12px; color: var(--text-2); }
+.learning-plan-card .plan-card-head { justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 5px; }
+.learning-plan-card .plan-title { min-width: 0; font-family: var(--sans); font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.learning-plan-card .plan-status { flex-shrink: 0; font-family: var(--sans); letter-spacing: 0; }
+.learning-plan-dates { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 11.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.learning-plan-goal { max-width: 86ch; margin: 7px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--text-2); overflow-wrap: anywhere; }
+.learning-plan-card .plan-link { margin-top: 6px; font-size: 11.5px; color: var(--text-2); overflow-wrap: anywhere; }
+.learning-plan-completion { display: flex; align-items: center; gap: 12px; margin-top: 12px; color: var(--text-2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.learning-plan-card .progress { flex: 1; max-width: 220px; height: 3px; margin: 0; }
+.learning-plan-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 10px; }
+.learning-plan-card .learning-totals { margin: 0; gap: 6px 18px; font-size: 11.5px; }
+.learning-plan-card .learning-loading { margin: 0; font-size: 12px; }
+.learning-plan-go { margin-left: auto; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.learning-plan-card:hover .learning-plan-go { color: var(--text); }
 .learning-totals { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 16px 0; color: var(--text-2); font-size: 12px; }
 .learning-totals b { margin-left: 6px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .learning-item-card { display: block; padding: 0; margin: 12px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
@@ -617,7 +660,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .plan-item-detail-content { font-weight: 600; }
 .plan-item-detail-facts { color: var(--text-2); }
 @media (max-width: 760px) {
-  .learning-plan-card { padding: 18px; }
+  .learning-plan-card { padding: 14px 16px; }
   .learning-item-card .plan-item-open { padding: 16px; }
   .learning-item-heading { flex-direction: column; gap: 5px; }
   .learning-totals { gap: 10px 16px; }
@@ -627,43 +670,70 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 }
 .type-icon { color: var(--text-3); flex-shrink: 0; }
 
-/* 计划详情：关联课程的每日概要（讲义卡片 / 待生成提示 / 第 N 天徽标） */
-.plan-course-bar { justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 10px 0 2px; }
-.group-day-chip {
-  margin-left: 8px;
-  padding: 1px 7px;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  font-size: 11px;
-  color: var(--text-2);
+/* 计划详情：紧凑概览与逐日学习，长标题和元信息分层展示。 */
+.plan-detail { max-width: 1040px; margin-inline: auto; }
+.plan-detail .backlink { color: var(--text-2); }
+.plan-detail-overview { padding: 4px 0 18px; border-bottom: 1px solid var(--line); }
+.plan-detail-overview .panel-head { align-items: baseline; flex-wrap: nowrap; padding: 0; margin: 0 0 8px; min-height: 0; border: none; }
+.plan-detail-overview h1 { flex: 1; font-size: 21px; line-height: 1.5; text-wrap: pretty; }
+.plan-detail-state { flex-shrink: 0; color: var(--text-2); font-size: 12px; }
+.plan-detail-goal { max-width: 72ch; margin: 0 0 10px; font-size: 13px; line-height: 1.7; color: var(--text-2); overflow-wrap: anywhere; }
+.plan-detail-meta { display: flex; flex-wrap: wrap; gap: 6px 20px; color: var(--text-2); font-size: 12px; }
+.plan-detail-progress { display: flex; align-items: center; gap: 12px; margin: 16px 0 0; color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.plan-detail-progress > span { flex-shrink: 0; }
+.plan-detail-progress b { color: var(--text); font-weight: 600; margin-left: 4px; }
+.plan-detail-progress .progress { flex: 1; max-width: 320px; margin: 0; height: 4px; }
+.plan-detail-overview .learning-totals { margin: 12px 0 0; gap: 8px 24px; }
+.plan-course-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; padding: 14px 0; }
+.plan-course-bar > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; font-size: 12px; }
+.plan-course-label, .plan-course-count { color: var(--text-2); }
+.plan-course-name { font-weight: 500; overflow-wrap: anywhere; }
+.plan-course-bar > .btn { flex-shrink: 0; }
+.plan-detail .plan-detail-overview + .ai-study-action.is-compact { margin-top: 16px; }
+.plan-detail .ai-study-action.is-compact, .plan-item-detail .ai-study-action.is-compact { grid-template-columns: minmax(0, 1fr) auto; margin: 0 0 26px; padding: 14px 16px; border: none; border-radius: 8px; background: var(--sel); gap: 4px 16px; }
+.ai-study-action.is-compact h2 { font-size: 13px; margin: 0 0 2px; }
+.ai-study-action.is-compact p { font-size: 12px; }
+.ai-study-action.is-compact > .btn { grid-column: 2; grid-row: 1 / 3; font-size: 12px; padding: 8px 12px; }
+.ai-study-action.is-compact .ai-prompt-preview { grid-column: 1; margin: 0; font-size: 12px; }
+.ai-study-action.is-compact .ai-prompt-preview[open] { grid-column: 1 / -1; }
+.ai-study-action.is-compact .ai-prompt-preview summary { width: fit-content; color: var(--text-2); }
+.ai-study-action.is-compact .ai-study-hint { margin: 10px 0; }
+.plan-schedule-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.plan-schedule-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.plan-schedule-heading > span { color: var(--text-2); font-size: 12px; }
+.plan-day-group { margin-bottom: 28px; }
+.plan-day-group > .group-label { gap: 10px; margin-bottom: 10px; font-family: var(--sans); letter-spacing: 0; text-transform: none; flex-wrap: wrap; }
+.plan-day-number { font-size: 14px; color: var(--text); font-weight: 600; }
+.plan-day-date { font-size: 12px; color: var(--text-2); font-weight: 400; }
+.plan-today-chip { background: var(--accent); color: var(--surface); font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+.plan-day-completion { margin-left: auto; color: var(--text-2); font-size: 12px; font-weight: 400; }
+.plan-day-lesson { display: flex; align-items: center; justify-content: space-between; gap: 12px 24px; width: 100%; text-align: left; padding: 12px 0; border: none; border-block: 1px solid var(--line); background: transparent; cursor: pointer; }
+.plan-day-lesson:hover { background: var(--sel); }
+.plan-day-lesson-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.plan-day-lesson-label { color: var(--text-2); font-size: 11px; }
+.plan-day-lesson-title { font-size: 13px; font-weight: 550; line-height: 1.5; overflow-wrap: anywhere; }
+.plan-day-lesson-summary { font-size: 12px; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }
+.plan-day-lesson-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+.plan-day-lesson-meta { color: var(--text-2); white-space: nowrap; font-size: 11px; }
+.plan-day-lesson-go { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.plan-day-pending { padding: 10px 0; border-block: 1px solid var(--line); font-size: 12px; line-height: 1.7; color: var(--text-2); }
+.plan-detail .learning-item-card { margin: 10px 0 0; }
+.plan-detail .learning-item-card .plan-item-open { padding: 16px 18px; }
+.plan-detail .learning-item-card .plan-item-content { font-size: 14px; line-height: 1.7; max-width: 75ch; }
+.plan-detail .learning-item-status { padding-top: 3px; font-size: 11px; }
+.plan-detail .learning-signals { margin: 12px 0; gap: 8px 16px; }
+.plan-detail .learning-item-footer { padding-top: 10px; }
+.plan-detail .learning-item-footer .plan-item-go { margin-left: auto; color: var(--text); font-weight: 500; }
+.plan-detail .plan-item-open:focus-visible, .plan-day-lesson:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 760px) {
+  .plan-detail-overview h1 { font-size: 18px; }
+  .plan-detail-overview .panel-head { flex-wrap: wrap; }
+  .plan-detail-overview .learning-totals { gap: 8px 16px; }
+  .plan-detail .ai-study-action.is-compact, .plan-item-detail .ai-study-action.is-compact { grid-template-columns: minmax(0, 1fr); }
+  .ai-study-action.is-compact > .btn { grid-column: 1; grid-row: auto; margin-top: 8px; justify-self: start; }
+  .plan-day-lesson { flex-direction: column; align-items: stretch; gap: 8px; }
+  .plan-day-lesson-side { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 }
-.plan-day-lesson {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  padding: 11px 12px;
-  border: none;
-  border-top: 1px solid var(--line);
-  background: var(--sel);
-  cursor: pointer;
-}
-.plan-day-lesson:hover { background: var(--bg-hover, #e9e8e2); }
-.plan-day-lesson-title { font-size: 13.5px; font-weight: 550; flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plan-day-lesson-summary { font-size: 12.5px; color: var(--text-3); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plan-day-lesson-meta { white-space: nowrap; }
-.plan-day-lesson-go { font-size: 12px; color: var(--text-3); white-space: nowrap; }
-.plan-day-pending {
-  padding: 10px 12px;
-  border-top: 1px solid var(--line);
-  font-size: 12.5px;
-  color: var(--text-3);
-  background: transparent;
-}
-/* 课程概要行紧邻的首个条目补回 hairline（first-of-type 会因前置行而失效） */
-.plan-day-lesson + .plan-item,
-.plan-day-pending + .plan-item { border-top: 1px solid var(--line); }
 
 .backlink {
   display: inline-flex;
@@ -1049,61 +1119,87 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 }
 .tool-crumb-back:hover { color: var(--text); background: var(--sel); }
 .tool-iframe { flex: 1; width: 100%; border: none; background: var(--surface); }
+.tool-todo-select-all { display: flex; gap: 10px; align-items: center; margin: 16px 0 8px; }
+.tool-todo-category { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; }
+.todo-category-filter { max-width: 180px; }
+.todo-toolbar .searchbox { flex-basis: 140px; }
+.tool-todo-list { display: grid; }
+.tool-todo-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.tool-todo-row > input { margin-top: 4px; flex-shrink: 0; }
+.tool-todo-row > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.tool-todo-row strong { display: block; font-weight: 600; }
+.tool-todo-row small { display: block; margin-top: 4px; color: var(--text-2); white-space: pre-wrap; }
 
-/* 卡片网格：图标在上、名称在下，hover 浮现编辑/删除 */
+/* 工具入口：横向小卡片，图标与名称并排。 */
 .tool-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 216px));
+  gap: 16px 20px;
 }
 .tool-card {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
+  min-width: 0;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px 14px 12px;
-  cursor: pointer;
-  transition: border-color var(--t-fast) var(--ease-out);
+  border-radius: 10px;
+  transition: background var(--t-fast) var(--ease-out);
 }
-.tool-card:hover { border-color: var(--line-strong); }
-.tool-card:active { transform: translateY(0.5px); }
+.tool-card:hover, .tool-card:focus-within { background: var(--sel); }
+.tool-card-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 28px 12px 14px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
 .tool-card-icon {
   display: inline-flex;
+  flex: 0 0 36px;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: var(--sel);
-  color: var(--text);
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  color: #fff;
 }
+.tool-tone-green { background: #217a6b; }
+.tool-tone-blue { background: #315bc8; }
+.tool-tone-violet { background: #6650bd; }
+.tool-card-icon img { display: block; object-fit: contain; border-radius: inherit; }
 .tool-card-title {
   font-size: 13px;
   font-weight: 550;
-  max-width: 100%;
+  line-height: 1.45;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.tool-card-acts {
+.tool-card-delete {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  display: flex;
-  gap: 2px;
+  top: 4px;
+  right: 4px;
   opacity: 0;
   transition: opacity var(--t-fast) var(--ease-out);
 }
-.tool-card:hover .tool-card-acts { opacity: 1; }
+.tool-card:hover .tool-card-delete, .tool-card:focus-within .tool-card-delete { opacity: 1; }
+.tool-card-open:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+@media (hover: none) { .tool-card-delete { opacity: 1; } }
 
-/* ---------- 弹窗（工具箱首次引入，通用） ---------- */
+/* ---------- 共用弹窗：标题、独立滚动正文、右下角操作 ---------- */
 .modal-mask {
   position: fixed;
   inset: 0;
+  padding: 24px;
   background: rgba(26, 26, 25, 0.32);
   display: flex;
   align-items: center;
@@ -1119,33 +1215,61 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  width: min(560px, calc(100vw - 48px));
-  max-height: calc(100vh - 96px);
-  box-shadow: 0 14px 44px rgba(26, 26, 25, 0.14);
+  border: 0;
+  border-radius: 8px;
+  width: min(520px, 100%);
+  max-height: calc(100dvh - 48px);
+  box-shadow: 0 16px 48px rgba(26, 26, 25, 0.18);
+  overflow: hidden;
+  outline: none;
 }
 .modal-head {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding: 18px 22px 13px;
-  border-bottom: 1px solid var(--line);
+  align-items: flex-start;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 22px 24px 12px;
 }
+.modal-heading { flex: 1; min-width: 0; }
 .modal-head h2 {
-  font-family: var(--serif);
-  font-size: 18px;
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 24px;
   font-weight: 600;
   margin: 0;
-  letter-spacing: 0.2px;
+  overflow-wrap: anywhere;
 }
-.modal-body { padding: 16px 22px 4px; overflow-y: auto; }
+.modal-description { margin: 4px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-2); }
+.modal-close { flex-shrink: 0; margin: -2px -4px 0 0; color: var(--text-2); }
+.modal-body { min-height: 0; padding: 0 24px 24px; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.modal:has(> .modal-foot) > .modal-body { padding-bottom: 4px; }
+.modal-body > :first-child { margin-top: 0; }
+.modal-body > :last-child { margin-bottom: 0; }
+.modal-body h4 { margin: 20px 0 8px; font-size: 13px; font-weight: 600; }
+.modal-body p, .modal-body li { line-height: 1.65; }
+.modal-body ul { padding-left: 20px; }
+.modal-body li + li { margin-top: 6px; }
 .modal-foot {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
-  padding: 13px 22px 18px;
-  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+  padding: 16px 24px 20px;
+}
+.modal-foot .btn { min-height: 32px; padding: 6px 14px; justify-content: center; }
+.modal-foot .btn.ghost { border-color: var(--line-strong); }
+.modal :is(button, a, [tabindex]):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.runtime-install-modal .sub { margin-top: 20px; }
+.runtime-todo-modal .cal-item-details { padding: 0; border: 0; }
+.runtime-todo-modal .cal-form-row { justify-content: flex-end; }
+@media (max-width: 560px), (max-height: 560px) {
+  .modal-mask { padding: 16px; }
+  .modal { max-height: calc(100dvh - 32px); }
+  .modal-head { padding: 18px 20px 12px; }
+  .modal-body { padding: 0 20px 20px; }
+  .modal-foot { padding: 14px 20px 18px; }
 }
 
 /* 表单行 */
@@ -1577,10 +1701,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   word-break: break-all;
 }
 
-.modal.wide {
-  max-width: 720px;
-  width: 92vw;
-}
+.modal.wide { width: min(720px, 100%); }
 
 /* 版本号：显示在帮助入口最右侧，点击打开发版记录弹层 */
 .nav-item-version {
@@ -1971,7 +2092,11 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 
 /* ---------- 日历（今日页区块：飞书式月视图，Codex 色板） ---------- */
 .cal-section { margin-top: 8px; }
-.cal-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.cal-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.cal-toolbar > .btn, .cal-toolbar > .icon-btn, .cal-mode-switch { flex-shrink: 0; }
+.cal-toolbar .cal-title { white-space: nowrap; }
+.cal-create-actions { display: flex; flex-shrink: 0; align-items: center; gap: 6px; }
+.cal-create-actions .btn { white-space: nowrap; }
 .cal-toolbar .btn svg { margin-right: 2px; }
 .cal-title { font-size: 15px; font-weight: 600; margin-left: 6px; }
 
@@ -2012,7 +2137,31 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .cal-badge.today-badge { color: var(--text); border-color: var(--text); }
 .cal-empty { padding: 2px 0 4px; }
 
-.cal-ev-row { display: flex; align-items: baseline; gap: 9px; padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.cal-agenda-cards { display: flex; flex-direction: column; gap: 10px; }
+.cal-ev-row.cal-agenda-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition: border-color var(--t-fast) var(--ease-out);
+}
+.cal-agenda-card:hover, .cal-agenda-card:focus-within { border-color: var(--line-strong); }
+.cal-agenda-card-main { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.cal-agenda-card-main .cal-dot { flex-shrink: 0; margin-top: 8px; }
+.cal-agenda-card .cal-ev-title { flex: 1; font-size: 14px; font-weight: 550; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
+.cal-agenda-card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding-left: 16px; color: var(--text-2); font-size: 12px; overflow-wrap: anywhere; }
+.cal-agenda-card-meta .cal-ev-time { min-width: 0; color: var(--text-2); }
+.today-panel .todo-card.study-card { margin: 0 0 10px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.today-panel .study-card:hover, .today-panel .study-card:focus-within { border-color: var(--line-strong); }
+.today-panel .study-card .todo-title { cursor: default; }
+.today-panel .study-card .todo-card-meta { color: var(--text-2); overflow-wrap: anywhere; }
+.today-panel .study-card .todo-meta { white-space: normal; }
+@media (max-width: 760px) {
+  .cal-ev-row.cal-agenda-card, .today-panel .todo-card.study-card { padding: 14px; }
+}
 .cal-ev-row.cont { opacity: 0.72; }
 .cal-ev-time { font-size: 11.5px; color: var(--text-3); min-width: 96px; }
 .cal-ev-title { font-size: 13.5px; font-weight: 550; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2111,11 +2260,30 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .todo-title[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* 运行时日历分类与固定业务详情 */
-.cal-display-panel { margin: 0 0 14px; border: 1px solid var(--border, #e6e3de); border-radius: 8px; padding: 9px 12px; }
-.cal-display-panel summary { cursor: pointer; font-size: 13px; }
-.cal-collection-list { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-top: 12px; }
+.cal-more-button { min-width: 32px; justify-content: center; padding-inline: 7px; }
+.cal-toolbar .cal-more-button svg { margin: 0; }
+.cal-actions-menu { position: fixed; z-index: 60; width: 176px; padding: 4px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.cal-actions-menu button { width: 100%; padding: 8px 10px; text-align: left; color: var(--text); background: transparent; border: 0; border-radius: 5px; font: inherit; font-size: 13px; cursor: pointer; }
+.cal-actions-menu button:hover, .cal-actions-menu button:focus-visible { background: var(--sel); outline: 1px solid var(--line-strong); }
+.cal-collections-modal { width: min(600px, 100%); }
+.cal-managed-collection { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.cal-managed-summary { display: flex; align-items: center; gap: 12px; }
+.cal-managed-summary .cal-check { flex: 1; min-width: 0; gap: 8px; color: var(--text); font-size: 14px; }
+.cal-managed-summary .cal-check input, .cal-managed-summary .cal-dot { flex-shrink: 0; }
+.cal-managed-title { overflow-wrap: anywhere; }
+.cal-managed-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.cal-managed-hint { margin: 5px 0 0 24px; color: var(--text-2); font-size: 12px; }
+.cal-collection-editor, .cal-collection-confirm { margin: 12px 0 2px 24px; }
+.cal-collection-editor .cal-field { display: flex; gap: 12px; }
+.cal-collection-editor .inline-input { flex: 1; min-width: 0; }
+.cal-collection-editor .cal-form-row { margin-top: 10px; gap: 6px; }
+.cal-collection-editor .cal-color-btn { min-width: 30px; min-height: 30px; }
+.cal-collection-confirm p { font-size: 13px; margin: 0 0 10px; }
+.cal-collection-confirm .cal-managed-hint { margin-left: 0; font-size: 12px; }
+.cal-managed-timezone { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; padding: 20px 0 12px; }
+.cal-managed-timezone .cal-field { display: flex; flex: 1; min-width: 180px; flex-direction: column; gap: 8px; align-items: stretch; }
+.cal-managed-timezone .inline-input { width: 100%; min-width: 0; }
 .cal-zone { font-size: 11px; color: var(--muted, #777); }
-.cal-collection-list .inline-input { width: 160px; }
 .cal-item-details { border: 1px solid var(--border, #e6e3de); border-radius: 8px; padding: 14px; margin: 12px 0; }
 .cal-item-details > .cal-field { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
 .cal-item-details .inline-input { flex: 1; min-width: 80px; }
@@ -2128,10 +2296,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 @media (max-width: 950px) { .cal-zone { display: none; } .cal-title { font-size: 15px; } }
 /* 运行时工具沿用工具箱和日历样式，不允许包资源改写宿主布局。 */
 .runtime-tools { padding-block: 16px; }
-.runtime-tool-card { padding: 12px; border: 1px solid var(--line, #e5e3df); border-radius: 10px; }
-.runtime-tool-card > .tool-card { width: 100%; min-height: 64px; height: auto; flex-direction: column; gap: 6px; }
-.runtime-tool-card .cal-form-row { flex-wrap: wrap; gap: 6px; }
-.runtime-todo-modal { padding: 20px; max-height: 90vh; overflow: auto; }
+
 
 /* 刷新状态紧随对应工具操作，较窄窗口允许换行。 */
 .runtime-refresh-action { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
@@ -2153,3 +2318,71 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .news3-brief li { padding: 20px 0; border-top: 1px solid var(--line); }
 .news3-brief-source { display: flex; flex-wrap: wrap; gap: 10px 20px; font-size: 12px; color: var(--text-2); }
 .news3-brief-source a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* 新闻后台执行与采集要求相邻，进度以真实业务状态显示。 */
+.news3-agent { border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 0 0 18px; }
+.news3-agent-head, .news3-agent-run { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.news3-agent-head h3 { margin: 0 0 6px; font-size: 14px; }
+.news3-agent p { margin: 4px 0; font-size: 12px; color: var(--text-3); line-height: 1.6; overflow-wrap: anywhere; }
+.news3-agent-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.news3-agent-note { padding: 8px 0; }
+.news3-agent-run { padding: 10px 0; border-top: 1px solid var(--line); font-size: 12px; }
+.news3-agent-run strong { font-weight: 500; }
+@media(max-width:1000px) { .news3-agent-head { align-items: flex-start; flex-direction: column; } }
+
+/* 设置使用分组卡片和行式表单，标题与说明在左，操作在右。 */
+.settings-panel { max-width: 880px; margin: 0 auto; }
+.settings-panel > .panel-head { margin-bottom: 26px; }
+.settings-panel > .panel-head h1 { font-family: var(--sans); font-size: 25px; font-weight: 600; }
+.settings-menu { display: flex; margin: 0 0 34px; }
+.settings-menu button { padding: 7px 12px; border: 0; border-radius: 6px; background: var(--sel); color: var(--text); font: inherit; font-size: 13px; font-weight: 500; }
+.agent-settings { max-width: 760px; }
+.settings-section-head { margin-bottom: 12px; }
+.settings-section-head h2 { margin: 0 0 5px; font-size: 13px; font-weight: 600; }
+.agent-settings p { color: var(--text-2); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.settings-section-head p { margin: 0; }
+.settings-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.agent-provider-list { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 0; margin: 0; background: var(--surface); overflow: hidden; }
+.agent-provider-item { margin: 0 16px; border-bottom: 1px solid var(--line); }
+.agent-provider-head { position: relative; }
+.agent-provider-head > input { position: absolute; right: 32px; top: 50%; transform: translateY(-50%); z-index: 1; margin: 0; cursor: pointer; }
+.agent-provider-toggle { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 72px; padding: 13px 0; border: 0; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.agent-provider-toggle:hover .agent-provider-name { color: var(--text-2); }
+.agent-provider-toggle:focus-visible { outline-offset: -3px; }
+.agent-provider-toggle svg { flex-shrink: 0; color: var(--text-2); }
+.agent-provider-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+.agent-provider-name { font-size: 13px; font-weight: 500; line-height: 1.4; }
+.agent-provider-description { color: var(--text-2); font-size: 12px; font-weight: 400; line-height: 1.5; }
+.agent-provider-kind { margin-left: auto; margin-right: 30px; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.agent-provider-list input { accent-color: var(--accent); }
+.agent-provider-none { display: flex; align-items: center; gap: 12px; min-height: 72px; margin: 0 16px; padding: 13px 32px 13px 0; cursor: pointer; }
+.agent-provider-none > input { order: 2; margin: 0; }
+.agent-provider-fields { padding: 0 0 14px; border-top: 1px solid var(--line); }
+.agent-setting-row { display: grid; grid-template-columns: minmax(140px, .9fr) minmax(0, 1.7fr); align-items: center; gap: 20px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.agent-setting-label label, .agent-setting-label > span, .agent-connection-result > strong { display: block; color: var(--text); font-size: 13px; font-weight: 500; line-height: 1.5; }
+.agent-setting-label p { margin: 3px 0 0; }
+.agent-setting-row .form-input { min-width: 0; width: 100%; height: 32px; padding: 6px 9px; border-radius: 6px; font-size: 12px; background: var(--surface); }
+.agent-setting-row .form-input::placeholder { color: var(--text-2); }
+.agent-setting-row .btn { flex-shrink: 0; min-height: 30px; padding: 5px 10px; font-size: 12px; border-radius: 6px; }
+.agent-path-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.agent-path-row input { flex: 1; }
+.agent-row-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.agent-settings .settings-note { margin: 12px 0 0; font-size: 12px; }
+.agent-settings .agent-version-note { line-height: 1.7; }
+.agent-connection-result { margin: 0; }
+.agent-connection-result p { margin: 0 0 4px; }
+.agent-connection-result p:last-child { margin-bottom: 0; }
+.agent-connection-result.ready > strong { color: var(--ok); }
+.agent-connection-result .mono { font-size: 11px; }
+.agent-settings-actions { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+.agent-settings-actions .btn { padding: 6px 12px; font-size: 12px; }
+.agent-settings-actions .btn.primary:disabled { background: var(--sel); border-color: var(--line); color: var(--text-2); }
+.settings-save-status { color: var(--text-2); font-size: 12px; }
+@media(max-width: 760px) {
+  .agent-setting-row { grid-template-columns: 1fr; gap: 9px; }
+  .agent-row-actions { justify-content: flex-start; }
+  .agent-provider-kind { display: none; }
+  .agent-provider-toggle { padding-right: 0; }
+  .agent-provider-copy { padding-right: 30px; }
+  .agent-settings-actions { flex-wrap: wrap; }
+}

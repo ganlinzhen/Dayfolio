@@ -2,7 +2,7 @@
 // 与导入消毒构成双保险：仅允许内联样式，不加载外部资源或运行脚本。
 const LESSON_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`;
 
-export const courseHtmlDocument = (html: string) => `<!doctype html>
+export const courseHtmlDocument = (html: string, { readingLayout = false }: { readingLayout?: boolean } = {}) => `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${LESSON_CSP}
 <style>
 body{font-family:-apple-system,'PingFang SC',sans-serif;line-height:1.8;color:#1a1a19}
@@ -17,4 +17,17 @@ html{box-sizing:border-box}
 body{box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:none!important;margin:0!important;padding:clamp(16px,2.5vw,32px)!important;overflow-wrap:anywhere}
 body > :is(main,article,section,div){box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:none!important;margin-left:auto!important;margin-right:auto!important}
 img,svg,video{max-width:100%;height:auto}
-</style></body></html>`;
+</style>
+${readingLayout ? `<style data-dayfolio-reading-layout>
+/* 学习详情使用适合连续阅读的字号与行宽，保留课程配色及内容结构。 */
+body{font-size:14px!important;line-height:1.9!important}
+body > :is(main,article,section,div){max-width:860px!important;padding-inline:0!important}
+h1{font-size:24px!important;line-height:1.5!important;margin-block:12px 20px!important}
+h2{font-size:19px!important;line-height:1.6!important;margin-block:28px 12px!important}
+h3{font-size:16px!important;line-height:1.6!important;margin-block:22px 10px!important}
+p,li{font-size:14px!important;line-height:1.9!important}
+p{margin-block:12px!important}
+pre{box-sizing:border-box;max-width:100%;font-size:12.5px;line-height:1.8}
+table{display:block;max-width:100%;overflow-x:auto}
+@media(max-width:600px){body{padding:20px!important}h1{font-size:21px!important}h2{font-size:18px!important}}
+</style>` : ''}</body></html>`;

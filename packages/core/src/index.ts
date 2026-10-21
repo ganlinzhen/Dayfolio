@@ -1,4 +1,8 @@
 // Dayfolio 共享核心层入口：App（Electron 主进程）与 MCP Server 共同复用
+import { createNewsRunService, type NewsRunService } from './services/news-run';
+import { createAgentSettingsService, type AgentSettingsService } from './services/agent-settings';
+export * from './services/agent-settings';
+export type { NewsRun, NewsRunStatus } from './services/news-run';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -25,6 +29,8 @@ import { createTodayService } from './services/today';
 import { createTodoService, type TodoService } from './services/todo';
 import { createToolAssetService } from './services/tool-assets';
 import { createToolService, type ToolService } from './services/tool';
+import { createToolTodoService, type ToolTodoService } from './services/tool-todos';
+export * from './services/tool-todos';
 import { createVaultService, type VaultService } from './services/vault';
 import { todayStr } from './utils/date';
 import { createExtensionService,type ExtensionService } from './services/extensions';
@@ -131,13 +137,17 @@ export interface TodoDeskCore {
   plans: PlanService;
   checkins: CheckinService;
   news: NewsService;
+  newsRuns: NewsRunService;
+  agentSettings: AgentSettingsService;
   reviews: ReviewService;
   /** 学习闭环 v1：草案/会话/测评/掌握度/调整建议/待审卡片 */
   study: StudyService;
   tools: ToolService;
+  /** HTML 工具的待办预览、幂等创建与本工具状态查询。 */
+  toolTodos: ToolTodoService;
   today: { getToday: (date?: string) => import('./types').TodayOverview };
   /** 个人本地日历：日程 CRUD + 区间聚合（今日页月视图） */
-  calendar: CalendarService & CalendarQueryService & Pick<RuntimeService,'listCollections'|'setVisibility'>;
+  calendar: CalendarService & CalendarQueryService & Pick<RuntimeService,'listCollections'|'setVisibility'|'updateCollection'|'deleteCollection'>;
   /** 教学课程：导入/阅读/答题/样课确认/生成请求队列 */
   courses: CourseService;
   /** 知识库 vault：只读注册/索引/搜索/阅读/概念关联（绝不写 vault 文件） */
@@ -176,6 +186,7 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   let commands: CommandService;
   let publicTodos: TodoService;
   let publicPlans: PlanService;
+  let publicNews: NewsService;
   let managedDepth=0;
   const managedWrite=<T>(fn:()=>T):T=>{managedDepth++;try{return fn();}finally{managedDepth--;}};
   const checkins = createCheckinService(db);
@@ -204,15 +215,21 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   });
   const today = createTodayService(db, plans, checkins);
   const news = createNewsService(db, { dbPath: opts.dbPath ?? defaultDbPath() });
+  const newsRuns = createNewsRunService(db, { ...news,
+    createTask: (...args) => publicNews.createTask(...args),
+    claimTask: (...args) => publicNews.claimTask(...args),
+    releaseTask: (...args) => publicNews.releaseTask(...args),
+  });
   const courses = createCourseService({ db, dbPath: opts.dbPath ?? defaultDbPath() });
   const guardedPlans: PlanService={...plans, create:(p)=>publicPlans.create(p), updateItemStatus:(id,status)=>publicPlans.updateItemStatus(id,status), remove:(id,opts)=>publicPlans.remove(id,opts)};
   const reviews = createReviewService({ plans:guardedPlans });
   const study = createStudyService(db, { plans:guardedPlans, todos:{...todos,add:(p)=>publicTodos.add(p),update:(id,p)=>publicTodos.update(id,p),remove:(id)=>publicTodos.remove(id)} });
   const tools = createToolAssetService(db,createToolService(db),opts.dbPath ?? defaultDbPath());
+  const toolTodos = createToolTodoService(db, { tools, todos: () => publicTodos });
   const vaults = createVaultService(db);
   const media = createMediaService(db);
   const calendar = createCalendarService(db, queries);
-  const runtime=createRuntimeService(db,{todos:()=>publicTodos,managedWrite});
+  const runtime=createRuntimeService(db,{todos:()=>publicTodos,managedWrite,guard:name=>commands.guard(name)});
   const subscriptionModule=createSubscriptionService(db,{todos:()=>publicTodos,managedWrite});
   const subscriptions=subscriptionModule.service;
   const eventService=createExternalEventService(db,subscriptionModule.syncEvent);
@@ -227,8 +244,10 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   const externalEvents={...eventService,...refreshModule.forActor()};
   const extensionModule=createExtensionService(db,{dbPath:opts.dbPath??defaultDbPath(),events:()=>commands.wrap('externalEvents',externalEvents),guard:name=>commands.guard(name)});
   const extensions=extensionModule.service;extensionModule.recover();
-  const services = { extensions,todos, plans, checkins, news, reviews, study, tools, courses, vaults, media, calendar, runtime,subscriptions,externalEvents };
+  const agentSettings = createAgentSettingsService(db);
+  const services = { toolTodos, agentSettings, newsRuns, extensions,todos, plans, checkins, news, reviews, study, tools, courses, vaults, media, calendar, runtime,subscriptions,externalEvents };
   commands = createCommandService(db, ontology, services);
+  publicNews=commands.wrap('news',news);
   publicTodos=commands.wrap('todos',todos); publicPlans=commands.wrap('plans',plans);
   const relationStore = createRelationService(db,ontology,objectStore,{attach:(l,r)=>commands.wrap('media',media).attachMaterial(l,r),detach:(l,r)=>commands.wrap('media',media).detachMaterial(l,r)});
   const relations = { ...relationStore };
@@ -265,9 +284,9 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   };
   return { db, today, ontology, objects, queries, actions, actionRuns: actionRunStore.public, commands, relations,providerWorker:refreshModule.worker,extensions:commands.wrap('extensions',extensions),runtime:commands.wrap('runtime',runtime),externalEvents:commands.wrap('externalEvents',externalEvents),subscriptions:commands.wrap('subscriptions',subscriptions),forExtension,
     todos:publicTodos, plans:publicPlans, checkins:commands.wrap('checkins',checkins),
-    news:commands.wrap('news',news), reviews:commands.wrap('reviews',reviews), study:commands.wrap('study',study),
-    tools:commands.wrap('tools',tools), courses:commands.wrap('courses',courses), vaults:commands.wrap('vaults',vaults), media:commands.wrap('media',media),
-    calendar:{...commands.wrap('calendar',calendar),...createCalendarQueryService(db,runtime),listCollections:runtime.listCollections,setVisibility:commands.wrap('runtime',runtime).setVisibility},
+    news:publicNews, newsRuns:commands.wrap('newsRuns',newsRuns), agentSettings:commands.wrap('agentSettings',agentSettings), reviews:commands.wrap('reviews',reviews), study:commands.wrap('study',study),
+    toolTodos:commands.wrap('toolTodos',toolTodos), tools:commands.wrap('tools',tools), courses:commands.wrap('courses',courses), vaults:commands.wrap('vaults',vaults), media:commands.wrap('media',media),
+    calendar:{...commands.wrap('calendar',calendar),...createCalendarQueryService(db,runtime),listCollections:runtime.listCollections,setVisibility:commands.wrap('runtime',runtime).setVisibility,updateCollection:commands.wrap('runtime',runtime).updateCollection,deleteCollection:commands.wrap('runtime',runtime).deleteCollection},
   };
 }
 

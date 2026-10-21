@@ -1,9 +1,9 @@
-// 工具箱面板：分类分组的工具卡片；分类管理（新增/改名/排序/删除）；
-// 新增/编辑工具（图标 + 标题 + HTML 文件）；点击卡片在应用内 iframe 打开，顶部面包屑返回列表
+import Modal from './Modal';
+// HTML 工具箱：分类排列横向入口，工具仅支持导入与删除。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, call } from '../api';
 import EmbeddedFrame from './EmbeddedFrame';
-import RuntimeTools from './RuntimeTools';
+import HtmlToolFrame from './HtmlToolFrame';
 import { toast } from './Toast';
 import {
   IconChevronDown,
@@ -65,14 +65,15 @@ const readFiles = async (fileList: FileList): Promise<UpFile[]> =>
     ),
   );
 
+// 页面可使用内联图片作为入口图标，普通工具沿用内置图标。
+const isImageIcon = (icon: string) => /^data:image\/(?:png|jpeg|webp|gif|svg\+xml);base64,[a-zA-Z0-9+/=]+$/.test(icon);
+
 export default function ToolsPanel() {
-  const [runtimeCount, setRuntimeCount] = useState(0);
   const [cats, setCats] = useState<ToolCategory[]>([]);
   const [tools, setTools] = useState<ToolRow[]>([]);
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
-  const [formTool, setFormTool] = useState<ToolRow | null>(null); // null=新增，非 null=编辑该工具
   const [formOpen, setFormOpen] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -136,11 +137,7 @@ export default function ToolsPanel() {
             </button>
           }
         >
-          <iframe
-            className="tool-iframe"
-            title={openTool.title}
-            src={`tool-file://t/${openTool.id}/${encodeURI(openTool.entry_file)}`}
-          />
+          <HtmlToolFrame toolId={openTool.id} title={openTool.title} entryFile={openTool.entry_file} />
         </EmbeddedFrame>
       </div>
     );
@@ -149,7 +146,7 @@ export default function ToolsPanel() {
   return (
     <div className="panel" role="region" aria-label="工具箱">
       <header className="panel-head">
-        <div className="head-meta mono">{tools.length + runtimeCount} 个工具</div>
+        <div className="head-meta mono">{tools.length} 个工具</div>
         <span className="spacer" />
         <button className="btn slim" onClick={() => setCatModalOpen(true)}>
           管理分类
@@ -157,28 +154,25 @@ export default function ToolsPanel() {
         <button
           className="btn primary"
           onClick={() => {
-            setFormTool(null);
             setFormOpen(true);
           }}
         >
           <IconPlus width={13} height={13} />
-          新增工具
+          导入 HTML
         </button>
       </header>
 
       {error && <div className="notice error">{error}</div>}
-      <RuntimeTools onCount={setRuntimeCount} />
 
-      {tools.length === 0 ? (runtimeCount === 0 ? (
+      {tools.length === 0 ? (
         <div className="empty">
           <IconToolbox width={18} height={18} />
           <div className="empty-title">还没有工具</div>
           <div className="empty-hint">
-            通过「安装或更新工具包」加入可订阅日程的工具，也可点「新增工具」加入已有 HTML。多选的 CSS / JS /
-            图片会一并保存，供页面引用。
+            点击「导入 HTML」加入本地网页工具，可一并选择配套 CSS、JS 和图片。
           </div>
         </div>
-      ) : null) : (
+      ) : (
         groups.map(({ cat, items }) => (
           <section className="group" key={cat ? cat.id : 'none'}>
             <div className="group-label mono">
@@ -187,43 +181,16 @@ export default function ToolsPanel() {
             </div>
             <div className="tool-grid">
               {items.map((t) => (
-                <div
-                  key={t.id}
-                  className="tool-card"
-                  onClick={() => setOpenId(t.id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && setOpenId(t.id)}
-                >
-                  <span className="tool-card-icon">
-                    <IconTool name={t.icon} width={20} height={20} />
-                  </span>
-                  <span className="tool-card-title" title={t.title}>
-                    {t.title}
-                  </span>
-                  <span className="tool-card-acts">
-                    <button
-                      className="icon-btn subtle"
-                      title="编辑"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFormTool(t);
-                        setFormOpen(true);
-                      }}
-                    >
-                      <IconPencil width={14} height={14} />
-                    </button>
-                    <button
-                      className="icon-btn subtle"
-                      title="删除"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void deleteTool(t);
-                      }}
-                    >
-                      <IconTrash width={14} height={14} />
-                    </button>
-                  </span>
+                <div key={t.id} className="tool-card">
+                  <button className="tool-card-open" onClick={() => setOpenId(t.id)} title={t.title}>
+                    <span className={`tool-card-icon tool-tone-${t.icon === 'code' ? 'blue' : t.icon === 'trophy' ? 'violet' : 'green'}`}>
+                      {isImageIcon(t.icon) ? <img src={t.icon} width={36} height={36} alt="" /> : <IconTool name={t.icon} width={20} height={20} />}
+                    </span>
+                    <span className="tool-card-title">{t.title}</span>
+                  </button>
+                  <button className="icon-btn subtle tool-card-delete" title={`删除${t.title}`} aria-label={`删除${t.title}`} onClick={() => void deleteTool(t)}>
+                    <IconTrash width={14} height={14} />
+                  </button>
                 </div>
               ))}
             </div>
@@ -238,7 +205,6 @@ export default function ToolsPanel() {
           onChanged={refresh}
           onGoAddTool={() => {
             setCatModalOpen(false);
-            setFormTool(null);
             setFormOpen(true);
           }}
         />
@@ -246,12 +212,11 @@ export default function ToolsPanel() {
       {formOpen && (
         <ToolFormModal
           cats={cats}
-          editing={formTool}
           onClose={() => setFormOpen(false)}
           onSaved={async (t) => {
             setFormOpen(false);
             await refresh();
-            toast(`${formTool ? '已更新' : '已添加'}「${t.title}」`);
+            toast(`已导入「${t.title}」`);
           }}
         />
       )}
@@ -336,92 +301,81 @@ function CategoryModal({ cats, onClose, onChanged, onGoAddTool }: {
   };
 
   return (
-    <div className="modal-mask" onClick={(e) => e.target === e.currentTarget && void close()}>
-      <div className="modal">
-        <header className="modal-head">
-          <h2>管理分类</h2>
-          <span className="head-meta mono">顺序即列表展示顺序</span>
-        </header>
-        <div className="modal-body">
-          {rows.length === 0 && <div className="empty" style={{ padding: '24px 0' }}>还没有分类，先建一个</div>}
-          {rows.map((c, i) => (
-            <div className="cat-row" key={c.id}>
-              <span className="cat-order mono">{String(i + 1).padStart(2, '0')}</span>
-              {renaming === c.id ? (
-                <input
-                  className="inline-input"
-                  autoFocus
-                  value={renameText}
-                  maxLength={24}
-                  onChange={(e) => setRenameText(e.target.value)}
-                  onBlur={() => void rename(c.id)}
-                  onKeyDown={(e) => e.key === 'Enter' && void rename(c.id)}
-                />
-              ) : (
-                <span className="cat-name" onDoubleClick={() => { setRenaming(c.id); setRenameText(c.name); }}>
-                  {c.name}
-                </span>
-              )}
-              <button className="icon-btn" title="上移" disabled={i === 0} onClick={() => move(i, -1)}>
-                <IconChevronUp width={14} height={14} />
-              </button>
-              <button className="icon-btn" title="下移" disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
-                <IconChevronDown width={14} height={14} />
-              </button>
-              <button
-                className="icon-btn"
-                title="重命名"
-                onClick={() => {
-                  setRenaming(c.id);
-                  setRenameText(c.name);
-                }}
-              >
-                <IconPencil width={14} height={14} />
-              </button>
-              <button className="icon-btn danger" title="删除分类" onClick={() => void remove(c.id, c.name)}>
-                <IconTrash width={14} height={14} />
-              </button>
-            </div>
-          ))}
-          <div className="cat-add">
+    <Modal title="管理分类" description="顺序即列表展示顺序" onClose={() => void close()} busy={busy} footer={<>
+      <button className="btn ghost" disabled={busy} onClick={onGoAddTool}>
+        去导入 HTML
+      </button>
+      <button className="btn primary" disabled={busy} onClick={() => void close()}>
+        完成
+      </button>
+    </>}>
+      {rows.length === 0 && <div className="empty" style={{ padding: '24px 0' }}>还没有分类，先建一个</div>}
+      {rows.map((c, i) => (
+        <div className="cat-row" key={c.id}>
+          <span className="cat-order mono">{String(i + 1).padStart(2, '0')}</span>
+          {renaming === c.id ? (
             <input
               className="inline-input"
-              placeholder="新分类名称…"
-              value={newName}
+              autoFocus
+              value={renameText}
               maxLength={24}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void add()}
+              onChange={(e) => setRenameText(e.target.value)}
+              onBlur={() => void rename(c.id)}
+              onKeyDown={(e) => e.key === 'Enter' && void rename(c.id)}
             />
-            <button className="btn slim" disabled={busy || !newName.trim()} onClick={() => void add()}>
-              <IconPlus width={12} height={12} />
-              添加
-            </button>
-          </div>
+          ) : (
+            <span className="cat-name" onDoubleClick={() => { setRenaming(c.id); setRenameText(c.name); }}>
+              {c.name}
+            </span>
+          )}
+          <button className="icon-btn" title="上移" disabled={i === 0} onClick={() => move(i, -1)}>
+            <IconChevronUp width={14} height={14} />
+          </button>
+          <button className="icon-btn" title="下移" disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
+            <IconChevronDown width={14} height={14} />
+          </button>
+          <button
+            className="icon-btn"
+            title="重命名"
+            onClick={() => {
+              setRenaming(c.id);
+              setRenameText(c.name);
+            }}
+          >
+            <IconPencil width={14} height={14} />
+          </button>
+          <button className="icon-btn danger" title="删除分类" onClick={() => void remove(c.id, c.name)}>
+            <IconTrash width={14} height={14} />
+          </button>
         </div>
-        <footer className="modal-foot">
-          <button className="btn ghost" onClick={onGoAddTool}>
-            去新增工具
-          </button>
-          <span className="spacer" />
-          <button className="btn primary" onClick={() => void close()}>
-            完成
-          </button>
-        </footer>
+      ))}
+      <div className="cat-add">
+        <input
+          className="inline-input"
+          placeholder="新分类名称…"
+          value={newName}
+          maxLength={24}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void add()}
+        />
+        <button className="btn slim" disabled={busy || !newName.trim()} onClick={() => void add()}>
+          <IconPlus width={12} height={12} />
+          添加
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
-// ---------- 新增 / 编辑工具弹窗：图标 + 标题 + 分类 + HTML 文件 ----------
-function ToolFormModal({ cats, editing, onClose, onSaved }: {
+// ---------- 导入 HTML：名称、图标、分类与页面文件 ----------
+function ToolFormModal({ cats, onClose, onSaved }: {
   cats: ToolCategory[];
-  editing: ToolRow | null;
   onClose: () => void;
   onSaved: (t: ToolRow) => Promise<void>;
 }) {
-  const [title, setTitle] = useState(editing?.title ?? '');
-  const [icon, setIcon] = useState(editing?.icon ?? 'tool');
-  const [categoryId, setCategoryId] = useState<string>(editing?.category_id != null ? String(editing.category_id) : '');
+  const [title, setTitle] = useState('');
+  const [icon, setIcon] = useState('tool');
+  const [categoryId, setCategoryId] = useState<string>('');
   const [files, setFiles] = useState<UpFile[]>([]);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -429,9 +383,13 @@ function ToolFormModal({ cats, editing, onClose, onSaved }: {
   const pickFiles = async (fl: FileList | null) => {
     if (!fl || fl.length === 0) return;
     try {
+      setBusy(true);
       setFiles(await readFiles(fl));
+      if (!title.trim()) setTitle(Array.from(fl).find(f => /\.html?$/i.test(f.name))?.name.replace(/\.html?$/i, '').slice(0, 40) ?? '');
     } catch (e) {
       toast((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -441,7 +399,7 @@ function ToolFormModal({ cats, editing, onClose, onSaved }: {
       return;
     }
     const hasHtml = files.some((f) => /\.html?$/i.test(f.name));
-    if (!editing && !hasHtml) {
+    if (!hasHtml) {
       toast('请选择一个 HTML 文件作为入口');
       return;
     }
@@ -449,13 +407,12 @@ function ToolFormModal({ cats, editing, onClose, onSaved }: {
     const catId = categoryId ? Number(categoryId) : null;
     try {
       const payload = {
-        ...(editing ? { id: editing.id } : {}),
         title: title.trim(),
         icon,
         category_id: catId,
         ...(files.length > 0 ? { files } : {}),
       };
-      const saved = await call<ToolRow>(() => (editing ? api.tools.update(payload) : api.tools.add(payload)));
+      const saved = await call<ToolRow>(() => api.tools.add(payload));
       await onSaved(saved);
     } catch (e) {
       toast((e as Error).message);
@@ -465,93 +422,79 @@ function ToolFormModal({ cats, editing, onClose, onSaved }: {
   };
 
   return (
-    <div className="modal-mask" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <header className="modal-head">
-          <h2>{editing ? '编辑工具' : '新增工具'}</h2>
-          <span className="head-meta mono">HTML 文件在应用内打开</span>
-        </header>
-        <div className="modal-body">
-          <div className="form-row">
-            <label className="form-label">名称</label>
-            <input
-              className="form-input"
-              autoFocus
-              placeholder="比如：颜色转换器"
-              value={title}
-              maxLength={40}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void submit()}
-            />
-          </div>
-          <div className="form-row">
-            <label className="form-label">图标</label>
-            <div className="icon-grid">
-              {TOOL_ICONS.map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  type="button"
-                  title={label}
-                  className={`icon-cell ${icon === key ? 'active' : ''}`}
-                  onClick={() => setIcon(key)}
-                >
-                  <Icon width={17} height={17} />
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="form-row">
-            <label className="form-label">分类</label>
-            <select className="form-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">未分类</option>
-              {cats.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="form-row">
-            <label className="form-label">HTML 文件</label>
-            <label className="file-drop">
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                accept=".html,.htm,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.json,.txt,.woff,.woff2"
-                hidden
-                onChange={(e) => void pickFiles(e.target.files)}
-              />
-              <IconUpload width={15} height={15} />
-              {editing && files.length === 0 ? (
-                <span>
-                  当前入口 <span className="mono">{editing.entry_file}</span>，点击重新选择文件可替换
-                </span>
-              ) : (
-                <span>点击选择 HTML 文件（可多选配套 CSS / JS / 图片）</span>
-              )}
-            </label>
-            {files.length > 0 && (
-              <ul className="file-list mono">
-                {files.map((f) => (
-                  <li key={f.name} className={/\.html?$/i.test(f.name) ? 'entry' : ''}>
-                    {f.name}
-                    {/\.html?$/i.test(f.name) ? ' · 入口' : ''}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-        <footer className="modal-foot">
-          <button className="btn" onClick={onClose}>
-            取消
-          </button>
-          <button className="btn primary" disabled={busy} onClick={() => void submit()}>
-            {busy ? '保存中…' : editing ? '保存' : '添加'}
-          </button>
-        </footer>
+    <Modal title="导入 HTML" description="HTML 文件在应用内打开" onClose={onClose} busy={busy} footer={<>
+      <button className="btn" disabled={busy} onClick={onClose}>
+        取消
+      </button>
+      <button className="btn primary" disabled={busy} onClick={() => void submit()}>
+        {busy ? '导入中…' : '导入'}
+      </button>
+    </>}>
+      <div className="form-row">
+        <label className="form-label">名称</label>
+        <input
+          className="form-input"
+          autoFocus
+          placeholder="比如：颜色转换器"
+          value={title}
+          maxLength={40}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void submit()}
+        />
       </div>
-    </div>
+      <div className="form-row">
+        <label className="form-label">图标</label>
+        <div className="icon-grid">
+          {TOOL_ICONS.map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              type="button"
+              title={label}
+              className={`icon-cell ${icon === key ? 'active' : ''}`}
+              onClick={() => setIcon(key)}
+            >
+              <Icon width={17} height={17} />
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="form-row">
+        <label className="form-label">分类</label>
+        <select className="form-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <option value="">未分类</option>
+          {cats.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="form-row">
+        <label className="form-label">HTML 文件</label>
+        <label className="file-drop">
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            disabled={busy}
+            accept=".html,.htm,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.json,.txt,.woff,.woff2"
+            hidden
+            onChange={(e) => void pickFiles(e.target.files)}
+          />
+          <IconUpload width={15} height={15} />
+          <span>选择 HTML 文件，可多选配套 CSS、JS 和图片</span>
+        </label>
+        {files.length > 0 && (
+          <ul className="file-list mono">
+            {files.map((f) => (
+              <li key={f.name} className={/\.html?$/i.test(f.name) ? 'entry' : ''}>
+                {f.name}
+                {/\.html?$/i.test(f.name) ? ' · 入口' : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Modal>
   );
 }

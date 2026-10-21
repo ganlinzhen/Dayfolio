@@ -7,6 +7,7 @@ import { loadCalendarPages } from './calendar-pages';
 import { useRuntimeRefresh } from './useRuntimeRefresh';
 import CalendarItemDetails from './CalendarItemDetails';
 import RuntimeCalendarActions from './RuntimeCalendarActions';
+import CalendarCollections from './CalendarCollections';
 import type { CalendarEvent } from '../../../../../../packages/core/src';
 
 export type CalEvent = CalendarEvent;
@@ -19,10 +20,10 @@ const emptyForm = (date: string,start='',end=''):Form => ({id:null,title:'',date
 
 export default function CalendarSection({ today }: { today:string }) {
   const [mode,setMode]=useState<Mode>(()=>localStorage.getItem('dayfolio.calView')==='month'?'month':'week');
-  const [anchor,setAnchor]=useState(today),[selected,setSelected]=useState(today),[zone,setZone]=useState(''),[zoneDraft,setZoneDraft]=useState('');
+  const [anchor,setAnchor]=useState(today),[selected,setSelected]=useState(today),[zone,setZone]=useState('');
   const [result,setResult]=useState<CalendarResult|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
   const [form,setForm]=useState<Form|null>(null),[detail,setDetail]=useState<CalendarItem|null>(null),[formError,setFormError]=useState(''),[saving,setSaving]=useState(false);
-  const [now,setNow]=useState(()=>new Date()),[changingCollection,setChangingCollection]=useState<string|null>(null);
+  const [now,setNow]=useState(()=>new Date());
   const scroll=useRef<HTMLDivElement|null>(null), sequence=useRef(0);
   const days=useMemo(()=>{
     if(mode==='week'){const start=addDay(anchor,-dayOfWeek(anchor));return Array.from({length:7},(_,i)=>addDay(start,i));}
@@ -37,7 +38,7 @@ export default function CalendarSection({ today }: { today:string }) {
         const currentZone=await call<string>(()=>api.runtime.timezone());
         const next=await loadCalendarPages(p=>api.calendar.queryItems(p),{fromDate:days[0],toDateExclusive:addDay(days[days.length-1],1),displayTimezone:currentZone});
         if(request!==sequence.current)return;
-        setResult(next);setZone(currentZone);setZoneDraft(currentZone);setError('');setLoading(false);return;
+        setResult(next);setZone(currentZone);setError('');setLoading(false);return;
       }catch(e){if(request!==sequence.current)return;if((e as {code?:string}).code==='REVISION_CONFLICT'&&attempt<2)continue;setError((e as Error).message);setResult(null);setLoading(false);return;}
     }
   },[days]);
@@ -69,8 +70,6 @@ export default function CalendarSection({ today }: { today:string }) {
   const remove=async()=>{if(form?.id==null)return;setSaving(true);try{await call(()=>api.calendar.delete({id:form.id!}));setForm(null);await refresh();}catch(e){setFormError((e as Error).message);}finally{setSaving(false);}};
   const shift=(n:number)=>{if(mode==='week')setAnchor(addDay(anchor,n*7));else{const[y,m]=anchor.split('-').map(Number);setAnchor(new Date(Date.UTC(y,m-1+n,1)).toISOString().slice(0,10));}};
   const select=(day:string)=>{setSelected(day);if(mode==='week')setAnchor(day);};
-  const toggle=async(id:string,visible:boolean)=>{setChangingCollection(id);try{await call(()=>api.calendar.setVisibility({collectionId:id,visible}));await refresh();}catch(e){setError((e as Error).message);}finally{setChangingCollection(null);}};
-  const applyZone=async()=>{try{await call(()=>api.runtime.setTimezone({zone:zoneDraft}));await refresh();}catch(e){setError((e as Error).message);}};
   const createSlot=(day:string,e:React.MouseEvent<HTMLDivElement>)=>{const rect=e.currentTarget.getBoundingClientRect(),minute=Math.max(0,Math.min(1439,Math.floor((e.clientY-rect.top)/HOUR_H*2)*30));select(day);openCreate(day,clockLabel(minute),clockLabel(Math.min(1439,minute+60)));};
   return <section className="group cal-section" aria-label="日历" aria-busy={loading}>
     <div className="cal-toolbar">
@@ -80,15 +79,11 @@ export default function CalendarSection({ today }: { today:string }) {
       <span className="cal-title serif">{mode==='week'?`${days[0]} — ${days[6]}`:`${anchor.slice(0,4)}年${Number(anchor.slice(5,7))}月`}</span><span className="spacer"/>
       <span className="cal-zone mono">{zone}</span>
       <div className="cal-mode-switch" role="tablist" aria-label="视图切换">{(['week','month'] as const).map(m=><button key={m} role="tab" aria-selected={mode===m} className={mode===m?'on':''} onClick={()=>{setMode(m);localStorage.setItem('dayfolio.calView',m);}}>{m==='week'?'周':'月'}</button>)}</div>
-      <button className="btn primary slim" onClick={()=>openCreate()}><IconPlus width={13} height={13}/>新建日程</button>
+      <div className="cal-create-actions"><button className="btn primary slim" onClick={()=>openCreate()}><IconPlus width={13} height={13}/>新建日程</button>
+        <CalendarCollections collections={result?.collections??[]} timezone={zone} onChanged={refresh} disabled={!result}/></div>
     </div>
     <div className="cal-form-row"><RuntimeCalendarActions /></div>
-    <details className="cal-display-panel"><summary>显示内容{result?` · ${result.items.length} 项`:''}</summary><div className="cal-collection-list">
-      {result?.collections.map(c=><label className="cal-check" key={c.id}><input type="checkbox" aria-label={`显示${c.title}`} checked={c.visible} disabled={changingCollection!==null} onChange={e=>void toggle(c.id,e.target.checked)}/><i className={`cal-dot ${COLORS.includes(c.color)?c.color:'blue'}`}/>{c.title}{c.extensionStatus==='disabled'?' · 来源停用':c.extensionStatus==='uninstalled'?' · 来源已卸载':c.archived?' · 已归档':''}</label>)}
-      <label className="cal-field">显示时区<input className="inline-input" aria-label="日历显示时区" list="calendar-timezones" value={zoneDraft} onChange={e=>setZoneDraft(e.target.value)}/></label>
-      <datalist id="calendar-timezones">{['Asia/Shanghai','Europe/London','UTC','America/New_York'].map(z=><option key={z} value={z}/>)}</datalist>
-      <button className="btn slim" disabled={!zoneDraft||zoneDraft===zone} onClick={()=>void applyZone()}>应用时区</button>
-    </div></details>
+
     {error&&<div className="notice error">{error}<button className="btn slim" onClick={()=>void refresh()}>重试</button></div>}
     {mode==='week'?<div className="cal-weekview">
       <div className="cal-week-head"><span className="cal-axis-head mono">时间</span>{days.map(day=><button key={day} className={`cal-wd-col ${day===today?'today-col':''} ${day===selected?'sel-col':''}`} onClick={()=>select(day)} aria-label={day}><span className="cal-wd-text">周{WEEK[dayOfWeek(day)]}</span><span className={`cal-num ${day===today?'today-num':''}`}>{Number(day.slice(8))}</span><span className="cal-day-meta mono">{result?.countsByDay[day]??0} 项</span></button>)}</div>
@@ -105,8 +100,22 @@ export default function CalendarSection({ today }: { today:string }) {
         {formError&&<div className="notice error">{formError}</div>}<div className="cal-form-row"><button className="btn primary slim" disabled={saving} onClick={()=>void save()}>{form.id===null?'创建日程':'保存修改'}</button><button className="btn slim" onClick={()=>setForm(null)}>取消</button>{form.id!==null&&<button className="btn slim danger-btn" disabled={saving} onClick={()=>void remove()}><IconTrash width={13} height={13}/>删除</button>}</div>
       </div>}
       {detail&&<CalendarItemDetails key={detail.id} item={detail} onClose={()=>setDetail(null)} onChanged={refresh}/>}
-      {!selectedSlices.length&&!form&&<p className="sub cal-empty">这一天没有已显示的安排。可调整「显示内容」或新建日程。</p>}
-      {selectedSlices.map(s=><div key={s.item.id} className="cal-ev-row" data-calendar-kind={s.item.kind} data-item-id={s.item.id}><i className={`cal-dot ${colorOf(s.item)}`}/><span className="cal-ev-time mono">{s.label}</span><button className="cal-item-open cal-ev-title" onClick={()=>void openItem(s.item)}>{s.item.title}</button><span className="cal-badge">{KIND[s.item.kind]}</span>{s.item.status==='done'&&<span className="cal-badge">已完成</span>}{s.item.sourceStatus==='cancelled'&&<span className="cal-badge">来源已取消</span>}<span className="sub">{result?.collections.find(c=>c.id===s.item.collectionId)?.title}</span></div>)}
+      {!selectedSlices.length&&!form&&<p className="sub cal-empty">这一天没有已显示的安排。可在更多菜单的「管理分类」中调整显示，或新建日程。</p>}
+      <div className="cal-agenda-cards">
+        {selectedSlices.map(s=><div key={s.item.id} className="cal-ev-row cal-agenda-card" data-calendar-kind={s.item.kind} data-item-id={s.item.id}>
+          <div className="cal-agenda-card-main">
+            <i className={`cal-dot ${colorOf(s.item)}`}/>
+            <button className="cal-item-open cal-ev-title" onClick={()=>void openItem(s.item)}>{s.item.title}</button>
+          </div>
+          <div className="cal-agenda-card-meta">
+            <span className="cal-ev-time mono">{s.label}</span>
+            <span className="cal-badge">{KIND[s.item.kind]}</span>
+            {s.item.status==='done'&&<span className="cal-badge">已完成</span>}
+            {s.item.sourceStatus==='cancelled'&&<span className="cal-badge">来源已取消</span>}
+            <span>{result?.collections.find(c=>c.id===s.item.collectionId)?.title}</span>
+          </div>
+        </div>)}
+      </div>
     </div><div className="cal-legend mono">所有视图使用相同分类和统计；跨午夜按天展示，结束待定只使用视觉高度。{loading?'正在刷新…':''}</div>
   </section>;
 }

@@ -1,6 +1,6 @@
-// 今日页：日历置顶（周/月视图）+ 逾期/今日到期/今日学习行动列表（Codex 风格）
+// 今日页：日历置顶（周/月视图）+ 逾期/今日学习行动列表（Codex 风格）
 // 2026-10-14 起头部日期条、统计条与手动「每日打卡」入口移除，打开即是日历
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { api, call } from '../api';
 import CalendarSection from './CalendarSection';
 import { useRuntimeRefresh } from './useRuntimeRefresh';
@@ -20,7 +20,6 @@ interface PlanItemToday {
 interface Overview {
   date: string;
   overdue_todos: Todo[];
-  due_today_todos: Todo[];
   today_plan_items: PlanItemToday[];
 }
 
@@ -108,27 +107,6 @@ export default function TodayPanel() {
           })}
         </section>
       )}
-
-      <section className="group">
-        <div className="group-label mono">
-          今天到期<span className="group-count">{ov.due_today_todos.length}</span>
-        </div>
-        {ov.due_today_todos.length === 0 && <div className="sub row-pad">今天没有到期事项</div>}
-        {ov.due_today_todos.map((t) => (
-          <div key={t.id} className="todo-card">
-            <div className="todo-card-main">
-              <button className={`check ${t.priority}`} onClick={() => void completeTodo(t.id)} title="完成" />
-              <span className="todo-title">{t.title}</span>
-            </div>
-            <div className="todo-card-meta">
-              <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
-              {t.source_status==='cancelled' && <span className="tag">来源已取消</span>}
-              {t.start_time && <span className="todo-meta mono">{t.start_time}{t.end_time?`–${t.end_date&&t.end_date!==t.due_date?t.end_date+' ':''}${t.end_time}`:' · 结束待定'}</span>}
-              {t.tags.filter((tag) => !/^plan:\d+$/.test(tag)).map((tag) => <span key={tag} className="tag">{tag}</span>)}
-            </div>
-          </div>
-        ))}
-      </section>
 
       <section className="group">
         <div className="group-label mono">

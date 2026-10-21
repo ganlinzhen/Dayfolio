@@ -174,7 +174,7 @@ export default function HelpPanel() {
   useRuntimeRefresh(async()=>{
     try{
       const extensions=await call<ReturnType<TodoDeskCore['extensions']['list']>>(()=>api.extensions.list());
-      const docs=await Promise.all(extensions.map(async extension=>{
+      const docs=await Promise.all(extensions.filter(extension=>extension.status!=='uninstalled').map(async extension=>{
         try{const help=await call<ReturnType<TodoDeskCore['extensions']['getHelp']>>(()=>api.extensions.getHelp({extensionId:extension.id}));return {id:'extension:'+extension.id,title:help.title,description:`工具 ${help.version}${extension.status==='active'?'':extension.status==='disabled'?' · 已停用':' · 已卸载'}`,markdown:help.markdown};}
         catch(error){return {id:'extension:'+extension.id,title:extension.title,description:'帮助暂不可用',markdown:(error as Error).message};}
       }));

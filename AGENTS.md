@@ -77,6 +77,9 @@ Dayfolio 上手课程的唯一内容源为 **`apps/onboarding/`**，与 **`apps/
 
 ## Dayfolio 技能入口与同步
 
+- HTML 工具添加待办使用宿主提供的 `window.dayfolio.todos.create/createMany/getStatus`；通过 App 预览确认，稳定 `sourceKey` 按工具隔离去重。App 与 MCP 共用 `core.toolTodos`，不得由 HTML 访问原始 IPC 或数据库。当前只保存一次性快照，不代表持续关注、事件订阅或自动改期；重复添加保留用户修改、完成状态及删除记录。
+- HTML 工具待办分类复用 `calendar_collections`：默认按工具名，可通过 options.category 声明稳定键、名称和颜色。只在确认并实际新增待办的同一事务中创建或复用，预览、取消、全部重复或失败不留空分类；分类按工具隔离，不接受任意宿主分类 ID，不覆盖已有名称、颜色或隐藏偏好。删除工具保留分类与待办，不为单个领域增加专用类型或宿主分支。日历分类管理走 runtime 的 updateCollection/deleteCollection 命令；删除自定义分类只迁移归属、保留待办与日程和去重关联，系统与事件来源分类受保护。管理入口在「新建日程」旁更多菜单，不恢复旧的行内显示面板。
+
 - `packages/agent-kit/skills/dayfolio/` 是唯一对外技能，教学和赛事维护在其 `references/`，不得再增加独立的 TodoDesk、教学或赛事 `SKILL.md` 入口。
 - `npm run package:desktop` 在候选 App 签名校验成功后自动同步完整能力包到本机 Codex，并备份、移除旧入口；同步失败视为交付失败。CI 与隔离验收通过 `DAYFOLIO_SKIP_CODEX_SYNC=1` 避免更新真实用户目录。
 - 默认 Codex 入口是 `~/.codex/skills/dayfolio`，指向 `~/.codex/dayfolio/agent-kit/skills/dayfolio`；`CODEX_HOME` 自定义时两处一并跟随。项目不另设发现入口，避免与个人入口重复。

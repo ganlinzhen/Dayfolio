@@ -1,6 +1,7 @@
 // 待办面板：搜索、日期分组、逾期横幅、行内编辑（Codex 风格）
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, call } from '../api';
+import type { CalendarCollection } from '../../../../../../packages/core/src';
 import EmptyState from './EmptyState';
 import { toast } from './Toast';
 import { IconCalendar, IconPlus, IconSearch, IconX } from './icons';
@@ -23,6 +24,7 @@ export interface Todo {
   revision: number;
   source_status: string|null;
   source_time_kind: string|null;
+  collection_id: string | null;
   tags: string[];
   source: string;
   completed_at: string | null;
@@ -63,6 +65,8 @@ export default function TodoPanel() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [status, setStatus] = useState<StatusFilter>('open');
   const [priority, setPriority] = useState('');
+  const [collectionId, setCollectionId] = useState('');
+  const [collections, setCollections] = useState<CalendarCollection[]>([]);
   const [search, setSearch] = useState('');
   const [title, setTitle] = useState('');
   const [newPriority, setNewPriority] = useState<'high' | 'medium' | 'low'>('medium');
@@ -73,21 +77,27 @@ export default function TodoPanel() {
 
   const refresh = useCallback(async () => {
     try {
+      const categories = await call<CalendarCollection[]>(() => api.calendar.listCollections());
+      // 分类可从日历或 MCP 删除，失效筛选自动回到全部，避免列表停留在错误状态。
+      const selectedCollection = categories.some(c=>c.id===collectionId) ? collectionId : '';
+      if(selectedCollection!==collectionId)setCollectionId(selectedCollection);
       const list = await call<Todo[]>(() =>
         api.todos.list({
           status,
           priority: priority || undefined,
           search: search.trim() || undefined,
+          collection_id: selectedCollection || undefined,
         }),
       );
       setTodos(list);
+      setCollections(categories);
       const overview=await call<{date:string}>(()=>api.today.get());setDisplayToday(overview.date);
       if(!initializedDate.current){initializedDate.current=true;setSchedule(prev=>({...prev,due:overview.date}));}
       setError('');
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [status, priority, search]);
+  }, [status, priority, search, collectionId]);
 
   useEffect(() => {
     const t = setTimeout(() => void refresh(), search ? 200 : 0);
@@ -152,6 +162,7 @@ export default function TodoPanel() {
               priority: t.priority,
               ...(t.time_mode==='instant'?{time_mode:t.time_mode,scheduled_start_at:t.scheduled_start_at,scheduled_end_at:t.scheduled_end_at}:{due_date:t.due_date,end_date:t.end_date,start_time:t.start_time,end_time:t.end_time}),
               tags: t.tags,
+              ...(!t.source_time_kind ? { collection_id: t.collection_id } : {}),
             }),
           ).then(() => refresh());
         },
@@ -199,6 +210,10 @@ export default function TodoPanel() {
           <option value="medium">中优先级</option>
           <option value="low">低优先级</option>
         </select>
+        <select className="filter-select todo-category-filter" aria-label="筛选待办分类" value={collectionId} onChange={e => setCollectionId(e.target.value)}>
+          <option value="">全部分类</option>
+          {collections.filter(c => c.id !== 'builtin.local').map(c => <option key={c.id} value={c.id}>{c.title}{c.archived ? ' · 已归档' : ''}</option>)}
+        </select>
         <span className="head-meta mono">{todos.length} 项{status === 'open' ? '未完成' : status === 'done' ? '已完成' : '待办'}</span>
         <span className="spacer" />
         <div className="searchbox">
@@ -244,7 +259,9 @@ export default function TodoPanel() {
       {error && <div className="notice error">{error}</div>}
 
       <div className="todo-groups">
-        {todos.length === 0 && (search.trim() ? (
+        {todos.length === 0 && (collectionId ? (
+          <EmptyState icon={<IconCalendar width={18} height={18} />} title="当前分类没有匹配的待办" hint="可以调整状态、优先级或搜索条件。" action={<button className="btn slim" onClick={() => setCollectionId('')}>查看全部分类</button>} />
+        ) : search.trim() ? (
           <EmptyState
             icon={<IconSearch width={18} height={18} />}
             title={`没有匹配「${search.trim()}」的待办`}
@@ -323,6 +340,7 @@ export default function TodoPanel() {
                 ) : (
                   <div className="todo-card-meta">
                     <span className={`prio ${t.priority}`}>{PRIORITY_LABEL[t.priority]}</span>
+                    {t.collection_id && t.collection_id !== 'builtin.todo' && collections.some(c => c.id === t.collection_id) && <span className="tag todo-category" title="待办分类">{collections.find(c => c.id === t.collection_id)!.title}</span>}
                     {t.due_date && (
                       <span className={`todo-meta mono ${t.is_overdue ? 'danger' : t.due_date === displayToday ? 'accent' : ''}`}>
                         {t.due_date}{t.start_time ? ` ${t.start_time}${t.end_time?`–${t.end_date&&t.end_date!==t.due_date?t.end_date+' ':''}${t.end_time}`:' · 结束待定'}` : ` · 仅日期${t.end_date?' 至 '+t.end_date:''}`}

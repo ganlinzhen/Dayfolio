@@ -76,6 +76,121 @@ afterAll(async () => {
 });
 
 describe('MCP 端到端主流程', () => {
+  it('HTML 工具待办可预览、批量创建与去重，MCP 和 App 共用关联状态', async () => {
+    const created = arg(await client.callTool({ name: 'add_tool', arguments: { title: '待办桥接测试', files: [{ name: 'index.html', content_base64: Buffer.from('<h1>测试</h1>').toString('base64') }] } }));
+    expect(created.ok).toBe(true);
+    const toolId = created.data.tool.id;
+    const items = [{ sourceKey: 'uefa:2026:123', title: '观看测试比赛', startAt: '2026-11-04T04:00:00+08:00' }];
+    const preview = arg(await client.callTool({ name: 'preview_tool_todos', arguments: { toolId, items } }));
+    expect(preview.data.items[0].status).toBe('missing');
+    expect(preview.data.category).toMatchObject({ title: '待办桥接测试', exists: false });
+    const categoriesBefore = arg(await client.callTool({ name: 'list_calendar_collections', arguments: {} }));
+    expect(categoriesBefore.data.some((c: { id: string }) => c.id === preview.data.category.id)).toBe(false);
+    const first = arg(await client.callTool({ name: 'add_tool_todos', arguments: { toolId, items } }));
+    expect(first.data.created).toBe(1);
+    expect(first.data.category).toMatchObject({ id: preview.data.category.id, exists: true });
+    const filtered = arg(await client.callTool({ name: 'list_todos', arguments: { collection_id: first.data.category.id } }));
+    expect(filtered.data.todos.map((t: { id: number }) => t.id)).toEqual([first.data.items[0].todoId]);
+    const id = first.data.items[0].todoId;
+    const db = openNodeSqliteDb(join(dbDir, 'e2e.db'));
+    try {
+      const app = createCore(db, { dbPath: join(dbDir, 'e2e.db') });
+      app.todos.update(id, { title: 'App 手工标题', notes: '私人备注' });
+      app.todos.complete(id);
+      expect(app.toolTodos.getStatus({ toolId, sourceKeys: [items[0].sourceKey] })[0].status).toBe('done');
+    } finally { db.close(); }
+    const again = arg(await client.callTool({ name: 'add_tool_todos', arguments: { toolId, items } }));
+    expect(again.data).toMatchObject({ created: 0, reused: 1 });
+    const status = arg(await client.callTool({ name: 'get_tool_todo_status', arguments: { toolId, sourceKeys: [items[0].sourceKey] } }));
+    expect(status.data).toEqual([{ sourceKey: items[0].sourceKey, todoId: id, status: 'done' }]);
+    expect(JSON.stringify(status)).not.toContain('私人备注');
+    await client.callTool({ name: 'delete_todo', arguments: { id } });
+    const removed = arg(await client.callTool({ name: 'add_tool_todos', arguments: { toolId, items } }));
+    expect(removed.data).toMatchObject({ created: 0, deleted: 1 });
+    await client.callTool({ name: 'delete_tool', arguments: { id: toolId } });
+  });
+  it('不同 HTML 工具可声明通用分类，预览不创建，确认创建后复用', async () => {
+    const tool = arg(await client.callTool({ name: 'add_tool', arguments: { title: '读书会日程', files: [{ name: 'index.html', content_base64: Buffer.from('<h1>读书会</h1>').toString('base64') }] } })).data.tool;
+    const category = { key: 'reading-group', title: '读书会', color: 'green' };
+    const items = [{ sourceKey: 'session:1', title: '阅读讨论' }];
+    const preview = arg(await client.callTool({ name: 'preview_tool_todos', arguments: { toolId: tool.id, category, items } }));
+    expect(preview.data.category.exists).toBe(false);
+    const collections = arg(await client.callTool({ name: 'list_calendar_collections', arguments: {} })).data;
+    expect(collections.some((c: { id: string }) => c.id === preview.data.category.id)).toBe(false);
+    const first = arg(await client.callTool({ name: 'add_tool_todos', arguments: { toolId: tool.id, category, items } }));
+    const second = arg(await client.callTool({ name: 'add_tool_todos', arguments: { toolId: tool.id, category, items: [{ sourceKey: 'session:2', title: '下一次讨论' }] } }));
+    expect(second.data.category.id).toBe(first.data.category.id);
+    const db = openNodeSqliteDb(join(dbDir, 'e2e.db'));
+    try {
+      const app = createCore(db, { dbPath: join(dbDir, 'e2e.db') });
+      expect(app.todos.list({ collection_id: first.data.category.id })).toHaveLength(2);
+    } finally { db.close(); }
+    for (const result of [first, second]) await client.callTool({ name: 'delete_todo', arguments: { id: result.data.items[0].todoId } });
+    await client.callTool({ name: 'delete_tool', arguments: { id: tool.id } });
+  });
+  it('分类编辑、隐藏与删除经 MCP 共用业务入口，删除保留待办', async () => {
+    const tool=arg(await client.callTool({name:'add_tool',arguments:{title:'分类管理测试',files:[{name:'index.html',content_base64:Buffer.from('<h1>分类管理</h1>').toString('base64')}]}})).data.tool;
+    const batch=arg(await client.callTool({name:'add_tool_todos',arguments:{toolId:tool.id,items:[{sourceKey:'one',title:'保留这条待办',dueDate:'2026-11-01'}]}})).data;
+    const collectionId=batch.category.id,todoId=batch.items[0].todoId;
+    await client.callTool({name:'set_calendar_collection_visibility',arguments:{collectionId,visible:false}});
+    const edited=arg(await client.callTool({name:'update_calendar_collection',arguments:{collectionId,expectedTitle:'分类管理测试',expectedColor:'blue',title:'我的分类',color:'rose'}}));
+    expect(edited.data).toMatchObject({id:collectionId,title:'我的分类',color:'rose',visible:false,deleteBlockedReason:null});
+    const stale=arg(await client.callTool({name:'delete_calendar_collection',arguments:{collectionId,expectedTitle:'分类管理测试'}}));
+    expect(stale.ok).toBe(false);
+    const deleted=arg(await client.callTool({name:'delete_calendar_collection',arguments:{collectionId,expectedTitle:'我的分类'}}));
+    expect(deleted.data).toMatchObject({movedTodos:1,movedEvents:0});
+    const todos=arg(await client.callTool({name:'list_todos',arguments:{collection_id:'builtin.todo'}})).data.todos;
+    expect(todos.find((t:{id:number})=>t.id===todoId)).toMatchObject({title:'保留这条待办',collection_id:'builtin.todo'});
+    const collections=arg(await client.callTool({name:'list_calendar_collections',arguments:{}})).data;
+    expect(collections.some((c:{id:string})=>c.id===collectionId)).toBe(false);
+    const builtin=collections.find((c:{id:string})=>c.id==='builtin.todo');
+    expect(builtin.deleteBlockedReason).toBeTruthy();
+    expect(arg(await client.callTool({name:'delete_calendar_collection',arguments:{collectionId:builtin.id,expectedTitle:builtin.title}})).ok).toBe(false);
+    await client.callTool({name:'delete_todo',arguments:{id:todoId}});
+    await client.callTool({name:'delete_tool',arguments:{id:tool.id}});
+  });
+  it('后台采集排队、范围限制、提交完成与停止可通过真实 MCP 协议核对', async () => {
+    const db = openNodeSqliteDb(join(dbDir, 'e2e.db'));
+    const core = createCore(db, { dbPath: join(dbDir, 'e2e.db') });
+    const run = core.newsRuns.enqueue();
+    const owner = 'e2e-private-run-owner';
+    const held = core.newsRuns.claimNext(owner, process.pid)!;
+    const scoped = new Client({ name: 'scoped-test', version: '1' });
+    try {
+      await scoped.connect(new StdioClientTransport({ command: process.execPath, args: [SERVER], env: {
+        PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(dbDir, 'home'),
+        TODODESK_DB: join(dbDir, 'e2e.db'), DAYFOLIO_NEWS_RUN_ID: run.id, DAYFOLIO_NEWS_RUN_TOKEN: owner,
+      } }));
+      expect((await scoped.listTools()).tools.map(t => t.name).sort()).toEqual(['complete_news_task','get_news_task','submit_news_items']);
+      expect(arg(await scoped.callTool({ name: 'get_news_task', arguments: {} })).data.task.id).toBe(run.task_id);
+      expect(arg(await scoped.callTool({ name: 'submit_news_items', arguments: { items: [{
+        title: '后台运行 MCP 测试', summary: '通过限定任务的 MCP 提交', source_url: 'https://example.com/e2e-run-scope', published_at: new Date(Date.now()-60000).toISOString(),
+      }] } })).ok).toBe(true);
+      expect(arg(await scoped.callTool({ name: 'complete_news_task', arguments: { note: '范围验证完成' } })).ok).toBe(true);
+      expect(core.newsRuns.finish(run.id, owner, 'succeeded').status).toBe('succeeded');
+      const records = arg(await client.callTool({ name: 'list_news_agent_runs', arguments: { task_id: run.task_id } }));
+      expect(records.data[0].status).toBe('succeeded');
+      expect(JSON.stringify(records)).not.toContain(owner);
+      expect(JSON.stringify(records)).not.toContain(held.claim.claim_token);
+      expect(arg(await scoped.callTool({ name: 'submit_news_items', arguments: { items: [{
+        title: '结束后拒绝写入', summary: '不应提交', source_url: 'https://example.com/blocked-after-finish', published_at: new Date().toISOString(),
+      }] } })).ok).toBe(false);
+      const next = core.newsRuns.enqueue();
+      expect(arg(await client.callTool({ name: 'cancel_news_agent_run', arguments: { run_id: next.id } })).data.status).toBe('cancelled');
+    } finally { await scoped.close(); db.close(); }
+  }, 30000);
+
+  it('Agent 设置经 MCP 读写同一配置，保留其他供应商偏好并拒绝过期修订', async () => {
+    const before = arg(await client.callTool({name:'get_agent_settings',arguments:{}})).data;
+    expect(before.provider).toBe(null);
+    const saved = arg(await client.callTool({name:'update_agent_settings',arguments:{provider:'codex',binary:'/tmp/test-codex',model:'test-model',expected_revision:before.revision}}));
+    expect(saved.ok).toBe(true);
+    expect(saved.data.profiles.codex.model).toBe('test-model');
+    expect(arg(await client.callTool({name:'get_agent_settings',arguments:{}})).data).toEqual(saved.data);
+    expect(arg(await client.callTool({name:'update_agent_settings',arguments:{provider:'claude',expected_revision:before.revision}})).ok).toBe(false);
+    expect(arg(await client.callTool({name:'update_agent_settings',arguments:{provider:null,expected_revision:saved.data.revision}})).ok).toBe(true);
+  });
+
   it('服务版本来自根版本，能力目录与实际公开工具一致', async () => {
     const { version } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8'));
     expect(client.getServerVersion()).toMatchObject({ name: 'tododesk', version });
@@ -828,6 +943,12 @@ describe('MCP 端到端主流程', () => {
       await client.callTool({ name: 'add_tool', arguments: { title: 'X', file_paths: [srcPath], files: [{ name: 'a.html', content_base64: 'aGk=' }] } }),
     );
     expect(bad2.ok).toBe(false);
+
+    const badEntry = arg(await client.callTool({name: 'add_tool', arguments: {
+      title: '非 HTML 入口', entry_file: 'manifest.json', files: [{name: 'manifest.json', content_base64: 'e30='}],
+    }}));
+    expect(badEntry.ok).toBe(false);
+    expect(badEntry.error).toContain('必须是 HTML');
 
     // 6. 删除：库记录 + 文件目录一起清理
     arg(await client.callTool({ name: 'delete_tool', arguments: { id } }));
@@ -2114,39 +2235,14 @@ describe('P2 统一日历 MCP 合同',()=>{
  });
 });
 
-describe('P3 工具包 MCP 与 App 共用安装记录',()=>{
- it('不能自行授予权限；获宿主授权后安装、升级、回滚和卸载保留用户记录',async()=>{
-  const call=async(name:string,args:Record<string,unknown>={})=>arg(await client.callTool({name,arguments:args}));
-  const directory=join(dbDir,'runtime-package'),id='test.mcp-package';writePackage(directory,{id});
-  const names=(await client.listTools()).tools.map(tool=>tool.name);expect(names).not.toContain('authorize_extension_install');
-  let preview=(await call('preview_extension_install',{stagingDirectory:directory})).data;expect(preview.authorizationRef).toBeNull();
-  const input={stagingDirectory:directory,expectedExtensionRevision:preview.currentRevision,expectedPackageDigest:preview.digest};
-  expect((await call('install_extension',{...input,authorizationRef:'forged'})).code).toBe('PERMISSION_DENIED');
-  expect((await call('invoke_action',{action:'authorize_extension_install',params:{input}})).error).toContain('ACTION_CHANNEL_DENIED');
-  const dbPath=join(dbDir,'e2e.db'),db=openNodeSqliteDb(dbPath),host=createCore(db,{dbPath});
-  try{
-   // 合成环境中模拟 App 对当前摘要的明确授权；MCP 本身没有授权工具。
-   const approval=host.commands.human.authorizeExtensionInstall(input);
-   expect((await call('install_extension',{...input,authorizationRef:approval.authorizationRef})).data.effect).toBe('installed');
-   preview=(await call('preview_extension_install',{stagingDirectory:directory})).data;
-   expect((await call('install_extension',{...input,expectedExtensionRevision:preview.currentRevision,authorizationRef:preview.authorizationRef})).data.effect).toBe('unchanged');
-   expect((await call('list_extensions')).data.some((extension:{id:string})=>extension.id===id)).toBe(true);
-   expect((await call('get_extension_help',{extensionId:id})).data.markdown).toContain('隔离工具');
-   const event=(await call('list_external_events',{providerId:`ext:${id}/main`})).data.items[0];
-   const sub=(await call('subscribe_event',{eventId:event.id})).data;host.todos.update(sub.todo.id,{notes:'个人备注'});host.todos.complete(sub.todo.id);
-   const update=join(dbDir,'runtime-upgrade');writePackage(update,{id,version:'1.1.0',title:'页面升级'});preview=(await call('preview_extension_install',{stagingDirectory:update})).data;
-   expect((await call('install_extension',{stagingDirectory:update,expectedExtensionRevision:preview.currentRevision,expectedPackageDigest:preview.digest,authorizationRef:preview.authorizationRef})).data.effect).toBe('updated');
-   let current=(await call('get_extension',{extensionId:id})).data;
-   expect((await call('rollback_extension',{extensionId:id,expectedRevision:current.revision,version:'1.0.0'})).ok).toBe(true);
-   current=(await call('get_extension',{extensionId:id})).data;expect(current.version).toBe('1.0.0');
-   expect((await call('set_extension_enabled',{extensionId:id,expectedRevision:current.revision,enabled:false})).ok).toBe(true);
-   expect((await call('subscribe_event',{eventId:event.id})).code).toBe('PERMISSION_DENIED');
-   current=(await call('get_extension',{extensionId:id})).data;
-   expect((await call('uninstall_extension',{extensionId:id,expectedRevision:current.revision})).ok).toBe(true);
-   expect(host.todos.get(sub.todo.id)).toMatchObject({status:'done',notes:'个人备注'});
-   expect((await call('get_extension_help',{extensionId:id})).data.markdown).toContain('隔离工具');
-   expect((await client.listTools()).tools.map(tool=>tool.name)).toEqual(names);
-  }finally{db.close();}
+describe('HTML 工具箱管理边界', () => {
+ it('提供 HTML 工具管理，撤下工具包安装、启停、卸载与回滚接口', async () => {
+  const names = (await client.listTools()).tools.map(tool => tool.name);
+  expect(names).toEqual(expect.arrayContaining(['list_tools', 'add_tool', 'delete_tool']));
+  const removed = ['preview_extension_install', 'authorize_extension_install', 'install_extension', 'set_extension_enabled', 'rollback_extension', 'uninstall_extension'];
+  for (const name of removed) expect(names).not.toContain(name);
+  const result = arg(await client.callTool({name: 'get_runtime_tool_contract', arguments: {}}));
+  expect(result.data.available.some((name: string) => removed.includes(name))).toBe(false);
  });
 });
 

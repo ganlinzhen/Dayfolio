@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { createCore } from '../../../../packages/core/src/index';
 import { openDb } from './db';
+import { defaultDbPath } from '../../../../packages/core/src';
+import { createNewsAgentRunner } from './news-agent-runner';
 import { registerIpc } from './ipc';
 import { createTrayAndQuickCapture } from './tray';
 import { registerToolFileProtocol, migrateLegacyToolsDir, TOOL_SCHEME } from './tools-store';
@@ -26,8 +28,11 @@ if (process.env.TODODESK_USER_DATA?.trim()) {
   app.setPath('sessionData', process.env.TODODESK_USER_DATA.trim());
 }
 
-// RSS-only：本地刷新不请求 X，装配不再读取任何 X 凭据（凭证文件保留但无人读取）
+// App 与后台新闻 MCP 共用同一数据库；联网采集由设置中选择的 Agent 执行。
 const core = createCore(openDb());
+const newsAgent = createNewsAgentRunner({ core, dbPath: defaultDbPath(), nodeBinary: process.execPath,
+  mcpServer: app.isPackaged ? join(process.resourcesPath, 'agent-kit/mcp/mcp-server.cjs') : join(__dirname, '../../../mcp/dist/mcp-server.cjs'),
+});
 
 // 自定义协议需在 app ready 前声明特权（standard 才能带 host/path，secure 才能跑 JS）
 protocol.registerSchemesAsPrivileged([
@@ -117,7 +122,7 @@ app.whenReady().then(async () => {
   ensureOnboardingCourse(core, app.isPackaged
     ? join(process.resourcesPath, 'onboarding')
     : join(app.getAppPath(), '../onboarding'));
-  registerIpc(core);
+  registerIpc(core, newsAgent);
   registerToolFileProtocol();
   registerNewsFileProtocol();
   const hostOrigin = process.env.ELECTRON_START_URL ? new URL(process.env.ELECTRON_START_URL).origin : HOST_ORIGIN;
@@ -128,6 +133,7 @@ app.whenReady().then(async () => {
     catch { console.error('日历视图偏好迁移未完成，保留现有偏好并在下次启动重试。'); }
   }
   core.providerWorker.start();
+  newsAgent.start();
   createWindow();
   createTrayAndQuickCapture(core, openMainWindow);
   app.on('activate', () => {
@@ -156,5 +162,5 @@ app.on('before-quit',event=>{
   if(providersStopped)return;
   event.preventDefault();if(stoppingProviders)return;stoppingProviders=true;
   // 原生 macOS 退出请求结束本轮回调后再重入，避免只关窗却保留进程。
-  void core.providerWorker.stop().catch(()=>{}).finally(()=>{providersStopped=true;setImmediate(()=>app.quit());});
+  void Promise.all([core.providerWorker.stop(), newsAgent.stop()]).catch(()=>{}).finally(()=>{providersStopped=true;setImmediate(()=>app.quit());});
 });

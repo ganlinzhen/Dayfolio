@@ -244,20 +244,18 @@ try {
     10000,
     '打开独立 AI 采集页',
   );
-  assert(await evalJs(`document.querySelectorAll('.news3-request').length === 2`), '采集请求卡渲染（等待 AI + 已完成）');
-  assert(await evalJs(`[...document.querySelectorAll('.news3-request-status')].some(s => s.textContent.includes('等待 AI'))`), '等待 AI 状态可见（离线保持等待）');
+  assert(await evalJs(`document.querySelectorAll('.news3-request').length === 2`), '采集记录卡渲染（未完成 + 已完成）');
+  assert(await evalJs(`[...document.querySelectorAll('.news3-request-status')].some(s => s.textContent.includes('未完成'))`), '旧未完成记录可见，可直接接续执行');
   assert(await evalJs(`[...document.querySelectorAll('.news3-request-status')].some(s => s.textContent.includes('已完成'))`), '已完成状态可见');
   assert(await evalJs(`[...document.querySelectorAll('.news3-request-count')].some(s => s.textContent.includes('已收录 2 篇') && s.textContent.includes('上限 5 篇'))`), '采集结果进度显示（已收录 2 篇 / 上限 5 篇）');
-  assert(await evalJs(`document.body.textContent.includes('不联网抓取') || document.body.textContent.includes('AI 助手')`), 'agent-only 说明文案可见');
+  assert(await evalJs(`document.body.textContent.includes('已配置的 Agent')`), '后台 Agent 采集说明文案可见');
 
-  // 持久提示词：编辑 → 保存 → 返回后重读 → 创建快照请求。
+  // 持久提示词：编辑 → 保存 → 返回后重读，不创建等待队列。
   await waitFor(() => evalJs(`document.querySelector('[aria-label="新闻采集提示词内容"]')?.value.includes('国际新闻')`), 10000, '读取默认提示词');
   await evalJs(`(() => { const input = document.querySelector('[aria-label="新闻采集提示词内容"]'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, '国际 3–5 条，国内 3–5 条，AI 专题合并一条简报，重点关注 AI 编程'); input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  assert(await evalJs(`[...document.querySelectorAll('button')].find(b => b.textContent === '按已保存提示词创建采集').disabled`), '未保存时禁止创建快照请求');
+  assert(await evalJs(`[...document.querySelectorAll('[aria-label="新闻后台执行"] button')].find(b => b.textContent === '更新今日新闻').disabled`), '未保存时禁止启动采集');
   await clickUntil(`[...document.querySelectorAll('button')].find(b => b.textContent === '保存提示词')?.click()`,
     () => evalJs(`document.querySelector('.news3-prompt-head').textContent.includes('版本 1')`), 10000, '提示词保存并递增版本');
-  await clickUntil(`[...document.querySelectorAll('button')].find(b => b.textContent === '按已保存提示词创建采集')?.click()`,
-    () => evalJs(`[...document.querySelectorAll('.news3-request')].some(t => t.textContent.includes('AI 编程') && t.textContent.includes('上限 11 篇'))`), 10000, '使用保存的提示词创建 11 条预算请求');
   await clickUntil(`document.querySelector('.news3-back')?.click()`, () => evalJs(`!!document.querySelector('[aria-label="新闻列表页"]')`), 10000, '返回列表后重进验证持久化');
   await clickUntil(`[...document.querySelectorAll('.news3-toolbar button')].find(b => b.textContent.includes('AI 采集'))?.click()`,
     () => evalJs(`document.querySelector('[aria-label="新闻采集提示词内容"]')?.value.includes('重点关注 AI 编程')`), 10000, '再次进入仍读到保存的提示词');
@@ -270,22 +268,10 @@ try {
   assert(await evalJs(`![...document.querySelectorAll('button')].some(b => b.textContent.includes('联网抓取'))`), '无「联网抓取」按钮');
   assert(await evalJs(`![...document.querySelectorAll('button')].some(b => b.textContent.includes('源与定时'))`), '无「源与定时设置」入口');
 
-  // 用户在 App 创建采集请求（发起走同一 core 硬校验；执行仍是 agent 经 MCP）
-  await clickUntil(
-    `[...document.querySelectorAll('button')].find(b => b.textContent.includes('新建采集'))?.click()`,
-    () => evalJs(`!!document.querySelector('[aria-label="新建 AI 采集请求"]')`),
-    10000, '新建采集表单打开',
-  );
-  await evalJs(`(() => { const s = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set; const i = document.querySelector('[aria-label="采集主题"]'); s.call(i, '冒烟：用户在 App 创建的采集'); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await evalJs(`(() => { const s = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set; const t = document.querySelector('[aria-label="给 AI 的要求"]'); s.call(t, '只要一手来源'); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await clickUntil(
-    `[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '创建采集请求')?.click()`,
-    () => evalJs(`[...document.querySelectorAll('.news3-request')].some(t => t.textContent.includes('用户在 App 创建的采集') && t.textContent.includes('等待 AI'))`),
-    10000, '采集请求创建成功并显示「等待 AI」（App 发起，同一 core 硬校验）',
-  );
-  assert(await evalJs(`document.body.textContent.includes('采集请求已创建')`), '创建后提示：等待下一次 AI 会话执行');
-  assert(await evalJs(`[...document.querySelectorAll('.news3-request')].some(t => t.textContent.includes('来自 App'))`), '采集卡标注「来自 App」来源');
-  assert(await evalJs(`![...document.querySelectorAll('button')].some(b => b.textContent.includes('认领') || b.textContent.includes('提交新闻'))`), 'App 无认领/提交入口（执行是 agent 经 MCP 的专属动作）');
+  // 用户直接执行，不再创建请求等待后续会话。
+  assert(await evalJs(`![...document.querySelectorAll('button')].some(b => /新建采集|创建采集请求|按已保存提示词创建采集/.test(b.textContent))`), '旧创建等待入口已移除');
+  assert(await evalJs(`!window.tododesk.news.createTask`), '预加载不再提供仅创建采集请求的方法');
+  assert(await evalJs(`document.querySelectorAll('.news3-request').length === 2`), '保存提示词不会新增等待记录');
   await clickUntil(
     `[...document.querySelectorAll('.news3-back')].find(b => b.textContent.includes('返回新闻'))?.click()`,
     () => evalJs(`!!document.querySelector('[aria-label="新闻列表页"]') && !document.querySelector('[aria-label="AI 采集页"]')`),

@@ -38,6 +38,15 @@ export function createTodoService(db: DbAdapter, deps: TodoServiceDeps = {}) {
     if (filters.priority) { where.push('priority=?'); params.push(filters.priority); }
     if (filters.search) { where.push('(title LIKE ? OR notes LIKE ?)'); params.push(`%${filters.search}%`, `%${filters.search}%`); }
     if (filters.tag) { where.push('tags LIKE ?'); params.push(`%"${filters.tag}"%`); }
+    if (filters.collection_id !== undefined) {
+      if (typeof filters.collection_id !== 'string' || !db.prepare('SELECT 1 FROM calendar_collections WHERE id=?').get(filters.collection_id)) runtimeError('CONTRACT_INVALID', '待办分类不存在');
+      // 与日历保持相同归属顺序：订阅、实际关联的计划、保存的分类、基础待办。
+      where.push(`COALESCE(
+        (SELECT p.collection_id FROM event_subscriptions s JOIN external_events e ON e.id=s.event_id JOIN event_providers p ON p.id=e.provider_id WHERE s.todo_id=t.id AND s.status='active'),
+        CASE WHEN EXISTS(SELECT 1 FROM plan_items pi WHERE pi.todo_id=t.id) THEN 'builtin.study' END,
+        t.collection_id,'builtin.todo')=?`);
+      params.push(filters.collection_id);
+    }
     const zone = displayTimezone(db);
     // 先按权威时间判断再分页，避免 SQL 与行映射使用不同的时区/截止规则。
     const count = filters.limit && Number.isFinite(filters.limit) && filters.limit > 0 ? Math.floor(filters.limit) : 500;

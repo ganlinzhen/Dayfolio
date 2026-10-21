@@ -7,6 +7,7 @@ import { join, resolve, sep } from 'node:path';
 import { app, net, protocol } from 'electron';
 import { pathToFileURL } from 'node:url';
 import { defaultDbPath, migrateToolFilesDir, toolsRootForDb } from '../../../../packages/core/src/index';
+import { injectToolSdk, TOOL_SDK, TOOL_SDK_PATH } from './tool-sdk';
 
 export const TOOL_SCHEME = 'tool-file';
 
@@ -29,9 +30,11 @@ export function migrateLegacyToolsDir(): void {
  * host 固定为字母 t（纯数字 host 会被 URL 规范化成 IPv4 地址），工具 id 放在路径首段。
  */
 export function registerToolFileProtocol(): void {
-  protocol.handle(TOOL_SCHEME, (req) => {
+  protocol.handle(TOOL_SCHEME, async (req) => {
     try {
       const u = new URL(req.url);
+      if (u.hostname !== 't') return new Response('Forbidden', { status: 403 });
+      if (u.pathname === '/' + TOOL_SDK_PATH) return new Response(TOOL_SDK, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' } });
       const parts = decodeURIComponent(u.pathname).replace(/^\/+/, '').split('/');
       const toolId = Number(parts[0]);
       const rel = parts.slice(1).join('/');
@@ -43,7 +46,9 @@ export function registerToolFileProtocol(): void {
       if (abs !== base && !abs.startsWith(base + sep)) {
         return new Response('Forbidden', { status: 403 });
       }
-      return net.fetch(pathToFileURL(abs).toString());
+      const response = await net.fetch(pathToFileURL(abs).toString());
+      if (/\.html?$/i.test(abs) && response.ok) return new Response(injectToolSdk(await response.text()), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+      return response;
     } catch {
       return new Response('Bad Request', { status: 400 });
     }

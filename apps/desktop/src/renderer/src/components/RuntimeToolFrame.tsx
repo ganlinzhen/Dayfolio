@@ -12,7 +12,7 @@ export default function RuntimeToolFrame({ extensionId, onClose }: { extensionId
   const refresh = async () => {
     try {
       const next = await call<Extension|null>(() => api.extensions.get({ extensionId }));
-      if (!next || next.status !== 'active') { setExtension(null); setError('工具已停用或卸载，历史待办仍保留。'); return; }
+      if (!next || next.status !== 'active') { setExtension(null); setError('此历史入口已移除，请返回工具箱打开 HTML 工具。'); return; }
       setExtension(previous => previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
       const revision = await call(() => api.runtime.revision());
       port.current?.postMessage({ type: 'dayfolio:changed', event: { revision, providerIds: next.grantedCapabilities.map(cap => cap.providerId).filter((id, i, all) => all.indexOf(id) === i), reason: 'runtime_revision' } });
@@ -64,7 +64,7 @@ export default function RuntimeToolFrame({ extensionId, onClose }: { extensionId
     window.addEventListener('message', hello);
     return () => { stopped = true; release(); window.removeEventListener('message', hello); };
   }, [extensionId, identity]);
-  return <div className="tool-frame"><EmbeddedFrame label="运行时工具" title={extension?.title ?? '运行时工具'} meta={extension?.version} className="tool-embed" allowFullscreen={false} leading={<button className="tool-crumb-back" onClick={onClose}>返回</button>}>
+  return <div className="tool-frame"><EmbeddedFrame label="运行时工具" title={extension?.title ?? '运行时工具'} meta="HTML 页面" className="tool-embed" allowFullscreen={false} leading={<button className="tool-crumb-back" onClick={onClose}>返回</button>}>
     {error && <div className="notice error" role="alert">{error}</div>}
     {extension && <iframe ref={iframe} key={identity} className="tool-iframe" title={extension.title} sandbox="allow-scripts allow-same-origin" src={extension.origin + '/' + extension.digest + '/' + extension.entry} />}
   </EmbeddedFrame></div>;

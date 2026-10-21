@@ -671,6 +671,32 @@ MIGRATIONS.push({ version: 24, name: 'news_collection_prompt_and_brief', up: (db
   ALTER TABLE news ADD COLUMN brief_json TEXT;`);
 }});
 
+MIGRATIONS.push({ version: 25, name: 'news_agent_runs', up: db => {
+  db.exec(`CREATE TABLE news_agent_runs (
+    id TEXT PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES news_tasks(id),
+    status TEXT NOT NULL CHECK(status IN ('queued','running','cancelling','succeeded','failed','cancelled','interrupted')),
+    progress TEXT NOT NULL, error TEXT, thread_id TEXT, owner_token TEXT, host_pid INTEGER,
+    created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT
+  );
+  CREATE UNIQUE INDEX news_agent_task_active ON news_agent_runs(task_id) WHERE status IN ('queued','running','cancelling');
+  CREATE UNIQUE INDEX news_agent_single_running ON news_agent_runs((1)) WHERE status IN ('running','cancelling');`);
+}});
+
+MIGRATIONS.push({ version: 26, name: 'agent_connection_settings', up: db => {
+  db.exec('CREATE TABLE agent_settings (id INTEGER PRIMARY KEY CHECK(id=1), config TEXT NOT NULL, revision INTEGER NOT NULL)');
+}});
+
+MIGRATIONS.push({ version: 27, name: 'html_tool_todo_links', up: db => {
+  db.exec(`CREATE TABLE tool_todo_links (
+    tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+    source_key TEXT NOT NULL,
+    todo_id INTEGER REFERENCES todos(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(tool_id,source_key)
+  );
+  CREATE INDEX idx_tool_todo_id ON tool_todo_links(todo_id);`);
+}});
+
 export function runMigrations(db: DbAdapter): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
   const current = Number(row?.user_version ?? 0);

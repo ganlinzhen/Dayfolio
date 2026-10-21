@@ -87,6 +87,8 @@ jobs:
           node apps/desktop/scripts/ui-smoke-onboarding.mjs
           node apps/desktop/scripts/ui-smoke-course.mjs
           node apps/desktop/scripts/ui-smoke-news.mjs
+          node apps/desktop/scripts/ui-smoke-modals.mjs
+          node apps/desktop/scripts/ui-smoke-tools.mjs
       - name: 补齐 Electron 内嵌程序的签名
         run: node scripts/release-sign-electron.mjs
       - name: 生成桌面包
@@ -108,6 +110,8 @@ jobs:
           node apps/desktop/scripts/ui-smoke-onboarding.mjs
           node apps/desktop/scripts/ui-smoke-course.mjs
           node apps/desktop/scripts/ui-smoke-news.mjs
+          node apps/desktop/scripts/ui-smoke-modals.mjs
+          node apps/desktop/scripts/ui-smoke-tools.mjs
         env:
           TODODESK_SMOKE_APP: ${{ runner.temp }}/dayfolio-download/Dayfolio.app/Contents/MacOS/Dayfolio
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

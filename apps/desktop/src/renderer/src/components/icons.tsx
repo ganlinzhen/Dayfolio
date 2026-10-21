@@ -370,3 +370,6 @@ export const IconMegaphone = (p: P) => (
     <path d="M17.5 9a4.5 4.5 0 0 1 0 6" />
   </svg>
 );
+
+/** 设置：齿轮。 */
+export const IconSettings = (p: P) => <svg {...base(p)}><path d="m9 3-.7 2.2-2 .9-2.1-.5-2 3.4 1.5 1.7v2.6L2.2 15l2 3.4 2.1-.5 2 .9L9 21h4l.7-2.2 2-.9 2.1.5 2-3.4-1.5-1.7v-2.6L19.8 9l-2-3.4-2.1.5-2-.9L13 3z"/><circle cx="11" cy="12" r="3"/></svg>;

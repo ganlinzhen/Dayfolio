@@ -1,6 +1,7 @@
+import NewsAgentControls, { useNewsAgent } from './NewsAgentControls';
 // 新闻面板（agent-only）：任务/规则/结果/收藏的持久展示。
 // - App 不抓取 RSS、不配置新闻源或凭证、无任何定时抓取入口；
-// - 新闻由 AI 助手经 MCP 认领「新闻任务」后提交（带原始来源链接与摘要），离线时任务保持待执行；
+// - 新闻由配置的 Agent 或对话中的 Agent 采集，经受限业务入口提交；
 // - 新闻按发布时间倒序，滚动到底部自动分页加载；
 // - 内容两种形态：'url' 详情页内嵌来源网页；'html' 用 agent 提交的本地快照展示
 //   （X/Twitter 等无法内嵌的来源；快照经 news-file:// 协议在 iframe 中加载，可外开原文）；
@@ -55,7 +56,7 @@ type SourceStatus = 'idle' | 'loading' | 'ready' | 'failed';
 const PAGE_SIZE = 30;
 
 const STATUS_LABEL: Record<NewsTask['status'], string> = {
-  pending: '等待 AI',
+  pending: '未完成',
   claimed: '核实中',
   completed: '已完成',
   cancelled: '已取消',
@@ -115,11 +116,6 @@ export default function NewsPanel() {
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [promptDirty]);
-  // 新建采集请求（用户在 App 发起；同一 core 硬校验，执行仍由 agent 经 MCP 认领）
-  const [formOpen, setFormOpen] = useState(false);
-  const [draft, setDraft] = useState({ title: '', instructions: '', max_items: 10, window_hours: 24 });
-  const [creating, setCreating] = useState(false);
-  const [createdHint, setCreatedHint] = useState(0); // 刚创建的任务 id，短暂提示「等待助手认领」
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -226,6 +222,8 @@ export default function NewsPanel() {
   useEffect(() => { void refreshTasks().catch((e: Error) => setError(e.message)); }, [refreshTasks]);
   useEffect(() => { void refreshList().catch((e: Error) => setError(e.message)); }, [refreshList]);
 
+  const agent = useNewsAgent(() => { void refreshTasks().catch(() => {}); void refreshList().catch(() => {}); });
+
   // 去掉手动刷新按钮后，窗口重新聚焦时静默同步本地库；App 仍不联网抓取
   useEffect(() => {
     const syncOnFocus = () => {
@@ -310,46 +308,22 @@ export default function NewsPanel() {
       .catch((e: Error) => setError(e.message));
   };
 
-  // ---------- 任务：创建（用户发起，core 硬校验）/ 取消 ----------
-  const createTaskSubmit = () => {
-    if (creating) return;
-    setCreating(true);
-    void call<NewsTask>(() =>
-      api.news.createTask({
-        title: draft.title,
-        instructions: draft.instructions.trim() || undefined,
-        max_items: Number(draft.max_items) || undefined,
-        window_hours: Number(draft.window_hours) || undefined,
-      }),
-    )
-      .then((task) => {
-        setFormOpen(false);
-        setDraft({ title: '', instructions: '', max_items: 10, window_hours: 24 });
-        setCreatedHint(task.id);
-        setTimeout(() => setCreatedHint(0), 6000);
-        setError('');
-        void refreshTasks().catch(() => {});
-      })
-      .catch((e: Error) => setError(e.message)) // 硬校验错误原样透传（core 统一规则）
-      .finally(() => setCreating(false));
-  };
-
   const cancelTask = (t: NewsTask) => {
     void call<NewsTask>(() => api.news.cancelTask({ id: t.id }))
       .then(() => refreshTasks())
       .catch((e: Error) => setError(e.message));
   };
 
-  // ---------- AI 采集请求：展示用户关心的目标、进度与结果，执行协议细节留在帮助文档 ----------
+  // ---------- 采集记录：展示用户关心的目标、进度与结果，执行协议细节留在帮助文档 ----------
   const requestStatusHint = (t: NewsTask): string => {
-    if (t.status === 'pending') return '等待下一次 AI 会话认领；App 不会自动联网或唤醒助手。';
+    if (t.status === 'pending') return '本次采集尚未完成，可直接调用已配置的 Agent 接续采集。';
     if (t.status === 'claimed') return t.claimed_by ? `${t.claimed_by} 正在搜索并核实来源。` : 'AI 正在搜索并核实来源。';
     if (t.status === 'cancelled') return '请求已取消；已收录的内容会保留在新闻库。';
     return t.inserted_count > 0 ? '结果已进入新闻库，可点击下方按钮查看。' : '时间窗内没有找到合格新闻。';
   };
 
   const requestCard = (t: NewsTask) => (
-    <article key={t.id} className={`news3-request ${taskFilter === t.id ? 'active' : ''}`} aria-label={`AI 采集请求：${t.title}`}>
+    <article key={t.id} className={`news3-request ${taskFilter === t.id ? 'active' : ''}`} aria-label={`采集记录：${t.title}`}>
       <header className="news3-request-top">
         <span className={`news3-request-status s-${t.status}`}>{STATUS_LABEL[t.status]}</span>
         <span className="mono news3-request-count">
@@ -371,8 +345,9 @@ export default function NewsPanel() {
             onClick={() => { if (promptDirty && !window.confirm('采集提示词尚未保存，放弃修改并查看结果？')) return; setPromptDirty(false); setTaskFilter(t.id); setSelected(null); setCollectOpen(false); }}
           >查看 {t.inserted_count} 篇</button>
         )}
+        {t.status === 'pending' && !agent.runs.some(r => r.task_id === t.id && ['queued','running','cancelling'].includes(r.status)) && <button className="btn slim" disabled={agent.busy} onClick={() => void agent.run(t.id)}>重试采集</button>}
         {t.status === 'pending' && (
-          <button className="btn slim ghost" onClick={() => cancelTask(t)}>取消请求</button>
+          <button className="btn slim ghost" onClick={() => cancelTask(t)}>取消记录</button>
         )}
       </footer>
     </article>
@@ -381,56 +356,15 @@ export default function NewsPanel() {
   const collectPage = (
     <>
       <header className="news3-collect-head">
-        <div>
-          <h2 className="news3-collect-title">AI 采集</h2>
-          <p className="news3-collect-desc">给 AI 助手一份新闻采集要求。App 不联网抓取；助手下次连接时搜索、核实来源，并把结果写入新闻库。</p>
-        </div>
-        <button className="btn slim primary" disabled={creating} onClick={() => setFormOpen((v) => !v)}>{formOpen ? '收起表单' : '新建采集'}</button>
+        <div><h2 className="news3-collect-title">AI 采集</h2><p className="news3-collect-desc">直接调用已配置的 Agent 更新新闻，或在 Agent 对话中完成采集。</p></div>
       </header>
-      <NewsCollectionEditor onCreated={() => { void refreshTasks().catch((e: Error) => setError(e.message)); }} onDirtyChange={setPromptDirty} />
-      {createdHint > 0 && (
-        <p className="mono news3-agent-hint" data-testid="created-hint">
-          采集请求已创建，等待下一次 AI 会话执行。
-        </p>
-      )}
-      {formOpen && (
-        <div className="news3-request-form" role="form" aria-label="新建 AI 采集请求">
-          <input
-            aria-label="采集主题"
-            placeholder="例如：AI 领域最近 24 小时重要新闻"
-            value={draft.title}
-            onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-          />
-          <textarea
-            aria-label="给 AI 的要求"
-            placeholder="关注方向、语言、排除项（可选）"
-            rows={3}
-            value={draft.instructions}
-            onChange={(e) => setDraft((d) => ({ ...d, instructions: e.target.value }))}
-          />
-          <div className="news3-request-form-row">
-            <label>最多收录 <input type="number" aria-label="最多收录条数" min={1} max={11} value={draft.max_items} onChange={(e) => setDraft((d) => ({ ...d, max_items: Number(e.target.value) }))} /> 篇</label>
-            <label>只看最近 <input type="number" aria-label="时间范围小时" min={1} max={720} value={draft.window_hours} onChange={(e) => setDraft((d) => ({ ...d, window_hours: Number(e.target.value) }))} /> 小时</label>
-          </div>
-          <div className="news3-request-form-row">
-            <button className="btn slim primary" disabled={creating || !draft.title.trim()} onClick={createTaskSubmit}>{creating ? '创建中…' : '创建采集请求'}</button>
-            <button className="btn slim ghost" onClick={() => setFormOpen(false)}>取消</button>
-          </div>
-          <p className="mono news3-agent-hint">创建后不会立即联网。下一次 AI 助手连接 Dayfolio 时，会按这里的要求搜索、打开来源页面核实后提交。</p>
-        </div>
-      )}
+      <NewsAgentControls agent={agent} disabled={promptDirty} />
+      <NewsCollectionEditor onDirtyChange={setPromptDirty} />
+      <h3>采集记录</h3>
       <div className="news3-request-list">
-        {tasks.length === 0 && !formOpen && (
-          <div className="news3-request-empty">
-            <strong>还没有采集请求</strong>
-            <span>写清主题、时间范围和最多收录篇数。它不是待办，也不会让 App 自动联网。</span>
-          </div>
-        )}
+        {tasks.length === 0 && <div className="news3-request-empty"><strong>还没有采集记录</strong><span>保存要求后点击「更新今日新闻」，结果会自动进入新闻库。</span></div>}
         {tasks.map(requestCard)}
       </div>
-      <p className="mono news3-agent-hint">
-        待执行的请求会一直保留；下次助手会话自动接力。每个请求累计最多入库 11 条，新闻库的历史展示不受这个上限影响。
-      </p>
     </>
   );
 
@@ -570,6 +504,7 @@ export default function NewsPanel() {
               <IconSearch width={13} height={13} />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索库内新闻（本地查询，不联网）" aria-label="库内搜索" />
             </div>
+            <button className="btn slim" disabled={agent.busy || agent.runs.some(r => ['queued','running','cancelling'].includes(r.status))} onClick={() => { if (!agent.status?.available) { window.dispatchEvent(new Event('dayfolio:openSettings')); return; } setCollectOpen(true); void agent.run(); }}>更新今日新闻</button>
             <button className="btn slim primary" onClick={() => { setSelected(null); setCollectOpen(true); }}>
               AI 采集{pendingCount ? ` · ${pendingCount}` : ''}
             </button>

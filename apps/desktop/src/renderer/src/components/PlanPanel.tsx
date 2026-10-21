@@ -579,6 +579,10 @@ export default function PlanPanel() {
         const progress = itemProgress.get(item.id);
         const itemMastery = item.knowledge_key ? masteryByKey.get(item.knowledge_key) : undefined;
         const statusLabel = { pending: '待完成', done: '已完成', skipped: '已跳过' }[item.status];
+        // 仅拆分末尾明确标注的目标，其他安排内容完整作为标题显示。
+        const titleParts = item.content.match(/^([\s\S]+?)[（(]目标[：:]\s*([\s\S]+)[）)]\s*$/);
+        const itemTitle = titleParts ? titleParts[1].trim() : item.content;
+        const itemGoal = titleParts?.[2].trim();
         const assessmentRecords = <>
           {itemAssessments.length === 0 && <p className="sub">还没有测评记录。AI 对话结束并保存记录后，会在这里显示。</p>}
           {itemAssessments.map(a => <div key={a.id} className="assessment-row">
@@ -592,19 +596,20 @@ export default function PlanPanel() {
             <button className="backlink" onClick={exitItem}>
               <IconChevronLeft width={14} height={14} /> 返回计划详情
             </button>
-            <section className="group">
-              <h1 className="plan-item-detail-content">{item.content}</h1>
+            <header className="plan-learning-overview">
+              <h1 className="plan-item-detail-content">{itemTitle}</h1>
+              {itemGoal && <p className="plan-learning-goal">目标：{itemGoal}</p>}
               <div className="plan-item-detail-facts mono">
                 <span>日期 {item.date}</span>
                 <span>类型 {TYPE_LABEL[item.item_type]}</span>
                 {item.duration_min != null && <span>预计 {item.duration_min} 分钟</span>}
-                <span>状态 {statusLabel}</span>
+                <span className={`plan-learning-state ${item.status}`}>状态 {statusLabel}</span>
               </div>
-            </section>
+              <LearningSignals progress={progress} />
+            </header>
 
             {learningError && <div className="notice error" role="alert">{learningError}<button className="btn slim" onClick={() => void reloadLearning(detail.id)}>重试同步</button></div>}
             {loadingLearning && <p className="sub" role="status">正在同步学习进度…</p>}
-            <LearningSignals progress={progress} />
             {boundCourse && lesson ? <PlanLessonContent
               key={`${boundCourse.id}-${lesson.day}-${lesson.revision}`}
               courseId={boundCourse.id} day={lesson.day}
@@ -620,7 +625,7 @@ export default function PlanPanel() {
                 {assessmentRecords}
               </section>
             </>}
-            <AiStudyAction disabled={loadingLearning || !!learningError} context={{ plan: detail, item, course: boundCourse, day: dayOfDate.get(item.date) }} />
+            <AiStudyAction compact disabled={loadingLearning || !!learningError} context={{ plan: detail, item, course: boundCourse, day: dayOfDate.get(item.date) }} />
             <section id="learning-notes" className="group learning-detail-section">
               <h2>学习笔记 <span className="sub">{itemSessions.filter(s => s.explanation.trim()).length} 篇</span></h2>
               <StudyNoteEditor key={item.id} planId={detail.id} item={item} onSaved={async () => { await reloadLearning(detail.id); await refresh(); }} />
@@ -656,50 +661,55 @@ export default function PlanPanel() {
       }
     }
     return (
-      <div className="panel" role="region" aria-label="学习">
+      <div className="panel plan-detail" role="region" aria-label="学习">
         <button className="backlink" onClick={() => { restoreKeyRef.current = 'list'; setDetail(null); }}>
           <IconChevronLeft width={14} height={14} /> 全部计划
         </button>
-        <header className="panel-head">
-          <h1>{detail.title}</h1>
-          <div className="head-meta mono">
-            {detail.done_items}/{detail.total_items} · {Math.round(detail.progress * 100)}%
-            {detail.daily_minutes ? ` · 每日预算 ${detail.daily_minutes}m` : ''}
+        <header className="plan-detail-overview">
+          <div className="panel-head">
+            <h1>{detail.title}</h1>
+            <span className="plan-detail-state">{detail.status === 'done' ? '已完成' : detail.status === 'archived' ? '已归档' : '进行中'}</span>
           </div>
+          {detail.goal && <p className="plan-detail-goal">{detail.goal}</p>}
+          <div className="plan-detail-meta">
+            <span>{detail.start_date} 至 {detail.end_date}</span>
+            {detail.daily_minutes ? <span>每日预算 {detail.daily_minutes} 分钟</span> : null}
+          </div>
+          <div className="plan-detail-progress">
+            <span>安排完成 <b>{detail.done_items}/{detail.total_items}</b></span>
+            <div className="progress" role="progressbar" aria-label="安排完成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(detail.progress * 100)}><div style={{ width: `${Math.round(detail.progress * 100)}%` }} /></div>
+            <span className="mono">{Math.round(detail.progress * 100)}%</span>
+          </div>
+          <LearningTotals progress={planProgress} />
         </header>
-        <p className="sub">{detail.goal}</p>
-        <div className="progress"><div style={{ width: `${Math.round(detail.progress * 100)}%` }} /></div>
-
-        <LearningTotals progress={planProgress} />
         {learningError && <div className="notice error" role="alert">{learningError}<button className="btn slim" onClick={() => void reloadLearning(detail.id)}>重试同步</button></div>}
-        <AiStudyAction disabled={loadingLearning || !!learningError} context={{ plan: detail, course: boundCourse }} />
         {boundCourse && (
-          <div className="notice plan-course-bar">
-            <span>
-              关联课程「{boundCourse.title}」 ·
-              {boundLessons.length > 0 ? `已生成 ${boundLessons.length} 天` : '讲义尚未生成'}
-            </span>
-            <button className="btn slim" onClick={() => enterCourse(boundCourse.id, null)}>进入课程总览</button>
+          <div className="plan-course-bar">
+            <div><span className="plan-course-label">关联课程</span><span className="plan-course-name">{boundCourse.title}</span><span className="plan-course-count">{boundLessons.length > 0 ? `已生成 ${boundLessons.length} 天` : '讲义尚未生成'}</span></div>
+            <button className="btn slim" onClick={() => enterCourse(boundCourse.id, null)}>进入课程总览 →</button>
           </div>
         )}
+        <AiStudyAction compact disabled={loadingLearning || !!learningError} context={{ plan: detail, course: boundCourse }} />
+        <div className="plan-schedule-heading"><h2>每日安排</h2><span>{byDate.size} 天 · {detail.total_items} 项安排</span></div>
 
         {[...byDate.entries()].map(([date, items]) => {
           const lesson = lessonOfDate.get(date) ?? null;
           return (
-          <section key={date} className="group">
+          <section key={date} className={`group plan-day-group ${date === today ? 'is-today' : ''}`}>
             <div className={`group-label mono ${date === today ? 'accent' : ''}`}>
-              {date === today ? `今天 · ${date}` : date}
-              {boundCourse && <span className="group-day-chip">第 {dayOfDate.get(date)} 天</span>}
-              <span className="group-count">{items.filter((i) => i.status === 'done').length}/{items.length}</span>
+              <span className="plan-day-number">第 {dayOfDate.get(date)} 天</span>
+              <span className="plan-day-date">{date}</span>
+              {date === today && <span className="plan-today-chip">今天</span>}
+              <span className="plan-day-completion">{items.filter((i) => i.status === 'done').length}/{items.length} 已完成</span>
             </div>
             {boundCourse && lesson && (
               <button className="plan-day-lesson" onClick={() => enterCourse(boundCourse.id, lesson.day)} title="打开当天完整讲义与自测，返回时回到计划详情">
-                <span className="plan-day-lesson-title">
+                <span className="plan-day-lesson-copy"><span className="plan-day-lesson-label">当天讲义</span><span className="plan-day-lesson-title">
                   {lesson.title}{lesson.is_sample && !boundCourse.sample_confirmed_at ? '（样课）' : ''}
                 </span>
-                <span className="plan-day-lesson-summary">{lesson.concepts.map((c) => c.name).join(' · ') || '讲义已生成'}</span>
-                <span className="plan-day-lesson-meta mono">v{lesson.revision} · {lesson.estimated_minutes}m · {LESSON_STATUS_LABEL[lesson.status]}</span>
-                <span className="plan-day-lesson-go">阅读当天讲义 →</span>
+                <span className="plan-day-lesson-summary">{lesson.concepts.map((c) => c.name).join(' · ') || '讲义已生成'}</span></span>
+                <span className="plan-day-lesson-side"><span className="plan-day-lesson-meta mono">v{lesson.revision} · {lesson.estimated_minutes} 分钟 · {LESSON_STATUS_LABEL[lesson.status]}</span>
+                <span className="plan-day-lesson-go">阅读当天讲义 →</span></span>
               </button>
             )}
             {boundCourse && !lesson && (
@@ -719,7 +729,7 @@ export default function PlanPanel() {
                     <LearningSignals progress={itemProgress.get(it.id)} />
                     <div className="learning-item-footer">
                       <span className="todo-meta mono">{TYPE_LABEL[it.item_type]}{it.duration_min ? ` · ${it.duration_min} 分钟` : ''}</span>
-                      {m && <MasteryBadge status={m.mastery} title={`掌握度依据：${m.reason}`} />}
+                      {m && m.mastery !== 'unknown' && <MasteryBadge status={m.mastery} title={`掌握度依据：${m.reason}`} />}
                       <span className="plan-item-go">进入学习 →</span>
                     </div>
                   </button>
@@ -867,7 +877,7 @@ export default function PlanPanel() {
   const datedCount = drafts.length - datelessCount;
   const onboardingCourse = courses.find((course) => course.slug === 'tododesk-tour');
   return (
-    <div className="panel" role="region" aria-label="学习">
+    <div className="panel study-home" role="region" aria-label="学习">
       <header className="panel-head study-home-head">
         <div className="seg study-home-tabs" role="group" aria-label="学习首页视图">
           <button type="button" className={`seg-item ${homeTab === 'plans' ? 'active' : ''}`} aria-pressed={homeTab === 'plans'} onClick={() => switchHomeTab('plans')}>计划</button>
@@ -1024,28 +1034,38 @@ export default function PlanPanel() {
           hint="在 zcode 中对 AI 说「为某课程制定学习计划」，逐日安排会同步到这里，并自动生成每天的学习待办。"
         />
       )}
-      {plans.map((p) => (
-        <div key={p.id} className="plan-card learning-plan-card" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void openDetail(p.id); } }} onClick={() => void openDetail(p.id)}>
+      {plans.map((p) => {
+        const linkedCourses = courses.filter(c => c.plan_id === p.id);
+        const courseNames = linkedCourses.map(c => c.title).join('、');
+        const sameCourseTitle = linkedCourses.length === 1 && linkedCourses[0].title === p.title;
+        return <div key={p.id} className="plan-card learning-plan-card" role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void openDetail(p.id); } }} onClick={() => void openDetail(p.id)}>
           <div className="plan-card-head">
             <span className="plan-title">{p.title}</span>
             <span className={`plan-status mono ${p.status}`}>
               {p.status === 'active' ? '进行中' : p.status === 'done' ? '已完成' : '已归档'}
             </span>
           </div>
-          <div className="sub mono">
-            {p.start_date} — {p.end_date}{p.goal ? ` · ${p.goal}` : ''}
+          <div className="learning-plan-dates">
+            <span>{p.start_date} 至 {p.end_date}</span>
+            {p.daily_minutes ? <span>每日 {p.daily_minutes} 分钟</span> : null}
           </div>
-          <div className="plan-link mono">
-            {courseError ? '课程关联状态暂不可用' : courses.some((c) => c.plan_id === p.id)
-              ? `关联课程：${courses.filter((c) => c.plan_id === p.id).map((c) => c.title).join('、')}`
+          {p.goal && <p className="learning-plan-goal">{p.goal}</p>}
+          <div className="plan-link" title={courseNames}>
+            {courseError ? '课程关联状态暂不可用' : linkedCourses.length > 0
+              ? sameCourseTitle ? '已关联课程' : `关联课程：${courseNames}`
               : '待关联课程'}
           </div>
-          <div className="learning-plan-completion"><span>安排已完成 {p.done_items}/{p.total_items}</span><b>{Math.round(p.progress * 100)}%</b></div>
-          <div className="progress"><div style={{ width: `${Math.round(p.progress * 100)}%` }} /></div>
-          <LearningTotals progress={learningProgress.find(progress => progress.plan_id === p.id)} />
-          <div className="learning-plan-go">查看学习安排 →</div>
-        </div>
-      ))}
+          <div className="learning-plan-completion">
+            <span>安排已完成 {p.done_items}/{p.total_items}</span>
+            <div className="progress" role="progressbar" aria-label={`${p.title}完成进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.progress * 100)}><div style={{ width: `${Math.round(p.progress * 100)}%` }} /></div>
+            <span>{Math.round(p.progress * 100)}%</span>
+          </div>
+          <div className="learning-plan-footer">
+            <LearningTotals progress={learningProgress.find(progress => progress.plan_id === p.id)} />
+            <span className="learning-plan-go">查看学习安排 →</span>
+          </div>
+        </div>;
+      })}
       </> : <>
       <p className="sub">课程由 AI 导入样课；与学习计划关联后，可从计划详情按天阅读讲义。</p>
       {courseError && <div className="notice error">{courseError}</div>}

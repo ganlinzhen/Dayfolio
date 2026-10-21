@@ -75,14 +75,14 @@ const mkPkg = (stage, slug, title, planId, lessons, version, withOverview = true
 };
 const mkPlan = (title, prefix) => core.plans.create({
   title, goal: '验证课程与计划联动', start_date: '2026-10-10', daily_minutes: 45,
-  items: [0,1,2,3,4].map((i) => ({ date: '2026-10-1' + i, content: prefix + '第' + (i+1) + '天任务' })),
+  items: [0,1,2,3,4].map((i) => ({ date: '2026-10-1' + i, content: prefix + '第' + (i+1) + '天任务' + (i === 0 ? '：认识内核、模型与分支解析（目标：画出模块职责图，读懂分支解析器，运行 5 个现有测试。）' : ''), duration_min: 75 })),
 });
 const styleLink = '<link rel="stylesheet" href="../assets/style.css">';
 
 // 课程 A：五天计划，样课 → 确认 → 请求 → 认领 → 导入 1~2 天（3~5 天待生成）
 const planA = mkPlan('冒烟五天计划', '');
 const stageA = mkPkg(fs.mkdtempSync(require('node:os').tmpdir() + '/td-smoke-a-'), 'smoke-course', '冒烟课程', planA.id, [
-  { day: 1, title: '第一天·样课', file: 'd1.html', sample: true, html: '<h1>Day 1 入门</h1>' + styleLink + '<p>样课正文。</p><script>alert(1)</script><img src="https://evil.example.com/x.png">' },
+  { day: 1, title: '第一天·样课', file: 'd1.html', sample: true, html: '<h1 style="font-size:40px">Day 1 入门：一条请求进来，先找到哪份模型？</h1>' + styleLink + '<p style="font-size:24px">样课正文。从前端请求出发，读懂一个完整的小方法，再回到 HTTP 响应。</p><h2>学完能解释什么</h2><ol><li>区分模型与记录的职责。</li><li>理解请求上下文中的本体与分支。</li><li>运行测试并说明输入、输出和验证边界。</li></ol><h2>沿着请求阅读源码</h2><p>先定位入口，再跟踪解析方法的输入、两次查找和返回结果。将实际观察与自己的推断分别记录，形成可验证的学习笔记。</p><script>alert(1)</script><img hidden src="https://evil.example.com/x.png">' },
   { day: 2, title: '第二天·进阶', file: 'd2.html', html: '<h1>Day 2 进阶</h1><p>第二课正文。</p>' },
 ]);
 // 课程 B：样课课程——绑定自己的五天计划，仅 Day1 样课，后四天不生成（待用户确认+请求+agent 认领）
@@ -273,16 +273,17 @@ try {
         const body = getComputedStyle(document.body);
         return { viewport: innerWidth, width: r.width, left: r.left, right: innerWidth-r.right,
           padding: parseFloat(body.paddingLeft), overflow: document.documentElement.scrollWidth > innerWidth,
-          align: getComputedStyle(root).textAlign, ink: body.getPropertyValue('--smoke-ink').trim() };
+          reading: !!document.querySelector('[data-dayfolio-reading-layout]'), h1Size: parseFloat(getComputedStyle(document.querySelector('h1')).fontSize), paragraphSize: parseFloat(getComputedStyle(document.querySelector('p')).fontSize), align: getComputedStyle(root).textAlign, ink: body.getPropertyValue('--smoke-ink').trim() };
       })()`,
       }, context.sessionId);
       if (context.sessionId) await send('Target.detachFromTarget', { sessionId: context.sessionId });
       const value = result.result?.result?.value;
       return value && Math.abs(value.viewport - expectedWidth) < 2 ? value : null;
     }, 10000, '课程正文完成加载');
-    assert(box.width >= box.viewport - 2 * box.padding - 2 && Math.abs(box.left-box.right) < 2 && !box.overflow,
+    assert(Math.abs(box.width - (box.reading ? Math.min(860, box.viewport - 2 * box.padding) : box.viewport - 2 * box.padding)) < 2 && Math.abs(box.left-box.right) < 2 && !box.overflow,
       `${label}：正文自适应铺开、两侧对称且无页面横向溢出 ${JSON.stringify(box)}`);
     assert(box.align !== 'center', `${label}：段落保留左对齐`);
+    if (box.reading) assert(box.h1Size >= 21 && box.h1Size <= 24 && box.paragraphSize === 14, `${label}：讲义标题与正文使用连续阅读字号`);
   };
   const resizeReading = async (width) => {
     await send('Emulation.setDeviceMetricsOverride', { width, height: initialViewport.height, deviceScaleFactor: 1, mobile: false });
@@ -323,6 +324,22 @@ try {
   assert(await evalJs(`document.querySelector('.study-home-tabs button.active')?.textContent === '计划'`), '默认选中「计划」');
   assert(await evalJs(`document.querySelectorAll('.plan-link').length`) === 2, '计划卡显示课程关联状态');
   assert(await evalJs(`[...document.querySelectorAll('.plan-card')].some(c => c.textContent.includes('样课五天计划') && c.textContent.includes('关联课程：上手之旅样课课程'))`), '草案确认后的计划卡显示关联课程');
+  // 计划列表的紧凑卡片，使用长标题和目标检查宽窄窗口。
+  await waitFor(() => evalJs(`!!document.querySelector('.learning-plan-card .learning-totals')`), 10000, '列表学习进度加载完成');
+  const listOriginal = await evalJs(`({ title: document.querySelector('.learning-plan-card .plan-title').textContent, goal: document.querySelector('.learning-plan-goal').textContent })`);
+  await evalJs(`document.querySelector('.learning-plan-card .plan-title').textContent = 'EOS Core 项目入门 | 从一条请求读懂内核'; document.querySelector('.learning-plan-goal').textContent = '面向初级工程师：理解当前 objects 分层，跟踪 GraphQL 与 Flow 调用，运行测试并独立完成一项可验证的小改动。'`);
+  for (const width of [1440, 820, 600]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    const card = await evalJs(`(() => { const el = document.querySelector('.learning-plan-card'); return { height: el.getBoundingClientRect().height, overflow: el.scrollWidth > el.clientWidth + 1 }; })()`);
+    assert(!card.overflow && (width < 820 || card.height < 260), width + 'px 计划卡紧凑展示完整标题和进度，无横向溢出');
+    if (process.env.DAYFOLIO_COURSE_SCREENSHOTS) {
+      mkdirSync(process.env.DAYFOLIO_COURSE_SCREENSHOTS, { recursive: true });
+      const shot = await send('Page.captureScreenshot', { format: 'png' });
+      writeFileSync(join(process.env.DAYFOLIO_COURSE_SCREENSHOTS, 'plan-list-' + width + '.png'), Buffer.from(shot.result.data, 'base64'));
+    }
+  }
+  await evalJs(`document.querySelector('.learning-plan-card .plan-title').textContent = ${JSON.stringify(listOriginal.title)}; document.querySelector('.learning-plan-goal').textContent = ${JSON.stringify(listOriginal.goal)};`);
+  await send('Emulation.clearDeviceMetricsOverride');
   await clickUntil(
     `[...document.querySelectorAll('.study-home-tabs button')].find(b => b.textContent === '课程')?.click()`,
     () => evalJs(`document.querySelectorAll('.plan-course-entry').length === 3 && document.querySelectorAll('.plan-card:not(.plan-course-entry)').length === 0`),
@@ -343,7 +360,7 @@ try {
     () => evalJs(`!!document.querySelector('.plan-course-bar')`),
     15000, '打开「冒烟五天计划」详情（关联课程条出现）',
   );
-  assert(await evalJs(`document.querySelectorAll('.group-day-chip').length`) === 5, '五个「第 N 天」徽标');
+  assert(await evalJs(`document.querySelectorAll('.plan-day-number').length`) === 5, '五个「第 N 天」徽标');
   assert(await evalJs(`document.querySelectorAll('.plan-day-lesson').length`) === 2, '两张每日摘要卡（第 1/2 天）');
   assert(await evalJs(`document.querySelectorAll('.plan-day-pending').length`) === 3, '三行「讲义待生成」（第 3~5 天）');
   assert((await evalJs(`document.querySelector('.plan-day-lesson')?.innerText`)).includes('第一天·样课'), '摘要卡显示讲义标题');
@@ -351,6 +368,32 @@ try {
   assert(!(await evalJs(`document.querySelector('.plan-day-lesson-title')?.textContent`))?.includes('（样课）'), '已确认课程的计划摘要不再附加样课标识');
   assert(await evalJs(`[...document.querySelectorAll('.plan-day-lesson-meta')].some(el => el.textContent.includes('已读'))`), '摘要卡显示已读状态');
   assert(await evalJs(`[...document.querySelectorAll('.plan-day-pending')].every(el => el.textContent.includes('待生成'))`), '未生成天显示待生成文案');
+
+  // 计划详情信息层级与窄窗口排版，不写入真实数据。
+  assert(await evalJs(`!!document.querySelector('.plan-detail-overview .learning-totals') && !!document.querySelector('.plan-detail-progress [role="progressbar"]')`), '概览集中展示完成与学习进度');
+  assert(await evalJs(`!!document.querySelector('.ai-study-action.is-compact') && !document.querySelector('.ai-prompt-preview').open`), '计划级 AI 使用说明默认收起');
+  await evalJs(`document.querySelector('.ai-prompt-preview summary').click()`);
+  assert(await evalJs(`document.querySelector('.ai-prompt-preview').open && document.querySelector('.ai-prompt-preview').textContent.includes('复制不会自动开始对话')`), 'AI 使用说明可展开且准确说明边界');
+  await evalJs(`document.querySelector('.ai-prompt-preview summary').click()`);
+  const originalPlanTitle = await evalJs(`document.querySelector('.plan-detail h1').textContent`);
+  const originalGoal = await evalJs(`document.querySelector('.plan-detail-goal').textContent`);
+  const originalTitle = await evalJs(`document.querySelector('.plan-day-lesson-title').textContent`);
+  const originalItem = await evalJs(`document.querySelector('.learning-item-card .plan-item-content').textContent`);
+  await evalJs(`document.querySelector('.plan-detail h1').textContent = 'EOS Core 项目入门 | 从一条请求读懂内核'; document.querySelector('.plan-detail-goal').textContent = '面向初级工程师：理解当前 objects 分层，跟踪 GraphQL 与 Flow 调用，运行测试并独立完成一项可验证的小改动。'; document.querySelector('.plan-day-lesson-title').textContent = '模型与分支：一条请求的第一站，理解请求上下文、模块职责与验证边界'; document.querySelector('.learning-item-card .plan-item-content').textContent = '认识内核：模型、模块与分支解析（目标：画出模块职责图，读懂分支解析器，运行 5 个现有测试。）';`);
+  for (const width of [1440, 820, 600]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await evalJs(`document.querySelector('.content').scrollTop = 0`);
+    const layout = await evalJs(`(() => { const p = document.querySelector('.plan-detail'); const title = document.querySelector('.plan-day-lesson-title'); const item = document.querySelector('.learning-item-card'); return { overflow: p.scrollWidth > p.clientWidth + 1, titleClipped: title.scrollWidth > title.clientWidth + 1 || getComputedStyle(title).whiteSpace === 'nowrap', firstCardTop: item.getBoundingClientRect().top }; })()`);
+    assert(!layout.overflow && !layout.titleClipped, width + 'px 窗口内长标题完整换行且页面不溢出');
+    if (width === 1440) assert(layout.firstCardTop < 680, '宽窗口首屏可直接看到当天学习卡片');
+    if (process.env.DAYFOLIO_COURSE_SCREENSHOTS) {
+      mkdirSync(process.env.DAYFOLIO_COURSE_SCREENSHOTS, { recursive: true });
+      const shot = await send('Page.captureScreenshot', { format: 'png' });
+      writeFileSync(join(process.env.DAYFOLIO_COURSE_SCREENSHOTS, 'plan-layout-' + width + '.png'), Buffer.from(shot.result.data, 'base64'));
+    }
+  }
+  await evalJs(`document.querySelector('.plan-detail h1').textContent = ${JSON.stringify(originalPlanTitle)}; document.querySelector('.plan-detail-goal').textContent = ${JSON.stringify(originalGoal)}; document.querySelector('.plan-day-lesson-title').textContent = ${JSON.stringify(originalTitle)}; document.querySelector('.learning-item-card .plan-item-content').textContent = ${JSON.stringify(originalItem)};`);
+  await send('Emulation.clearDeviceMetricsOverride');
 
   // 3d. 每日摘要卡 → 直达当天完整讲义（原「进入课程」跳转收敛为学习计划面板内直达）
   const scrollTopBefore = await evalJs(`(() => { const el = document.querySelector('.content'); el.scrollTop = 80; return el.scrollTop; })()`);
@@ -445,6 +488,22 @@ try {
   assert(await evalJs(`(() => { const frame = document.querySelector('#learning-materials iframe'); return frame.getAttribute('sandbox') === '' && frame.srcdoc.includes('Day 1 入门') && frame.srcdoc.includes('Content-Security-Policy'); })()`), '内嵌讲义使用实际正文、sandbox 与 CSP');
   assert(await evalJs(`!document.querySelector('.study-note-editor input') && !document.querySelector('.study-note-editor').textContent.includes('实际学习用时')`), '笔记不再显示学习用时输入');
   assert(await evalJs(`document.getElementById('learning-assessments').nextElementSibling.id === 'learning-ai' && document.getElementById('learning-ai').nextElementSibling.id === 'learning-notes'`), 'AI 检验紧跟评测并位于笔记之前');
+  assert(await evalJs(`!!document.querySelector('.plan-learning-overview .learning-signals') && document.querySelector('.plan-learning-goal')?.textContent.includes('画出模块职责图') && !document.querySelector('.plan-item-detail-content').textContent.includes('目标：')`), '安排标题与明确标注的目标分开，学习进度集中在顶部');
+  for (const width of [1440, 820, 600]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await evalJs(`document.querySelector('.content').scrollTop = 0`);
+    assert(await evalJs(`(() => { const panel = document.querySelector('.plan-item-detail'); const title = document.querySelector('.embed-frame-title'); return panel.scrollWidth <= panel.clientWidth + 1 && title.scrollWidth <= title.clientWidth + 1 && getComputedStyle(title).whiteSpace !== 'nowrap'; })()`), width + 'px 学习详情与课件标题完整换行，无页面横向溢出');
+    await assertCourseLayout('学习详情阅读 ' + width + 'px');
+    if (process.env.DAYFOLIO_COURSE_SCREENSHOTS) {
+      const shot = await send('Page.captureScreenshot', { format: 'png' });
+      writeFileSync(join(process.env.DAYFOLIO_COURSE_SCREENSHOTS, 'learning-detail-' + width + '.png'), Buffer.from(shot.result.data, 'base64'));
+    }
+  }
+  await evalJs(`document.querySelector('.embed-fullscreen-button').click()`);
+  assert(await evalJs(`document.querySelector('.course-embed').dataset.fullscreen === 'true'`), '学习详情课件可进入全屏');
+  await assertCourseLayout('学习详情全屏阅读');
+  await evalJs(`document.querySelector('.embed-fullscreen-button').click()`);
+  await send('Emulation.clearDeviceMetricsOverride');
   await evalJs(`document.querySelectorAll('#learning-assessments .course-quiz')[0].querySelector('input').click()`);
   assert(await evalJs(`!document.querySelector('.learning-signals').textContent.includes('评测已做')`), '选择但未提交不计入评测进度');
   await clickUntil(

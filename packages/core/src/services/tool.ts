@@ -1,5 +1,5 @@
 // 工具箱服务：分类管理（新增/改名/排序/删除）+ 工具条目 CRUD
-// 文件内容不进库：HTML 及配套资源由桌面端主进程存放在 userData/tools/<id>/ 下，
+// 文件内容不进库：HTML 及配套资源由共用服务存放在数据库旁 tools/<id>/ 下，
 // 这里只记录入口文件名（entry_file），渲染层通过 tool-file:// 协议加载。
 import type { DbAdapter } from '../db';
 import { inTx, mapTool, mapToolCategory } from '../db';
@@ -74,6 +74,7 @@ export function createToolService(db: DbAdapter) {
     if (title.length > 40) throw new Error('工具名最长 40 个字符');
     const entry = input.entry_file.trim();
     if (!entry) throw new Error('缺少 HTML 入口文件');
+    if (!/\.html?$/i.test(entry)) throw new Error('工具入口必须是 HTML 文件');
     if (input.category_id != null) {
       const cat = db.prepare('SELECT id FROM tool_categories WHERE id = ?').get(input.category_id);
       if (!cat) throw new Error('分类不存在');
@@ -91,6 +92,7 @@ export function createToolService(db: DbAdapter) {
 
   const updateTool = (id: number, patch: UpdateToolInput): ToolItem => {
     const cur = getTool(id);
+    if (patch.entry_file !== undefined && !/\.html?$/i.test(patch.entry_file.trim())) throw new Error('工具入口必须是 HTML 文件');
     if (patch.category_id != null) {
       const cat = db.prepare('SELECT id FROM tool_categories WHERE id = ?').get(patch.category_id);
       if (!cat) throw new Error('分类不存在');

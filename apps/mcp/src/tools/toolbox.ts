@@ -5,6 +5,28 @@ import { wrap } from '../shared/response';
 
 export function registerTools(server: ToolRegistrar, { core, toolFilesRoot }: McpContext): void {
   // ---------- 工具箱 ----------
+  const draftSchema = z.object({
+    sourceKey: z.string().min(1).max(240).describe('本工具内稳定且唯一的来源键，改期时不变'),
+    title: z.string().min(1).max(300),
+    notes: z.string().max(10000).optional(),
+    priority: z.enum(['high', 'medium', 'low']).optional(),
+    tags: z.array(z.string().min(1).max(80)).max(20).optional(),
+    startAt: z.string().nullable().optional().describe('带 Z 或时区偏移的开始时刻；未知时省略'),
+    endAt: z.string().nullable().optional().describe('已知的结束时刻；不得猜测时长'),
+    dueDate: z.string().nullable().optional().describe('仅日期事项使用 YYYY-MM-DD；不与 startAt 混用'),
+    sourceUrl: z.string().max(2048).optional(),
+  }).strict();
+  const batchSchema = {
+    toolId: z.number().int().positive(), items: z.array(draftSchema).min(1).max(100),
+    category: z.object({ key: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/), title: z.string().min(1).max(80), color: z.enum(['blue','green','violet','amber','rose','slate']).optional() }).strict().optional().describe('待办分类声明，键在工具内稳定唯一；缺省按工具名归类，确认创建新待办时才创建或复用'),
+  };
+  server.tool('preview_tool_todos', '预览某个 HTML 工具要添加的待办，核对标题、排期、重复状态及待办分类；只读，不创建待办或分类。先用 list_tools 确定 toolId。', batchSchema,
+    async input => wrap(() => core.toolTodos.preview(input))());
+  server.tool('add_tool_todos', '用户要求把 HTML 工具中的比赛或其他事项加入待办时调用。每批最多 100 条；按 toolId 与 sourceKey 去重，保留已有修改与完成状态，删除后不自动复活。实际创建新待办时在同一事务创建或复用分类，缺省按工具名归类；仅保存本次快照，不持续关注来源。', batchSchema,
+    async input => wrap(() => core.toolTodos.create(input))());
+  server.tool('get_tool_todo_status', '查看某个 HTML 工具指定来源键的待办关联状态；只返回 ID 与状态，不返回个人备注或其他工具数据。', {
+    toolId: z.number().int().positive(), sourceKeys: z.array(z.string().min(1).max(240)).min(1).max(100),
+  }, async input => wrap(() => core.toolTodos.getStatus(input))());
 
   /** category_name → id：分类不存在时自动创建（agent 一句话完成「放进某分类」）；传 null 表示未分类 */
   function resolveCategoryId(name?: string | null): number | null {

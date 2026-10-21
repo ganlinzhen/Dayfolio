@@ -1,8 +1,10 @@
+import Modal from './components/Modal';
+import SettingsPanel from './components/SettingsPanel';
 // 应用外壳：极简侧导航（Codex 风格：暖白底、hairline 分隔、衬线标题、线性图标）
 import { useEffect, useMemo, useState } from 'react';
 import DataPanel from './components/DataPanel';
 import HelpPanel from './components/HelpPanel';
-import { IconBook, IconCalendar, IconCheck, IconDatabase, IconHelp, IconList, IconMegaphone, IconNews, IconPlug, IconToolbox, IconVault } from './components/icons';
+import { IconBook, IconCalendar, IconCheck, IconDatabase, IconHelp, IconList, IconMegaphone, IconNews, IconPlug, IconToolbox, IconVault, IconSettings } from './components/icons';
 import McpPanel from './components/McpPanel';
 import MediaPanel from './components/MediaPanel';
 import NewsPanel from './components/NewsPanel';
@@ -16,7 +18,7 @@ import RuntimeToolFrame from './components/RuntimeToolFrame';
 import RuntimeTodoDetails from './components/RuntimeTodoDetails';
 import { api } from './api';
 
-type Tab = 'today' | 'todos' | 'plans' | 'news' | 'knowledge' | 'media' | 'tools' | 'data' | 'mcp' | 'help';
+type Tab = 'today' | 'todos' | 'plans' | 'news' | 'knowledge' | 'media' | 'tools' | 'data' | 'mcp' | 'help' | 'settings';
 
 /** 发版记录弹层：解析构建时注入的 CHANGELOG（## 版本 / ### 分类 / - 条目） */
 function ChangelogModal({ onClose }: { onClose: () => void }) {
@@ -40,36 +42,26 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
     return sections;
   }, []);
   return (
-    <div className="modal-mask" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal wide changelog-modal">
-        <header className="modal-head">
-          <h3>发版记录</h3>
-          <button className="icon-btn" onClick={onClose}>
-            ×
-          </button>
-        </header>
-        <div className="modal-body">
-          {versions.map((v, i) => (
-            <section key={v.title} className="changelog-version">
-              <div className="changelog-version-head">
-                <h4>{v.title}</h4>
-                {i === 0 && <span className="changelog-current">当前</span>}
-              </div>
-              {v.groups.map((g) => (
-                <div key={g.name} className="changelog-group">
-                  <div className="changelog-group-name">{g.name}</div>
-                  <ul>
-                    {g.items.map((it) => (
-                      <li key={it}>{it}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </section>
+    <Modal title="发版记录" onClose={onClose} wide className="changelog-modal">
+      {versions.map((v, i) => (
+        <section key={v.title} className="changelog-version">
+          <div className="changelog-version-head">
+            <h4>{v.title}</h4>
+            {i === 0 && <span className="changelog-current">当前</span>}
+          </div>
+          {v.groups.map((g) => (
+            <div key={g.name} className="changelog-group">
+              <div className="changelog-group-name">{g.name}</div>
+              <ul>
+                {g.items.map((it) => (
+                  <li key={it}>{it}</li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </div>
-      </div>
-    </div>
+        </section>
+      ))}
+    </Modal>
   );
 }
 
@@ -87,23 +79,28 @@ const TABS: Array<{ key: Tab; label: string; Icon: typeof IconList }> = [
 ];
 
 const BOTTOM_TABS: Array<{ key: Tab; label: string; Icon: typeof IconList }> = [
+  { key: 'settings', label: '设置', Icon: IconSettings },
   { key: 'mcp', label: 'MCP', Icon: IconPlug },
   { key: 'data', label: '数据', Icon: IconDatabase },
   { key: 'help', label: '帮助', Icon: IconHelp },
 ];
 
 const TAB_LABEL = (tab: Tab) =>
-  tab === 'help' ? '帮助' : tab === 'mcp' ? 'MCP' : TABS.find((t) => t.key === tab)?.label ?? '';
+  tab === 'settings' ? '设置' : tab === 'help' ? '帮助' : tab === 'mcp' ? 'MCP' : TABS.find((t) => t.key === tab)?.label ?? '';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const navigate = (next: Tab) => { if (tab === 'settings' && next !== tab && settingsDirty && !window.confirm('Agent 配置尚未保存，放弃修改？')) return; setRuntimeId(null); setTab(next); };
   const [showChangelog, setShowChangelog] = useState(false);
   const [runtimeId, setRuntimeId] = useState<string|null>(null), [runtimeTodo, setRuntimeTodo] = useState<number|null>(null);
   useEffect(()=>{
     const open=(event:Event)=>{const id=(event as CustomEvent<{extensionId?:unknown}>).detail?.extensionId;if(typeof id==='string'){setRuntimeId(id);setTab('tools');}};
+    const settings = () => setTab('settings');
+    window.addEventListener('dayfolio:openSettings', settings);
     window.addEventListener('dayfolio:openTool',open);
     const remove=api.extensions.onOpenTodo(target=>{if(target.objectType==='todo'&&Number.isSafeInteger(target.id))setRuntimeTodo(target.id);});
-    return()=>{window.removeEventListener('dayfolio:openTool',open);remove();};
+    return()=>{window.removeEventListener('dayfolio:openSettings',settings);window.removeEventListener('dayfolio:openTool',open);remove();};
   },[]);
 
   // 窗口标题跟随当前面板，便于 Mission Control 辨认
@@ -125,7 +122,7 @@ export default function App() {
             <button
               key={key}
               className={`nav-item ${tab === key ? 'active' : ''}`}
-              onClick={() => {setRuntimeId(null);setTab(key);}}
+              onClick={() => navigate(key)}
             >
               <Icon />
               {label}
@@ -138,7 +135,7 @@ export default function App() {
             <button
               key={key}
               className={`nav-item ${tab === key ? 'active' : ''}`}
-              onClick={() => {setRuntimeId(null);setTab(key);}}
+              onClick={() => navigate(key)}
             >
               <Icon />
               {label}
@@ -169,6 +166,7 @@ export default function App() {
         {tab === 'data' && <DataPanel />}
         {tab === 'mcp' && <McpPanel />}
         {tab === 'help' && <HelpPanel />}
+        {tab === 'settings' && <SettingsPanel onDirtyChange={setSettingsDirty} />}
       </main>
       {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
       {runtimeTodo!==null && <RuntimeTodoDetails id={runtimeTodo} onClose={()=>setRuntimeTodo(null)}/>}

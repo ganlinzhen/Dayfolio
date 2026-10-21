@@ -2,12 +2,16 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createCore, defaultDbPath, openNodeSqliteDb, toolsRootForDb } from '../../../packages/core/src/index';
 import { createMcpServer } from './server';
+import { createNewsTaskMcpServer } from './news-task-server';
 
 async function main() {
   const dbPath = defaultDbPath();
   const db = openNodeSqliteDb(dbPath);
   const core = createCore(db, { dbPath });
-  const { server } = createMcpServer({ core, toolFilesRoot: toolsRootForDb(dbPath) });
+  const scope = process.env.DAYFOLIO_NEWS_RUN_ID;
+  const { server } = scope
+    ? { server: createNewsTaskMcpServer(core, scope, process.env.DAYFOLIO_NEWS_RUN_TOKEN ?? '') }
+    : createMcpServer({ core, toolFilesRoot: toolsRootForDb(dbPath) });
   let stopping: Promise<void> | undefined;
   const shutdown = () => {
     stopping ??= (async () => {
@@ -22,7 +26,7 @@ async function main() {
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
   await server.connect(new StdioServerTransport());
-  core.providerWorker.start();
+  if (!scope) core.providerWorker.start();
   console.error(`[tododesk-mcp] 已启动，数据库：${dbPath}`);
 }
 

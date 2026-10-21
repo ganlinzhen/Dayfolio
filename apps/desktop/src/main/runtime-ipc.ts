@@ -10,6 +10,8 @@ export function registerRuntimeIpc(core: TodoDeskCore): void {
     'calendar:queryItems':core.calendar.queryItems,
     'calendar:listCollections': core.runtime.listCollections,
     'calendar:setVisibility': core.runtime.setVisibility,
+    'calendar:updateCollection': core.runtime.updateCollection,
+    'calendar:deleteCollection': core.runtime.deleteCollection,
     'events:listProviders': core.externalEvents.listProviders,
     'events:refresh':core.externalEvents.refresh,
     'events:getRun':core.externalEvents.getRun,

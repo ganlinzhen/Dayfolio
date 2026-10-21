@@ -1425,6 +1425,74 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
       "type": "number"
     }
   ],
+  "enqueue_news_agent_run": [
+    {
+      "anyOf": [
+        {
+          "type": "number"
+        }
+      ]
+    }
+  ],
+  "cancel_news_agent_run": [
+    {
+      "type": "string"
+    }
+  ],
+  "claim_news_agent_run": [
+    {
+      "type": "string"
+    },
+    {
+      "type": "number"
+    }
+  ],
+  "update_news_agent_run": [
+    {
+      "type": "string"
+    },
+    {
+      "type": "string"
+    },
+    {
+      "type": "string"
+    },
+    {
+      "anyOf": [
+        {
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "finish_news_agent_run": [
+    {
+      "type": "string"
+    },
+    {
+      "type": "string"
+    },
+    {
+      "enum": [
+        "cancelled",
+        "succeeded",
+        "failed",
+        "interrupted"
+      ]
+    },
+    {
+      "anyOf": [
+        {
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "recover_news_agent_run": [
+    {
+      "type": "string"
+    }
+  ],
   "update_news_collection_settings": [
     {
       "type": "object",
@@ -1446,6 +1514,51 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
         "prompt",
         "max_items",
         "window_hours",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "update_agent_settings": [
+    {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": "codex"
+            },
+            {
+              "const": "claude"
+            },
+            {
+              "const": "gemini"
+            }
+          ]
+        },
+        "binary": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "expected_revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "provider",
         "expected_revision"
       ],
       "additionalProperties": false
@@ -2575,6 +2688,128 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
       "type": "number"
     }
   ],
+  "add_tool_todos": [
+    {
+      "type": "object",
+      "properties": {
+        "toolId": {
+          "type": "number"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sourceKey": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "notes": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "priority": {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              "tags": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "startAt": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "endAt": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "dueDate": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "sourceUrl": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "sourceKey",
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "color": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "toolId",
+        "items"
+      ],
+      "additionalProperties": false
+    }
+  ],
   "set_display_timezone": [
     {
       "type": "string"
@@ -2597,6 +2832,54 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
       "required": [
         "collectionId",
         "visible"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "update_calendar_collection": [
+    {
+      "type": "object",
+      "properties": {
+        "collectionId": {
+          "type": "string"
+        },
+        "expectedTitle": {
+          "type": "string"
+        },
+        "expectedColor": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "collectionId",
+        "expectedTitle",
+        "expectedColor",
+        "title",
+        "color"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "delete_calendar_collection": [
+    {
+      "type": "object",
+      "properties": {
+        "collectionId": {
+          "type": "string"
+        },
+        "expectedTitle": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "collectionId",
+        "expectedTitle"
       ],
       "additionalProperties": false
     }

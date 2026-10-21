@@ -3,7 +3,7 @@
   "slug": "tododesk-tour",
   "title": "Dayfolio 上手之旅",
   "goal": "五分钟认识 Dayfolio 的本地数据、学习闭环与 AI 协作方式",
-  "version": "1.9.0",
+  "version": "1.20.0",
   "overview": {
     "html": "overview.html"
   },
@@ -24,7 +24,7 @@
         },
         {
           "name": "AI 协作",
-          "explanation": "请求排队后需要外部助手认领并执行。"
+          "explanation": "新闻可由 App 调用设置中的本机 Agent，或由当前 Agent 对话直接采集；课程等请求仍需外部助手认领执行。"
         },
         {
           "name": "学习进度与 AI 检验",

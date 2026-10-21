@@ -59,6 +59,7 @@ describe('工具条目', () => {
     const c = core();
     expect(() => c.tools.addTool({ title: ' ', entry_file: 'a.html' })).toThrow('不能为空');
     expect(() => c.tools.addTool({ title: 'T', entry_file: '' })).toThrow('入口文件');
+    expect(() => c.tools.addTool({ title: 'T', entry_file: 'manifest.json' })).toThrow('必须是 HTML');
     expect(() => c.tools.addTool({ title: 'T', entry_file: 'a.html', category_id: 999 })).toThrow('分类不存在');
     const t = c.tools.addTool({ title: '调色板', entry_file: 'index.html' });
     expect(t.icon).toBe('tool');
@@ -70,6 +71,7 @@ describe('工具条目', () => {
     const c = core();
     const cat = c.tools.addCategory({ name: '效率' });
     const t = c.tools.addTool({ title: '调色板', entry_file: 'index.html' });
+    expect(() => c.tools.updateTool(t.id, { entry_file: 'app.js' })).toThrow('必须是 HTML');
     const up = c.tools.updateTool(t.id, { title: '取色器', icon: 'color', category_id: cat.id });
     expect(up).toMatchObject({ title: '取色器', icon: 'color', category_id: cat.id });
     expect(() => c.tools.updateTool(999, { title: 'x' })).toThrow('不存在');

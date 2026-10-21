@@ -14,11 +14,11 @@ export interface LessonRow {
 }
 
 /** 课程阅读页与计划学习详情共用同一份受限讲义和教学资料。 */
-export function LessonMaterial({ lesson, html, onRead }: { lesson: LessonRow; html: string; onRead?: () => void }) {
+export function LessonMaterial({ lesson, html, onRead, readingLayout = false }: { lesson: LessonRow; html: string; onRead?: () => void; readingLayout?: boolean }) {
   return <>
     <EmbeddedFrame label={`${lesson.title}讲义`} className="course-embed" title={lesson.title}
       meta={`第 ${lesson.day} 天 · v${lesson.revision} · ${lesson.estimated_minutes} 分钟 · ${lesson.status === 'read' ? '已读' : '可阅读'}`}>
-      <iframe className="course-lesson-frame" sandbox="" title={lesson.title} srcDoc={courseHtmlDocument(html)} onLoad={onRead} />
+      <iframe className="course-lesson-frame" sandbox="" title={lesson.title} srcDoc={courseHtmlDocument(html, { readingLayout })} onLoad={onRead} />
     </EmbeddedFrame>
     {lesson.concepts.length > 0 && <section className="group">
       <div className="group-label mono">核心概念</div>
@@ -113,7 +113,7 @@ export function PlanLessonContent({ courseId, day, onChanged, children }: {
     <section id="learning-materials" className="group learning-detail-section">
       <h2>课件</h2>
       {error ? <div className="notice error" role="alert">{error}<button className="btn slim" onClick={() => setRetry(v => v + 1)}>重试加载</button></div>
-        : reading ? <LessonMaterial lesson={reading.lesson} html={reading.html} onRead={() => void markRead()} />
+        : reading ? <LessonMaterial readingLayout lesson={reading.lesson} html={reading.html} onRead={() => void markRead()} />
           : <p className="sub" role="status">正在加载课件…</p>}
       {readError && <div className="notice error" role="alert">{readError}<button className="btn slim" onClick={() => void markRead()}>重试保存已读</button></div>}
     </section>

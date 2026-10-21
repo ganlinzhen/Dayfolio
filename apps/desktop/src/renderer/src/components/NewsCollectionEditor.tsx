@@ -4,8 +4,7 @@ import { api, call } from '../api';
 import { toast } from './Toast';
 
 /** 持久提示词与临时请求分开：先保存要求，再按已保存版本发起采集。 */
-export default function NewsCollectionEditor({ onCreated, onDirtyChange }: {
-  onCreated: () => void;
+export default function NewsCollectionEditor({ onDirtyChange }: {
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const [saved, setSaved] = useState<NewsCollectionSettings | null>(null);
@@ -34,16 +33,6 @@ export default function NewsCollectionEditor({ onCreated, onDirtyChange }: {
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };
-  const create = async () => {
-    if (busy || dirty || !saved) return;
-    setBusy(true); setError('');
-    try {
-      const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date());
-      await call(() => api.news.createTask({ title: `${date} 每日新闻`, use_collection_prompt: true }));
-      toast('采集请求已创建，等待 AI 助手执行'); onCreated();
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
-  };
   return <section className="news3-prompt" aria-label="新闻采集提示词">
     <div className="news3-prompt-head">
       <div><h3>采集提示词</h3><p>保存你想看的内容与简报格式，每日采集会读取这里的最新要求。</p></div>
@@ -62,9 +51,8 @@ export default function NewsCollectionEditor({ onCreated, onDirtyChange }: {
       <div className="news3-request-form-row">
         <button className="btn slim primary" disabled={busy || !dirty || !draft.prompt.trim()} onClick={() => void save()}>保存提示词</button>
         {dirty && <button className="btn slim ghost" disabled={busy} onClick={() => setDraft(saved)}>撤销修改</button>}
-        <button className="btn slim" disabled={busy || dirty} onClick={() => void create()}>按已保存提示词创建采集</button>
       </div>
-      <p className="news3-prompt-note">保存后用于后续采集，已有请求保留创建时的要求。创建请求后由 AI 助手核实并提交，App 不会自行联网；定时执行由外部助手负责。</p>
+      <p className="news3-prompt-note">保存后，点击「更新今日新闻」立即调用已配置的 Agent；也可在 Agent 对话中说「按 Dayfolio 保存的要求更新今日新闻」。本次采集使用开始时的要求，后续修改用于下次采集。</p>
     </>}
     {!draft && error && <p>提示词未读取成功，重新加载后可编辑。</p>}
   </section>;

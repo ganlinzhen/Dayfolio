@@ -1,15 +1,16 @@
 // 预加载脚本：把 IPC 能力安全暴露给渲染进程（window.tododesk）
 import { contextBridge, ipcRenderer } from 'electron';
 
-const WRITE_CHANNEL = /^(?:todos:(?:add|update|complete|reopen|delete)|study:recordSession|plans:(?:create|update|updateItemStatus|delete)|calendar:(?:add|update|delete|setVisibility)|runtime:setTimezone|events:(?:refresh|import|updateProvider|archive|deleteUnused)|subscriptions:(?:subscribe|unsubscribe|resumeFollowing)|data:(?:invokeAction|updateObject|createLink|deleteLink|updateActionType)|extensions:(?:install|setEnabled|rollback|uninstall))$/;
+const WRITE_CHANNEL = /^(?:todos:(?:add|update|complete|reopen|delete)|study:recordSession|plans:(?:create|update|updateItemStatus|delete)|calendar:(?:add|update|delete|setVisibility|updateCollection|deleteCollection)|runtime:setTimezone|events:(?:refresh|import|updateProvider|archive|deleteUnused)|subscriptions:(?:subscribe|unsubscribe|resumeFollowing)|data:(?:invokeAction|updateObject|createLink|deleteLink|updateActionType))$/;
 const invoke = (channel: string) => async (payload?: unknown) => {
   const result = await ipcRenderer.invoke(channel, payload);
-  if (result?.ok && WRITE_CHANNEL.test(channel)) window.dispatchEvent(new Event('dayfolio:changed'));
+  if (result?.ok && (WRITE_CHANNEL.test(channel) || channel === 'toolTodos:create')) window.dispatchEvent(new Event('dayfolio:changed'));
   return result;
 };
 
 const api = {
-  extensions:{describe:invoke('extensions:describe'),pickDirectory:invoke('extensions:pickDirectory'),previewInstall:invoke('extensions:previewInstall'),authorizeInstall:invoke('extensions:authorizeInstall'),install:invoke('extensions:install'),list:invoke('extensions:list'),get:invoke('extensions:get'),getHelp:invoke('extensions:getHelp'),setEnabled:invoke('extensions:setEnabled'),rollback:invoke('extensions:rollback'),uninstall:invoke('extensions:uninstall'),bindSession:invoke('extensions:bindSession'),releaseSession:invoke('extensions:releaseSession'),sdkRequest:invoke('extensions:sdkRequest'),onOpenTodo:(listener:(target:{objectType:'todo';id:number})=>void)=>{const receive=(_event:unknown,target:{objectType:'todo';id:number})=>listener(target);ipcRenderer.on('extensions:openTodo',receive);return()=>ipcRenderer.removeListener('extensions:openTodo',receive);}},
+  toolTodos: { preview: invoke('toolTodos:preview'), create: invoke('toolTodos:create'), getStatus: invoke('toolTodos:getStatus') },
+  extensions:{describe:invoke('extensions:describe'),list:invoke('extensions:list'),get:invoke('extensions:get'),getHelp:invoke('extensions:getHelp'),bindSession:invoke('extensions:bindSession'),releaseSession:invoke('extensions:releaseSession'),sdkRequest:invoke('extensions:sdkRequest'),onOpenTodo:(listener:(target:{objectType:'todo';id:number})=>void)=>{const receive=(_event:unknown,target:{objectType:'todo';id:number})=>listener(target);ipcRenderer.on('extensions:openTodo',receive);return()=>ipcRenderer.removeListener('extensions:openTodo',receive);}},
   runtime:{revision:invoke('runtime:revision'),timezone:invoke('runtime:timezone'),setTimezone:invoke('runtime:setTimezone')},
   events:{listProviders:invoke('events:listProviders'),refresh:invoke('events:refresh'),getRun:invoke('events:getRun'),getStatus:invoke('events:getStatus'),updateProvider:invoke('events:updateProvider'),import:invoke('events:import'),list:invoke('events:list'),get:invoke('events:get'),archive:invoke('events:archive'),deleteUnused:invoke('events:deleteUnused')},
   subscriptions:{subscribe:invoke('subscriptions:subscribe'),get:invoke('subscriptions:get'),list:invoke('subscriptions:list'),unsubscribe:invoke('subscriptions:unsubscribe'),resumeFollowing:invoke('subscriptions:resumeFollowing')},
@@ -44,6 +45,7 @@ const api = {
   calendar: {
     queryItems:invoke('calendar:queryItems'),listCollections:invoke('calendar:listCollections'),
     setVisibility:invoke('calendar:setVisibility'),
+    updateCollection:invoke('calendar:updateCollection'),deleteCollection:invoke('calendar:deleteCollection'),
     list: invoke('calendar:list'),
     rangeAgenda: invoke('calendar:rangeAgenda'),
     add: invoke('calendar:add'),
@@ -83,12 +85,16 @@ const api = {
     createRequest: invoke('courses:createRequest'),
     listRequests: invoke('courses:listRequests'),
   },
+  agentSettings: { get: invoke('agentSettings:get'), update: invoke('agentSettings:update'), check: invoke('agentSettings:check'), pickBinary: invoke('agentSettings:pickBinary') },
   news: {
+    agentStatus: invoke('news:agentStatus'),
+    agentRuns: invoke('news:agentRuns'),
+    runAgent: invoke('news:runAgent'),
+    stopAgent: invoke('news:stopAgent'),
     collectionSettings: invoke('news:collectionSettings'),
     updateCollectionSettings: invoke('news:updateCollectionSettings'),
     list: invoke('news:list'),
     tasks: invoke('news:tasks'),
-    createTask: invoke('news:createTask'),
     cancelTask: invoke('news:cancelTask'),
     markRead: invoke('news:markRead'),
     markStarred: invoke('news:markStarred'),
