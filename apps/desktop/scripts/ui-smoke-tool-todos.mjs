@@ -110,6 +110,8 @@ try {
     await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   };
   const add = input => invoke('window.tododesk.tools.add(' + JSON.stringify(input) + ')');
+  // 预览断言使用北京时间，显式设置共享时区以适配 UTC 云端宿主。
+  await invoke('window.tododesk.runtime.setTimezone({zone:"Asia/Shanghai"})');
   const draft = { sourceKey: 'test:one', title: '桥接测试一', startAt: '2026-11-04T04:00:00+08:00' };
   const probe = await add({title:'待办接口模拟工具',files:[
     {name:'index.html',contentBase64:Buffer.from('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\';script-src \'self\'"><script defer src="app.js"></script></head><body><button id="single">单条</button><button id="batch">批量</button><button id="bad">无效时间</button><button id="named">自定义分类</button><p id="result"></p></body></html>').toString('base64')},
