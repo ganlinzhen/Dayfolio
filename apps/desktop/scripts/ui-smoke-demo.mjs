@@ -42,6 +42,7 @@ mkdirSync(join(work, 'home'), { recursive: true });
 mkdirSync(join(work, 'userData'), { recursive: true });
 const isolatedEnv = {
   PATH: process.env.PATH,
+  ...(process.env.TZ ? { TZ: process.env.TZ } : {}),
   TMPDIR: process.env.TMPDIR, // 透传：子进程 os.tmpdir() 需与主进程同一临时区，路径断言才不误判
   HOME: join(work, 'home'),
   TODODESK_DB: dbPath,
@@ -451,15 +452,20 @@ try {
   assert(!calInfo.statRow && !calInfo.dayCheckinBtn, '统计条与每日打卡按钮已移除');
   assert(calInfo.weekview && calInfo.cols === 7 && calInfo.modeSwitch.join('/') === '周/月', '默认周视图，7 列，周/月切换');
   assert(calInfo.nowline && calInfo.todayColHeads === 1, '当前时刻红线与今天列标记');
-  // 当前时刻初始定位在可视区中间（先测，再做滚动联动测试以免破坏定位）
+  // 当前时刻尽量居中；凌晨和深夜须遵守滚动边界（先测，避免后续滚动破坏定位）。
   const centering = await evalJs(`(() => {
     const scroll = document.querySelector('.cal-scroll'); const line = document.querySelector('.cal-nowline');
     if (!scroll || !line) return null;
     const sr = scroll.getBoundingClientRect(); const lr = line.getBoundingClientRect();
-    return { offset: Math.round(lr.top - (sr.top + sr.height / 2)) };
+    return { offset: Math.round(lr.top - (sr.top + sr.height / 2)),
+      visible: lr.top >= sr.top && lr.top <= sr.bottom,
+      atStart: scroll.scrollTop <= 1,
+      atEnd: scroll.scrollTop >= scroll.scrollHeight - scroll.clientHeight - 1 };
   })()`);
   console.log('当前时刻居中偏差:', JSON.stringify(centering));
-  assert(centering !== null && Math.abs(centering.offset) < 60, '当前时刻定位在可视区中间');
+  assert(centering !== null && centering.visible && (Math.abs(centering.offset) < 60
+    || (centering.atStart && centering.offset <= 0)
+    || (centering.atEnd && centering.offset >= 0)), '当前时刻可见，空间允许时居中，边界处不越界');
   assert(await evalJs(`Math.abs(document.querySelector('.cal-scroll').getBoundingClientRect().height - 480) < 2`), '日历高度已调低（480px）');
   // 刻度轴在滚动容器内并随滚动 1:1 联动（测完还原原始滚动位置）
   // 从顶部滚固定距离：打开时当前时刻自动居中，下午/晚间初始位置已接近底部，
