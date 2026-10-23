@@ -3,7 +3,7 @@
   "slug": "tododesk-tour",
   "title": "Dayfolio 上手之旅",
   "goal": "五分钟认识 Dayfolio 的本地数据、学习闭环与 AI 协作方式",
-  "version": "1.27.0",
+  "version": "1.27.2",
   "overview": {
     "html": "overview.html"
   },

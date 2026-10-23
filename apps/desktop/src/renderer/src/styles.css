@@ -18,6 +18,15 @@
   --ok-bg: #f2f7ec;
   --sel: #f0efeb;
   --radius: 8px;
+  /* 操作按钮仅分标准与紧凑两档，主次颜色不参与尺寸。 */
+  --button-border: var(--text-3);
+  --button-height: 34px;
+  --button-font-size: 13px;
+  --button-line-height: 20px;
+  --button-padding: 6px 14px;
+  --button-compact-height: 30px;
+  --button-compact-font-size: 12px;
+  --button-compact-padding: 4px 10px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --t-fast: 140ms;
   --t: 180ms;
@@ -322,17 +331,24 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 /* inline-flex 居中：按钮内 svg 图标与文字按中线对齐（svg 默认基线对齐会整体浮高 2px），
    与 .icon-btn / .tool-crumb-back 同一惯例；图标与文字间距由 gap 统一，不再逐处打 verticalAlign 补丁 */
 .btn {
+  --btn-height: var(--button-height);
+  --btn-font-size: var(--button-font-size);
+  --btn-padding: var(--button-padding);
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 34px;
-  border: 1px solid var(--line-strong);
+  min-height: var(--btn-height);
+  flex-shrink: 0;
+  border: 1px solid var(--button-border);
   background: var(--surface);
   color: var(--text);
   border-radius: 7px;
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: var(--btn-padding);
+  font-size: var(--btn-font-size);
+  line-height: var(--button-line-height);
   cursor: pointer;
   transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out),
     color var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out);
@@ -347,7 +363,20 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .btn.danger { color: var(--danger); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
 .btn.ghost:hover { color: var(--text); background: var(--sel); }
-.btn.slim { min-height: 30px; padding: 3px 10px; font-size: 12px; }
+.btn.slim {
+  --btn-height: var(--button-compact-height);
+  --btn-font-size: var(--button-compact-font-size);
+  --btn-padding: var(--button-compact-padding);
+}
+.btn > svg { flex-shrink: 0; }
+/* 同一操作栏统一为标准尺寸；正文、列表和嵌入阅读器仍可使用紧凑按钮。
+   只匹配操作区，避免将知识库管理菜单等内部操作一并放大。 */
+:is(.panel-head, .toolbar, .news3-toolbar, .modal-foot, .kb-detail-actions) > .btn,
+.cal-toolbar .btn {
+  --btn-height: var(--button-height);
+  --btn-font-size: var(--button-font-size);
+  --btn-padding: var(--button-padding);
+}
 
 .icon-btn {
   border: none;
@@ -1266,8 +1295,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   flex-shrink: 0;
   padding: 16px 24px 20px;
 }
-.modal-foot .btn { min-height: 32px; padding: 6px 14px; justify-content: center; }
-.modal-foot .btn.ghost { border-color: var(--line-strong); }
+.modal-foot .btn.ghost { border-color: var(--button-border); }
 .modal :is(button, a, [tabindex]):focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .runtime-install-modal .sub { margin-top: 20px; }
 .runtime-todo-modal .cal-item-details { padding: 0; border: 0; }
@@ -2105,7 +2133,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .cal-toolbar .cal-title { white-space: nowrap; }
 .cal-create-actions { display: flex; flex-shrink: 0; align-items: center; gap: 6px; }
 .cal-create-actions .btn { white-space: nowrap; }
-.cal-toolbar .btn svg { margin-right: 2px; }
+.cal-toolbar > .icon-btn { width: var(--button-height); height: var(--button-height); align-items: center; justify-content: center; }
 .cal-title { font-size: 15px; font-weight: 600; margin-left: 6px; }
 
 .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); border: 1px solid var(--line); border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; background: var(--surface); overflow: hidden; }
@@ -2207,8 +2235,8 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .cal-legend svg { flex-shrink: 0; }
 
 /* ---------- 日历·周视图（默认）：列头 + 全天区 + 时间网格 + 当前时刻线 ---------- */
-.cal-mode-switch { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; margin-right: 4px; }
-.cal-mode-switch button { border: none; background: transparent; color: var(--text-2); font-size: 12.5px; padding: 4px 12px; cursor: pointer; }
+.cal-mode-switch { display: inline-flex; height: var(--button-height); border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; margin-right: 4px; }
+.cal-mode-switch button { border: none; background: transparent; color: var(--text-2); font-size: var(--button-font-size); line-height: var(--button-line-height); padding: 0 12px; cursor: pointer; }
 .cal-mode-switch button + button { border-left: 1px solid var(--line-strong); }
 .cal-mode-switch button.on { background: var(--accent); color: #fff; }
 
@@ -2271,7 +2299,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .todo-title[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* 运行时日历分类与固定业务详情 */
-.cal-more-button { min-width: 32px; justify-content: center; padding-inline: 7px; }
+.cal-more-button { width: var(--button-height); min-width: var(--button-height); justify-content: center; padding: 0; }
 .cal-toolbar .cal-more-button svg { margin: 0; }
 .cal-actions-menu { position: fixed; z-index: 60; width: 176px; padding: 4px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); }
 .cal-actions-menu button { width: 100%; padding: 8px 10px; text-align: left; color: var(--text); background: transparent; border: 0; border-radius: 5px; font: inherit; font-size: 13px; cursor: pointer; }
@@ -2374,7 +2402,6 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .agent-setting-label p { margin: 3px 0 0; }
 .agent-setting-row .form-input { min-width: 0; width: 100%; height: 32px; padding: 6px 9px; border-radius: 6px; font-size: 12px; background: var(--surface); }
 .agent-setting-row .form-input::placeholder { color: var(--text-2); }
-.agent-setting-row .btn { flex-shrink: 0; min-height: 30px; padding: 5px 10px; font-size: 12px; border-radius: 6px; }
 .agent-path-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .agent-path-row input { flex: 1; }
 .agent-row-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
@@ -2386,7 +2413,6 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .agent-connection-result.ready > strong { color: var(--ok); }
 .agent-connection-result .mono { font-size: 11px; }
 .agent-settings-actions { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
-.agent-settings-actions .btn { padding: 6px 12px; font-size: 12px; }
 .agent-settings-actions .btn.primary:disabled { background: var(--sel); border-color: var(--line); color: var(--text-2); }
 .settings-save-status { color: var(--text-2); font-size: 12px; }
 @media(max-width: 760px) {

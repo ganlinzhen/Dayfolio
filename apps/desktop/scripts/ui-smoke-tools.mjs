@@ -117,8 +117,43 @@ try {
   assert(await evaluate('!window.tododesk.extensions.install && !window.tododesk.extensions.rollback && !window.tododesk.extensions.setEnabled'), '预加载不再暴露包管理方法');
   assert(await evaluate('JSON.stringify([...document.querySelectorAll("[aria-label=工具箱] .panel-head button")].map(b=>b.textContent.trim())) === JSON.stringify(["编辑","导入"])'), '普通模式只有编辑和导入两个按钮');
   assert(await evaluate('!document.querySelector(".tool-card-delete")'), '卡片不显示删除按钮');
+  const actionSizes = async (selector) => evaluate('(() => { const buttons=[...document.querySelectorAll(' + JSON.stringify(selector) + ')]; return buttons.map(b=>{ const r=b.getBoundingClientRect(),s=getComputedStyle(b); return {label:b.textContent.trim(),top:r.top,bottom:r.bottom,width:r.width,height:r.height,fontSize:s.fontSize,lineHeight:s.lineHeight,padding:s.padding,appearance:s.appearance}; }); })()');
+  const sameSize = async (selector, label) => {
+    const sizes = await actionSizes(selector);
+    assert(sizes.length >= 2 && sizes.every(b => Math.abs(b.top-sizes[0].top)<0.01 && Math.abs(b.bottom-sizes[0].bottom)<0.01 && Math.abs(b.width-sizes[0].width)<0.01 && b.appearance === 'none' && b.height === sizes[0].height && b.fontSize === sizes[0].fontSize && b.lineHeight === sizes[0].lineHeight && b.padding === sizes[0].padding), label + '：' + JSON.stringify(sizes));
+  };
+  await sameSize('[aria-label=工具箱] .panel-head .btn', '浏览模式的编辑与导入按钮尺寸一致');
+  const outlineContrast = await evaluate(`(() => {
+    const b=document.querySelector('[aria-label=工具箱] .panel-head .btn:not(.primary)'),s=getComputedStyle(b);
+    const luminance=color=>{const rgb=color.match(/[\\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;});return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
+    const ratio=(a,b)=>(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+    const border=luminance(s.borderTopColor);
+    return Math.min(ratio(border,luminance(s.backgroundColor)),ratio(border,luminance(getComputedStyle(document.body).backgroundColor)));
+  })()`);
+  assert(outlineContrast>=3, '次按钮轮廓在按钮内外均清晰，至少 3:1：' + outlineContrast);
+  // 从实际截图中提取可见轮廓；浅描边即使 CSS 等高，也不能只靠布局断言通过。
+  const pixels = await send('Page.captureScreenshot', {format:'png'});
+  const outlines = await evaluate(`(async () => {
+    const img=new Image();img.src='data:image/png;base64,'+${JSON.stringify(pixels.data)};await img.decode();
+    const canvas=document.createElement('canvas');canvas.width=img.width;canvas.height=img.height;
+    const context=canvas.getContext('2d');context.drawImage(img,0,0);const rgba=context.getImageData(0,0,img.width,img.height).data;
+    const scale=img.width/innerWidth;
+    const luminance=(x,y)=>{const i=(y*img.width+x)*4;const rgb=[rgba[i],rgba[i+1],rgba[i+2]].map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;});return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
+    return [...document.querySelectorAll('[aria-label=工具箱] .panel-head .btn')].map(b=>{
+      const r=b.getBoundingClientRect(),x=Math.floor((r.left+r.width/2)*scale),start=Math.floor((r.top-2)*scale),end=Math.ceil((r.bottom+2)*scale);
+      const background=luminance(x,start),visible=[];
+      for(let y=start;y<end;y++){const ink=luminance(x,y);if((Math.max(ink,background)+.05)/(Math.min(ink,background)+.05)>=3)visible.push(y);}
+      return {label:b.textContent.trim(),top:visible[0],bottom:visible.at(-1),height:visible.at(-1)-visible[0]+1,expected:r.height*scale};
+    });
+  })()`);
+  assert(outlines.length===2 && outlines.every(b=>Math.abs(b.height-b.expected)<=1 && Math.abs(b.top-outlines[0].top)<=1 && Math.abs(b.bottom-outlines[0].bottom)<=1), '截图中主次按钮的可见轮廓等高、上下对齐：'+JSON.stringify(outlines));
+
+
   await click('导入');
   await until(() => evaluate('!!document.querySelector(".modal input[type=file]")'), 'HTML 导入表单');
+  await sameSize('.modal-foot .btn', '导入弹窗取消与主按钮尺寸一致');
+  const compact = await actionSizes('.modal-body .btn.slim');
+  assert(compact.length > 0 && compact.every(b => b.height === 30 && b.fontSize === '12px'), '正文辅助操作保留紧凑尺寸');
   const file = join(work, 'token解析.html');
   writeFileSync(file, '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><h1>Token 解析</h1><button id="decode" onclick="document.querySelector(\'#result\').textContent=\'解析成功\'">解析</button><p id="result">等待解析</p></html>');
   const {root} = await send('DOM.getDocument');
@@ -155,6 +190,7 @@ try {
   await until(() => evaluate('document.querySelectorAll(".tool-card").length === 2'), '返回列表');
   await click('编辑');
   await until(() => evaluate('!!document.querySelector(".tool-card-organize")'), '进入编辑模式');
+  await sameSize('[aria-label=工具箱] .panel-head .btn', '编辑模式的管理分类与完成编辑按钮尺寸一致');
   assert(await evaluate('!document.querySelector(".tool-card-delete") && !!document.querySelector(".tool-edit-notice")'), '编辑模式卡片也没有删除按钮');
   await click('管理分类');
   await evaluate('(() => { const input=document.querySelector(".cat-add input"); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,"效率");input.dispatchEvent(new Event("input",{bubbles:true})); })()');
@@ -252,7 +288,25 @@ try {
     assert(await run('!document.querySelector("#chart-swiss").hidden'), '瑞士轮晋级图切换正常');
     await capture(send, 'lol-progression');
   }
-  console.log('HTML 工具箱隔离验收通过');
+  // 跨面板验收共享按钮尺寸，同时检查窄窗口下按钮是否被挤压或裁切。
+  const pages = [['今日','today'],['待办','todos'],['新闻','news'],['学习','plans'],['知识库','knowledge'],['自媒体','media'],['工具箱','tools'],['数据','data'],['设置','settings']];
+  for (const width of [1280, 760]) {
+    await send('Emulation.setDeviceMetricsOverride', {width,height:900,deviceScaleFactor:1,mobile:false});
+    for (const [label, name] of pages) {
+      await click(label);
+      await pause(250);
+      const metrics = await evaluate(`(() => {
+        const buttons=[...document.querySelectorAll(':is(.panel-head,.toolbar,.news3-toolbar,.modal-foot,.kb-detail-actions) > .btn, .cal-toolbar .btn, .agent-settings-actions > .btn')].filter(b=>b.getClientRects().length);
+        const invalid=buttons.map(b=>{const r=b.getBoundingClientRect(),s=getComputedStyle(b);return {label:b.textContent.trim(),iconOnly:!b.textContent.trim(),height:r.height,fontSize:s.fontSize,lineHeight:s.lineHeight,padding:s.padding,inside:r.left>=0&&r.right<=innerWidth+1,clipped:b.scrollWidth>b.clientWidth+1};}).filter(b=>b.height!==34||b.fontSize!=='13px'||b.lineHeight!=='20px'||(!b.iconOnly&&b.padding!=='6px 14px')||!b.inside||b.clipped);
+        const calendar=[...document.querySelectorAll('.cal-toolbar > .icon-btn, .cal-mode-switch')].filter(b=>b.getClientRects().length).every(b=>b.getBoundingClientRect().height===34);
+        return {count:buttons.length,invalid,calendar};
+      })()`);
+      assert(metrics.invalid.length===0 && metrics.calendar, `${label} ${width}px 操作栏尺寸及边界：` + JSON.stringify(metrics));
+      await capture(send, `buttons-${name}-${width}`);
+    }
+  }
+  await send('Emulation.clearDeviceMetricsOverride');
+  console.log('HTML 工具箱与跨面板按钮隔离验收通过');
 } catch (error) {
   console.error(error);
   process.exitCode = 1;
