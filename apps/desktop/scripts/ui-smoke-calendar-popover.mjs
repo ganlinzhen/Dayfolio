@@ -208,8 +208,11 @@ try {
   await evaluate('[...document.querySelectorAll(".cal-month-item")].find(b=>b.textContent.includes("修改后的日历事项")).click()');
   await until(()=>evaluate('!!document.querySelector(".cal-popover")'),'月视图详情浮层');
   await send('Emulation.setDeviceMetricsOverride',{width:760,height:650,deviceScaleFactor:1,mobile:false});
-  await pause(100);
-  assert(await evaluate('(() => {const r=document.querySelector(".cal-popover").getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;})()'),'窄窗口浮层保持可见且不被网格裁切');
+  // 缩放后的 resize 与浮层定位异步完成，等待真实边界，不依赖固定延迟。
+  const narrowBounds = () => evaluate('(() => {const r=document.querySelector(".cal-popover").getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight,visible:r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight};})()');
+  console.log('窄窗口浮层初始尺寸:', JSON.stringify(await narrowBounds()));
+  await until(async()=> (await narrowBounds()).visible, '窄窗口浮层完成定位且保持在视口内');
+  assert((await narrowBounds()).visible,'窄窗口浮层保持可见且不被网格裁切');
   await capture(send,'calendar-month-narrow');
   await key('Escape');
   assert(await evaluate('document.activeElement.matches(".cal-month-item")'),'关闭后焦点返回原事项');
