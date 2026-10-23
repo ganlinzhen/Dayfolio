@@ -444,7 +444,8 @@ try {
       dayCheckinBtn: [...panel.querySelectorAll('button')].some(b => b.textContent.includes('每日打卡')),
       weekview: !!document.querySelector('.cal-weekview'),
       cols: cols.length,
-      modeSwitch: [...document.querySelectorAll('.cal-mode-switch button')].map(b => b.textContent),
+      modeSwitch: [...cal.querySelectorAll('.cal-toolbar .cal-mode-switch button')].map(b => b.textContent),
+      agendaModes: [...cal.querySelectorAll('.cal-agenda-tabs button')].map(b => b.textContent),
       nowline: !!document.querySelector('.cal-nowline'),
       todayColHeads: document.querySelectorAll('.cal-wd-col.today-col').length,
       todayBlockText: cols[cols.findIndex(c => c.getAttribute('aria-label')?.startsWith(today))] ?.textContent ?? '',
@@ -456,6 +457,7 @@ try {
   assert(calInfo.calendarFirst, '日历置顶（行动列表在其后）');
   assert(!calInfo.statRow && !calInfo.dayCheckinBtn, '统计条与每日打卡按钮已移除');
   assert(calInfo.weekview && calInfo.cols === 7 && calInfo.modeSwitch.join('/') === '周/月', '默认周视图，7 列，周/月切换');
+  assert(calInfo.agendaModes.join('/') === '今日/本周/本月', '事项范围切换独立于日历周/月视图');
   assert(calInfo.nowline && calInfo.todayColHeads === 1, '当前时刻红线与今天列标记');
   // 当前时刻尽量居中；凌晨和深夜须遵守滚动边界（先测，避免后续滚动破坏定位）。
   const centering = await evalJs(`(() => {
