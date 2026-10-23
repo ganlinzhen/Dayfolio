@@ -1147,7 +1147,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   gap: 12px;
   width: 100%;
   min-height: 64px;
-  padding: 12px 28px 12px 14px;
+  padding: 12px 14px;
   border: 0;
   border-radius: inherit;
   background: transparent;
@@ -1181,16 +1181,27 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
-.tool-card-delete {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  opacity: 0;
-  transition: opacity var(--t-fast) var(--ease-out);
-}
-.tool-card:hover .tool-card-delete, .tool-card:focus-within .tool-card-delete { opacity: 1; }
 .tool-card-open:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-@media (hover: none) { .tool-card-delete { opacity: 1; } }
+.tool-edit-notice { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 12px 0 20px; margin-bottom: 16px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
+.tool-edit-notice strong { color: var(--text); font-weight: 600; }
+.tool-card.is-editing { outline: 1px solid var(--line-strong); }
+.tool-edit-pencil { flex-shrink: 0; margin-left: auto; color: var(--text-2); }
+.tool-card-organize { display: flex; align-items: center; gap: 4px; padding: 0 10px 10px; }
+.tool-card-organize .form-select { flex: 1; min-width: 0; width: 0; padding: 5px 7px; font-size: 12px; }
+.tool-card-organize .icon-btn { flex-shrink: 0; }
+.tool-empty-group { font-size: 12px; color: var(--text-2); margin: 8px 0 0; }
+.tool-editor-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.tool-appearance, .tool-image-picker, .tool-background-picker, .tool-file-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.tool-appearance { margin-bottom: 12px; }
+.tool-color-swatch { width: 26px; height: 26px; border: 2px solid transparent; border-radius: 6px; cursor: pointer; }
+.tool-color-swatch.active { outline: 2px solid var(--text); outline-offset: 2px; }
+.tool-background-picker input[type=color] { width: 30px; height: 28px; padding: 2px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 6px; cursor: pointer; }
+.tool-field-hint { color: var(--text-2); font-size: 12px; line-height: 1.6; margin: 8px 0 0; overflow-wrap: anywhere; }
+.tool-file-details { margin-top: 12px; font-size: 12px; }
+.tool-file-details summary { cursor: pointer; color: var(--text-2); }
+.tool-file-details .file-list { max-height: 140px; overflow: auto; }
+.tool-editor-delete { margin-right: auto; }
+.tool-card-open:disabled, .tool-color-swatch:disabled { cursor: wait; }
 
 /* ---------- 共用弹窗：标题、独立滚动正文、右下角操作 ---------- */
 .modal-mask {
@@ -2128,7 +2139,15 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .cal-ev-row .cal-dot { margin-top: 6px; }
 
 .cal-day { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
-.cal-day-head { display: flex; align-items: baseline; gap: 10px; }
+.cal-day-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.cal-agenda-summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.cal-agenda-summary > .mono { color: var(--text-2); }
+.cal-agenda-tabs { margin-left: auto; }
+.cal-agenda-tabs button { min-height: 32px; }
+.cal-agenda-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.cal-agenda-group + .cal-agenda-group { margin-top: 18px; }
+.cal-agenda-date { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 10px 0 8px; font-size: 13px; font-weight: 600; }
+.cal-agenda-date > .mono { color: var(--text-2); font-size: 12px; font-weight: 400; }
 .cal-day-title { font-size: 14.5px; font-weight: 600; }
 .cal-badge { font-size: 11px; color: var(--text-2); border: 1px solid var(--line-strong); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
 .cal-badge.today-badge { color: var(--text); border-color: var(--text); }

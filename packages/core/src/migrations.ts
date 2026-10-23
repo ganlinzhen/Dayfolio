@@ -723,6 +723,10 @@ MIGRATIONS.push({ version: 28, name: 'html_tool_following', up: db => {
   for(const table of ['tool_follow_catalogs','tool_follow_sources','tool_follow_rules','tool_todo_links'])for(const op of ['INSERT','UPDATE','DELETE'])db.exec(`CREATE TRIGGER rev_${table}_${op.toLowerCase()} AFTER ${op} ON ${table} BEGIN UPDATE runtime_revision SET revision=revision+1 WHERE id=1; END`);
 }});
 
+MIGRATIONS.push({ version: 29, name: 'tool_icon_background', up: db => {
+  db.exec("ALTER TABLE tools ADD COLUMN icon_background TEXT NOT NULL DEFAULT 'auto'");
+}});
+
 export function runMigrations(db: DbAdapter): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
   const current = Number(row?.user_version ?? 0);

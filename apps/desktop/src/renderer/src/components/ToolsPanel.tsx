@@ -1,5 +1,5 @@
 import Modal from './Modal';
-// HTML 工具箱：分类排列横向入口，工具仅支持导入与删除。
+// HTML 工具箱：浏览与编辑分离，整理操作仅在编辑模式展示。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, call } from '../api';
 import EmbeddedFrame from './EmbeddedFrame';
@@ -29,6 +29,7 @@ interface ToolRow {
   id: number;
   title: string;
   icon: string;
+  icon_background: string;
   category_id: number | null;
   entry_file: string;
   sort_order: number;
@@ -58,7 +59,7 @@ const readFiles = async (fileList: FileList): Promise<UpFile[]> =>
       (f) =>
         new Promise<UpFile>((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = () => resolve({ name: f.name, contentBase64: toBase64(reader.result as ArrayBuffer) });
+          reader.onload = () => resolve({ name: f.webkitRelativePath ? f.webkitRelativePath.split('/').slice(1).join('/') : f.name, contentBase64: toBase64(reader.result as ArrayBuffer) });
           reader.onerror = () => reject(new Error(`读取 ${f.name} 失败`));
           reader.readAsArrayBuffer(f);
         }),
@@ -68,6 +69,13 @@ const readFiles = async (fileList: FileList): Promise<UpFile[]> =>
 // 页面可使用内联图片作为入口图标，普通工具沿用内置图标。
 const isImageIcon = (icon: string) => /^data:image\/(?:png|jpeg|webp|gif|svg\+xml);base64,[a-zA-Z0-9+/=]+$/.test(icon);
 
+function ToolIcon({ icon, background = 'auto' }: { icon: string; background?: string }) {
+  return <span className={`tool-card-icon tool-tone-${icon === 'code' ? 'blue' : icon === 'trophy' ? 'violet' : 'green'}`}
+    style={background !== 'auto' ? { background } : undefined}>
+    {isImageIcon(icon) ? <img src={icon} width={36} height={36} alt="" /> : <IconTool name={icon} width={20} height={20} />}
+  </span>;
+}
+
 export default function ToolsPanel() {
   const [cats, setCats] = useState<ToolCategory[]>([]);
   const [tools, setTools] = useState<ToolRow[]>([]);
@@ -75,6 +83,9 @@ export default function ToolsPanel() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editingTool, setEditingTool] = useState<ToolRow | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -101,23 +112,35 @@ export default function ToolsPanel() {
     const out: Array<{ cat: ToolCategory | null; items: ToolRow[] }> = [];
     for (const c of cats) {
       const items = tools.filter((t) => t.category_id === c.id);
-      if (items.length > 0) out.push({ cat: c, items });
+      if (items.length > 0 || editing) out.push({ cat: c, items });
     }
     const none = tools.filter((t) => t.category_id === null);
     if (none.length > 0) out.push({ cat: null, items: none });
     return out;
-  }, [cats, tools]);
+  }, [cats, tools, editing]);
 
-  const deleteTool = async (t: ToolRow) => {
-    if (!window.confirm(`删除工具「${t.title}」？其文件会一并删除，不可恢复；停止该工具的持续关注，保留已创建的待办。`)) return;
+  const changeGroup = async (t: ToolRow, category: string) => {
+    if (busy) return;
+    setBusy(true);
     try {
-      await call(() => api.tools.delete({ id: t.id }));
-      toast('已删除工具');
-      if (openId === t.id) setOpenId(null);
+      await call(() => api.tools.update({ id: t.id, category_id: category ? Number(category) : null }));
       await refresh();
     } catch (e) {
-      toast(`删除失败：${(e as Error).message}`);
-    }
+      toast(`移动失败：${(e as Error).message}`);
+    } finally { setBusy(false); }
+  };
+
+  const moveTool = async (t: ToolRow, neighbor: ToolRow) => {
+    if (busy) return;
+    const ids = tools.map(item => item.id);
+    const a = ids.indexOf(t.id), b = ids.indexOf(neighbor.id);
+    [ids[a], ids[b]] = [ids[b], ids[a]];
+    setBusy(true);
+    try {
+      await call(() => api.tools.reorder({ ids }));
+      await refresh();
+    } catch (e) { toast(`排序失败：${(e as Error).message}`); await refresh(); }
+    finally { setBusy(false); }
   };
 
   // ---------- 应用内打开：面包屑 + iframe（不出浏览器） ----------
@@ -148,28 +171,25 @@ export default function ToolsPanel() {
       <header className="panel-head">
         <div className="head-meta mono">{tools.length} 个工具</div>
         <span className="spacer" />
-        <button className="btn slim" onClick={() => setCatModalOpen(true)}>
-          管理分类
-        </button>
-        <button
-          className="btn primary"
-          onClick={() => {
-            setFormOpen(true);
-          }}
-        >
-          <IconPlus width={13} height={13} />
-          导入 HTML
-        </button>
+        {editing ? <>
+          <button className="btn slim" disabled={busy} onClick={() => setCatModalOpen(true)}>管理分类</button>
+          <button className="btn primary" disabled={busy} onClick={() => setEditing(false)}>完成编辑</button>
+        </> : <>
+          <button className="btn slim" onClick={() => setEditing(true)}><IconPencil width={13} height={13} />编辑</button>
+          <button className="btn primary" onClick={() => setFormOpen(true)}><IconUpload width={13} height={13} />导入</button>
+        </>}
       </header>
+
+      {editing && <div className="tool-edit-notice" role="status"><strong>编辑模式</strong><span>点击工具编辑信息；用上下箭头排序，选择分类移动分组。整理操作即时保存。</span></div>}
 
       {error && <div className="notice error">{error}</div>}
 
-      {tools.length === 0 ? (
+      {tools.length === 0 && !editing ? (
         <div className="empty">
           <IconToolbox width={18} height={18} />
           <div className="empty-title">还没有工具</div>
           <div className="empty-hint">
-            点击「导入 HTML」加入本地网页工具，可一并选择配套 CSS、JS 和图片。
+            点击「导入」加入本地网页工具，可一并选择配套 CSS、JS 和图片。
           </div>
         </div>
       ) : (
@@ -180,20 +200,25 @@ export default function ToolsPanel() {
               <span className="group-count">{items.length}</span>
             </div>
             <div className="tool-grid">
-              {items.map((t) => (
-                <div key={t.id} className="tool-card">
-                  <button className="tool-card-open" onClick={() => setOpenId(t.id)} title={t.title}>
-                    <span className={`tool-card-icon tool-tone-${t.icon === 'code' ? 'blue' : t.icon === 'trophy' ? 'violet' : 'green'}`}>
-                      {isImageIcon(t.icon) ? <img src={t.icon} width={36} height={36} alt="" /> : <IconTool name={t.icon} width={20} height={20} />}
-                    </span>
+              {items.map((t, index) => (
+                <div key={t.id} className={`tool-card${editing ? ' is-editing' : ''}`}>
+                  <button className="tool-card-open" disabled={busy} onClick={() => editing ? setEditingTool(t) : setOpenId(t.id)} title={editing ? `编辑${t.title}` : t.title}>
+                    <ToolIcon icon={t.icon} background={t.icon_background} />
                     <span className="tool-card-title">{t.title}</span>
+                    {editing && <IconPencil className="tool-edit-pencil" width={13} height={13} />}
                   </button>
-                  <button className="icon-btn subtle tool-card-delete" title={`删除${t.title}`} aria-label={`删除${t.title}`} onClick={() => void deleteTool(t)}>
-                    <IconTrash width={14} height={14} />
-                  </button>
+                  {editing && <div className="tool-card-organize">
+                    <select className="form-select" aria-label={`${t.title}的分类`} disabled={busy} value={t.category_id ?? ''} onChange={e => void changeGroup(t, e.target.value)}>
+                      <option value="">未分类</option>
+                      {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <button className="icon-btn" title={`上移${t.title}`} aria-label={`上移${t.title}`} disabled={busy || index === 0} onClick={() => void moveTool(t, items[index - 1])}><IconChevronUp width={14} height={14} /></button>
+                    <button className="icon-btn" title={`下移${t.title}`} aria-label={`下移${t.title}`} disabled={busy || index === items.length - 1} onClick={() => void moveTool(t, items[index + 1])}><IconChevronDown width={14} height={14} /></button>
+                  </div>}
                 </div>
               ))}
             </div>
+            {items.length === 0 && <p className="tool-empty-group">还没有工具，可通过工具的分类选项移入此组。</p>}
           </section>
         ))
       )}
@@ -203,20 +228,19 @@ export default function ToolsPanel() {
           cats={cats}
           onClose={() => setCatModalOpen(false)}
           onChanged={refresh}
-          onGoAddTool={() => {
-            setCatModalOpen(false);
-            setFormOpen(true);
-          }}
         />
       )}
-      {formOpen && (
+      {(formOpen || editingTool) && (
         <ToolFormModal
           cats={cats}
-          onClose={() => setFormOpen(false)}
+          tool={editingTool}
+          onClose={() => { setFormOpen(false); setEditingTool(null); }}
+          onDeleted={async () => { setEditingTool(null); await refresh(); toast('已删除工具'); }}
           onSaved={async (t) => {
             setFormOpen(false);
+            setEditingTool(null);
             await refresh();
-            toast(`已导入「${t.title}」`);
+            toast(`已${editingTool ? '保存' : '导入'}「${t.title}」`);
           }}
         />
       )}
@@ -224,277 +248,236 @@ export default function ToolsPanel() {
   );
 }
 
-// ---------- 分类管理弹窗：新增 / 改名 / 上下移排序 / 删除 ----------
-function CategoryModal({ cats, onClose, onChanged, onGoAddTool }: {
+// ---------- 分类管理：操作完成即保存，失败保留输入 ----------
+function CategoryModal({ cats, onClose, onChanged }: {
   cats: ToolCategory[];
   onClose: () => void;
   onChanged: () => Promise<void>;
-  onGoAddTool: () => void;
 }) {
   const [rows, setRows] = useState(cats);
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<number | null>(null);
   const [renameText, setRenameText] = useState('');
   const [busy, setBusy] = useState(false);
-  const originalIds = useRef(cats.map((c) => c.id));
+  const [error, setError] = useState('');
 
-  const orderChanged = () => rows.some((r, i) => r.id !== originalIds.current[i]);
-
-  const close = async () => {
-    if (orderChanged()) {
-      try {
-        await call(() => api.tools.reorderCategories({ ids: rows.map((r) => r.id) }));
-      } catch (e) {
-        toast(`保存排序失败：${(e as Error).message}`);
-      }
-    }
-    onClose();
-    await onChanged();
-  };
-
-  const add = async () => {
-    const name = newName.trim();
-    if (!name) return;
+  const run = async (action: () => Promise<void>) => {
+    if (busy) return;
     setBusy(true);
-    try {
-      const c = await call<ToolCategory>(() => api.tools.addCategory({ name }));
-      setRows((rs) => [...rs, c]);
-      setNewName('');
-      originalIds.current = [...originalIds.current, c.id];
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    setError('');
+    try { await action(); await onChanged(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
   };
-
-  const rename = async (id: number) => {
+  const add = () => run(async () => {
+    const c = await call<ToolCategory>(() => api.tools.addCategory({ name: newName.trim() }));
+    setRows(rs => [...rs, c]); setNewName('');
+  });
+  const rename = () => run(async () => {
+    if (renaming === null) return;
     const name = renameText.trim();
+    await call(() => api.tools.renameCategory({ id: renaming, name }));
+    setRows(rs => rs.map(r => r.id === renaming ? { ...r, name } : r));
     setRenaming(null);
-    if (!name || name === rows.find((r) => r.id === id)?.name) return;
-    try {
-      await call(() => api.tools.renameCategory({ id, name }));
-      setRows((rs) => rs.map((r) => (r.id === id ? { ...r, name } : r)));
-    } catch (e) {
-      toast((e as Error).message);
-    }
+  });
+  const remove = (c: ToolCategory) => {
+    if (!window.confirm(`删除分类「${c.name}」？其中工具会移入「未分类」。`)) return;
+    void run(async () => { await call(() => api.tools.deleteCategory({ id: c.id })); setRows(rs => rs.filter(r => r.id !== c.id)); });
   };
-
-  const remove = async (id: number, name: string) => {
-    if (!window.confirm(`删除分类「${name}」？其中工具会移入「未分类」。`)) return;
-    try {
-      await call(() => api.tools.deleteCategory({ id }));
-      setRows((rs) => rs.filter((r) => r.id !== id));
-      originalIds.current = originalIds.current.filter((i) => i !== id);
-      toast(`已删除分类「${name}」，工具移入未分类`);
-    } catch (e) {
-      toast((e as Error).message);
-    }
-  };
-
-  const move = (idx: number, dir: -1 | 1) => {
+  const move = (index: number, direction: number) => run(async () => {
     const next = [...rows];
-    const j = idx + dir;
-    if (j < 0 || j >= next.length) return;
-    [next[idx], next[j]] = [next[j], next[idx]];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    await call(() => api.tools.reorderCategories({ ids: next.map(r => r.id) }));
     setRows(next);
-  };
+  });
 
-  return (
-    <Modal title="管理分类" description="顺序即列表展示顺序" onClose={() => void close()} busy={busy} footer={<>
-      <button className="btn ghost" disabled={busy} onClick={onGoAddTool}>
-        去导入 HTML
-      </button>
-      <button className="btn primary" disabled={busy} onClick={() => void close()}>
-        完成
-      </button>
-    </>}>
-      {rows.length === 0 && <div className="empty" style={{ padding: '24px 0' }}>还没有分类，先建一个</div>}
-      {rows.map((c, i) => (
-        <div className="cat-row" key={c.id}>
-          <span className="cat-order mono">{String(i + 1).padStart(2, '0')}</span>
-          {renaming === c.id ? (
-            <input
-              className="inline-input"
-              autoFocus
-              value={renameText}
-              maxLength={24}
-              onChange={(e) => setRenameText(e.target.value)}
-              onBlur={() => void rename(c.id)}
-              onKeyDown={(e) => e.key === 'Enter' && void rename(c.id)}
-            />
-          ) : (
-            <span className="cat-name" onDoubleClick={() => { setRenaming(c.id); setRenameText(c.name); }}>
-              {c.name}
-            </span>
-          )}
-          <button className="icon-btn" title="上移" disabled={i === 0} onClick={() => move(i, -1)}>
-            <IconChevronUp width={14} height={14} />
-          </button>
-          <button className="icon-btn" title="下移" disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
-            <IconChevronDown width={14} height={14} />
-          </button>
-          <button
-            className="icon-btn"
-            title="重命名"
-            onClick={() => {
-              setRenaming(c.id);
-              setRenameText(c.name);
-            }}
-          >
-            <IconPencil width={14} height={14} />
-          </button>
-          <button className="icon-btn danger" title="删除分类" onClick={() => void remove(c.id, c.name)}>
-            <IconTrash width={14} height={14} />
-          </button>
-        </div>
-      ))}
+  return <Modal title="管理分类" description="分类顺序即分组顺序，操作完成后即时保存" onClose={onClose} busy={busy} footer={<button className="btn primary" disabled={busy} onClick={onClose}>完成</button>}>
+    {error && <div className="notice error" role="alert">{error}</div>}
+    <fieldset className="tool-editor-fields" disabled={busy}>
+      {rows.length === 0 && <p className="tool-field-hint">还没有分类，先添加一个。</p>}
+      {rows.map((c, i) => <div className="cat-row" key={c.id}>
+        {renaming === c.id ? <>
+          <input className="inline-input" aria-label="分类新名称" autoFocus value={renameText} maxLength={24} onChange={e => setRenameText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void rename(); } }} />
+          <button className="btn slim" onClick={() => void rename()}>保存名称</button>
+          <button className="btn ghost slim" onClick={() => setRenaming(null)}>取消改名</button>
+        </> : <>
+          <span className="cat-name">{c.name}</span>
+          <button className="icon-btn" title={`上移分类${c.name}`} aria-label={`上移分类${c.name}`} disabled={i === 0} onClick={() => void move(i, -1)}><IconChevronUp width={14} height={14} /></button>
+          <button className="icon-btn" title={`下移分类${c.name}`} aria-label={`下移分类${c.name}`} disabled={i === rows.length - 1} onClick={() => void move(i, 1)}><IconChevronDown width={14} height={14} /></button>
+          <button className="icon-btn" title={`重命名${c.name}`} aria-label={`重命名${c.name}`} onClick={() => { setRenaming(c.id); setRenameText(c.name); }}><IconPencil width={14} height={14} /></button>
+          <button className="icon-btn danger" title={`删除分类${c.name}`} aria-label={`删除分类${c.name}`} onClick={() => remove(c)}><IconTrash width={14} height={14} /></button>
+        </>}
+      </div>)}
       <div className="cat-add">
-        <input
-          className="inline-input"
-          placeholder="新分类名称…"
-          value={newName}
-          maxLength={24}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void add()}
-        />
-        <button className="btn slim" disabled={busy || !newName.trim()} onClick={() => void add()}>
-          <IconPlus width={12} height={12} />
-          添加
-        </button>
+        <input className="inline-input" aria-label="新分类名称" placeholder="新分类名称…" value={newName} maxLength={24} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) { e.preventDefault(); void add(); } }} />
+        <button className="btn slim" disabled={!newName.trim()} onClick={() => void add()}><IconPlus width={12} height={12} />添加</button>
       </div>
-    </Modal>
-  );
+    </fieldset>
+  </Modal>;
 }
 
-// ---------- 导入 HTML：名称、图标、分类与页面文件 ----------
-function ToolFormModal({ cats, onClose, onSaved }: {
+// ---------- 工具信息：导入与编辑共用，文件替换需要明确选择完整文件集 ----------
+function ToolFormModal({ cats, tool, onClose, onSaved, onDeleted }: {
   cats: ToolCategory[];
+  tool: ToolRow | null;
   onClose: () => void;
   onSaved: (t: ToolRow) => Promise<void>;
+  onDeleted: () => Promise<void>;
 }) {
-  const [title, setTitle] = useState('');
-  const [icon, setIcon] = useState('tool');
-  const [categoryId, setCategoryId] = useState<string>('');
+  const [title, setTitle] = useState(tool?.title ?? '');
+  const [icon, setIcon] = useState(tool?.icon ?? 'tool');
+  const [iconMode, setIconMode] = useState(isImageIcon(tool?.icon ?? '') ? 'image' : 'builtin');
+  const [background, setBackground] = useState(tool?.icon_background ?? 'auto');
+  const [categoryId, setCategoryId] = useState(String(tool?.category_id ?? ''));
   const [files, setFiles] = useState<UpFile[]>([]);
+  const [existingFiles, setExistingFiles] = useState<string[]>([]);
+  const [entryFile, setEntryFile] = useState(tool?.entry_file ?? '');
+  const [loading, setLoading] = useState(!!tool);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const names = files.length ? files.map(f => f.name) : existingFiles;
+  const htmlNames = names.filter(name => /\.html?$/i.test(name));
+
+  useEffect(() => {
+    if (!tool) return;
+    let active = true;
+    call<string[]>(() => api.tools.listFiles({ id: tool.id }))
+      .then(list => { if (active) setExistingFiles(list); })
+      .catch(e => { if (active) setError(`读取文件清单失败：${(e as Error).message}`); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [tool]);
 
   const pickFiles = async (fl: FileList | null) => {
-    if (!fl || fl.length === 0) return;
+    if (!fl?.length) return;
+    setBusy(true);
+    setError('');
     try {
-      setBusy(true);
-      setFiles(await readFiles(fl));
-      if (!title.trim()) setTitle(Array.from(fl).find(f => /\.html?$/i.test(f.name))?.name.replace(/\.html?$/i, '').slice(0, 40) ?? '');
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+      const picked = await readFiles(fl);
+      const html = picked.filter(f => /\.html?$/i.test(f.name));
+      if (!html.length) throw new Error('文件中缺少 HTML 页面，请重新选择');
+      const entry = html.find(f => f.name === entryFile) ?? html.find(f => f.name === 'index.html') ?? html[0];
+      setFiles(picked);
+      setEntryFile(entry.name);
+      if (!title.trim()) setTitle(entry.name.split('/').at(-1)!.replace(/\.html?$/i, '').slice(0, 40));
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const pickImage = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    try {
+      if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'].includes(file.type)) throw new Error('请选择 PNG、JPEG、WebP、GIF 或 SVG 图片');
+      if (file.size > 2 * 1024 * 1024) throw new Error('图片不能超过 2 MB，请选择较小的图片');
+      const data = `data:${file.type};base64,${toBase64(await file.arrayBuffer())}`;
+      const image = new Image();
+      image.src = data;
+      await image.decode();
+      setIcon(data);
+      setIconMode('image');
+    } catch (e) { setError(`读取图标失败：${(e as Error).message}`); }
+    finally { setBusy(false); }
   };
 
   const submit = async () => {
-    if (!title.trim()) {
-      toast('请填写工具名称');
-      return;
-    }
-    const hasHtml = files.some((f) => /\.html?$/i.test(f.name));
-    if (!hasHtml) {
-      toast('请选择一个 HTML 文件作为入口');
-      return;
-    }
+    if (busy || loading) return;
+    if (!title.trim()) { setError('请填写工具名称'); return; }
+    if (iconMode === 'image' && !isImageIcon(icon)) { setError('请选择一张工具图片'); return; }
+    if (!entryFile || !htmlNames.includes(entryFile)) { setError('请选择有效的 HTML 入口文件'); return; }
     setBusy(true);
-    const catId = categoryId ? Number(categoryId) : null;
+    setError('');
     try {
       const payload = {
-        title: title.trim(),
-        icon,
-        category_id: catId,
-        ...(files.length > 0 ? { files } : {}),
+        title: title.trim(), icon, icon_background: background,
+        category_id: categoryId ? Number(categoryId) : null,
+        entry_file: entryFile,
+        ...(files.length ? { files } : {}),
       };
-      const saved = await call<ToolRow>(() => api.tools.add(payload));
+      const saved = await call<ToolRow>(() => tool ? api.tools.update({ id: tool.id, ...payload }) : api.tools.add(payload));
       await onSaved(saved);
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async () => {
+    if (!tool || busy) return;
+    if (!window.confirm(`删除工具「${tool.title}」？其文件会一并删除，不可恢复；停止该工具的持续关注，保留已创建的待办。`)) return;
+    setBusy(true);
+    try { await call(() => api.tools.delete({ id: tool.id })); await onDeleted(); }
+    catch (e) { setError(`删除失败：${(e as Error).message}`); }
+    finally { setBusy(false); }
   };
 
   return (
-    <Modal title="导入 HTML" description="HTML 文件在应用内打开" onClose={onClose} busy={busy} footer={<>
-      <button className="btn" disabled={busy} onClick={onClose}>
-        取消
-      </button>
-      <button className="btn primary" disabled={busy} onClick={() => void submit()}>
-        {busy ? '导入中…' : '导入'}
-      </button>
+    <Modal title={tool ? '编辑工具' : '导入 HTML'} description={tool ? '修改工具信息，保存后生效' : '选择本地 HTML 页面与配套资源'} onClose={onClose} busy={busy} footer={<>
+      {tool && <button className="btn danger tool-editor-delete" disabled={busy || loading} onClick={() => void remove()}><IconTrash width={13} height={13} />删除工具</button>}
+      <button className="btn" disabled={busy} onClick={onClose}>取消</button>
+      <button className="btn primary" disabled={busy || loading} onClick={() => void submit()}>{busy ? '处理中…' : tool ? '保存修改' : '导入'}</button>
     </>}>
-      <div className="form-row">
-        <label className="form-label">名称</label>
-        <input
-          className="form-input"
-          autoFocus
-          placeholder="比如：颜色转换器"
-          value={title}
-          maxLength={40}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void submit()}
-        />
-      </div>
-      <div className="form-row">
-        <label className="form-label">图标</label>
-        <div className="icon-grid">
-          {TOOL_ICONS.map(({ key, label, Icon }) => (
-            <button
-              key={key}
-              type="button"
-              title={label}
-              className={`icon-cell ${icon === key ? 'active' : ''}`}
-              onClick={() => setIcon(key)}
-            >
-              <Icon width={17} height={17} />
-            </button>
-          ))}
+      {error && <div className="notice error" role="alert">{error}</div>}
+      <fieldset className="tool-editor-fields" disabled={busy || loading}>
+        <div className="form-row">
+          <label className="form-label" htmlFor="tool-title">名称</label>
+          <input id="tool-title" className="form-input" autoFocus placeholder="比如：颜色转换器" value={title} maxLength={40} onChange={e => setTitle(e.target.value)} />
         </div>
-      </div>
-      <div className="form-row">
-        <label className="form-label">分类</label>
-        <select className="form-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-          <option value="">未分类</option>
-          {cats.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="form-row">
-        <label className="form-label">HTML 文件</label>
-        <label className="file-drop">
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            disabled={busy}
-            accept=".html,.htm,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.json,.txt,.woff,.woff2"
-            hidden
-            onChange={(e) => void pickFiles(e.target.files)}
-          />
-          <IconUpload width={15} height={15} />
-          <span>选择 HTML 文件，可多选配套 CSS、JS 和图片</span>
-        </label>
-        {files.length > 0 && (
-          <ul className="file-list mono">
-            {files.map((f) => (
-              <li key={f.name} className={/\.html?$/i.test(f.name) ? 'entry' : ''}>
-                {f.name}
-                {/\.html?$/i.test(f.name) ? ' · 入口' : ''}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        <div className="form-row">
+          <span className="form-label" id="tool-icon-label">工具图标</span>
+          <div className="tool-appearance">
+            <ToolIcon icon={icon} background={background} />
+            <div className="seg" role="group" aria-labelledby="tool-icon-label">
+              <button type="button" className={`seg-item${iconMode === 'builtin' ? ' active' : ''}`} aria-pressed={iconMode === 'builtin'} onClick={() => { setIconMode('builtin'); if (isImageIcon(icon)) setIcon('tool'); }}>内置图标</button>
+              <button type="button" className={`seg-item${iconMode === 'image' ? ' active' : ''}`} aria-pressed={iconMode === 'image'} onClick={() => setIconMode('image')}>图片</button>
+            </div>
+          </div>
+          {iconMode === 'builtin' ? <div className="icon-grid" role="group" aria-label="选择内置图标">
+            {TOOL_ICONS.map(({ key, label, Icon }) => <button key={key} type="button" title={label} aria-label={label} aria-pressed={icon === key} className={`icon-cell ${icon === key ? 'active' : ''}`} onClick={() => setIcon(key)}><Icon width={17} height={17} /></button>)}
+          </div> : <div className="tool-image-picker">
+            <input ref={imageInput} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onChange={e => { void pickImage(e.target.files?.[0]); e.target.value = ''; }} />
+            <button className="btn slim" type="button" onClick={() => imageInput.current?.click()}><IconUpload width={13} height={13} />{isImageIcon(icon) ? '更换图片' : '选择图片'}</button>
+            <span className="tool-field-hint">本地图片，最大 2 MB</span>
+          </div>}
+        </div>
+        <div className="form-row">
+          <label className="form-label" htmlFor="tool-background">图标背景</label>
+          <div className="tool-background-picker">
+            <button className={`btn slim${background === 'auto' ? ' primary' : ''}`} type="button" aria-pressed={background === 'auto'} onClick={() => setBackground('auto')}>默认</button>
+            {['#217a6b', '#315bc8', '#6650bd', '#a24b31', '#55534e'].map(color => <button key={color} type="button" className={`tool-color-swatch${background === color ? ' active' : ''}`} style={{ background: color }} aria-label={`背景${color}`} aria-pressed={background === color} onClick={() => setBackground(color)} />)}
+            <input id="tool-background" type="color" aria-label="自定义背景颜色" value={background === 'auto' ? '#217a6b' : background} onChange={e => setBackground(e.target.value)} />
+          </div>
+        </div>
+        <div className="form-row">
+          <label className="form-label" htmlFor="tool-category">分类</label>
+          <select id="tool-category" className="form-select" value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+            <option value="">未分类</option>
+            {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="form-row">
+          <span className="form-label">页面与配套文件</span>
+          <input ref={fileInput} className="tool-html-files" type="file" multiple hidden onChange={e => { void pickFiles(e.target.files); e.target.value = ''; }} />
+          <input ref={folderInput} type="file" multiple hidden {...{ webkitdirectory: '' }} onChange={e => { void pickFiles(e.target.files); e.target.value = ''; }} />
+          <div className="tool-file-actions">
+            <button className="btn slim" type="button" onClick={() => fileInput.current?.click()}><IconUpload width={13} height={13} />{tool ? '替换文件' : '选择文件'}</button>
+            <button className="btn slim" type="button" onClick={() => folderInput.current?.click()}>选择文件夹</button>
+            {!!tool && files.length > 0 && <button className="btn ghost slim" type="button" onClick={() => { setFiles([]); setEntryFile(tool.entry_file); }}>保留原文件</button>}
+          </div>
+          <p className="tool-field-hint">{tool ? files.length ? '保存时将整体替换原文件，请包含 HTML、CSS、JS、图片和来源清单等全部资源。' : '未选择替换文件时，保留现有页面和全部配套资源。' : '可选择多个文件；含子目录的工具请选择整个文件夹。'}</p>
+          {loading && <p role="status">正在读取文件清单…</p>}
+          {names.length > 0 && <>
+            <label className="form-label" htmlFor="tool-entry">HTML 入口</label>
+            <select id="tool-entry" className="form-select" value={entryFile} onChange={e => setEntryFile(e.target.value)}>{htmlNames.map(name => <option key={name} value={name}>{name}</option>)}</select>
+            <details className="tool-file-details"><summary>{names.length} 个{files.length && tool ? '待替换' : ''}文件</summary><ul className="file-list mono">{names.map(name => <li key={name} className={name === entryFile ? 'entry' : ''}>{name}{name === entryFile ? ' · 入口' : ''}</li>)}</ul></details>
+          </>}
+        </div>
+      </fieldset>
+      {tool && <p className="tool-field-hint">创建于 {new Date(tool.created_at).toLocaleDateString('zh-CN')} · ID {tool.id}</p>}
     </Modal>
   );
 }

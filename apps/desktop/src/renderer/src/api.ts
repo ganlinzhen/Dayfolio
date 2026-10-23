@@ -161,6 +161,8 @@ interface TododeskApi {
     deleteCategory: (p: { id: number }) => Promise<ApiResult<boolean>>;
     reorderCategories: (p: { ids: number[] }) => Promise<ApiResult<unknown[]>>;
     list: () => Promise<ApiResult<unknown[]>>;
+    listFiles: (p: { id: number }) => Promise<ApiResult<string[]>>;
+    reorder: (p: { ids: number[] }) => Promise<ApiResult<unknown[]>>;
     add: (p: unknown) => Promise<ApiResult<unknown>>;
     update: (p: unknown) => Promise<ApiResult<unknown>>;
     delete: (p: { id: number }) => Promise<ApiResult<boolean>>;

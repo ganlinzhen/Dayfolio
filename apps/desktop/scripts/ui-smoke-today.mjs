@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 今日页隔离验收：日历查看并完成待办、无重复到期分组、移除今日学习分组、逾期完成与学习面板打卡。
+// 今日页隔离验收：日历详情、范围切换与完整分页、逾期完成及学习面板打卡。
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -178,6 +178,69 @@ try {
   await nav('今日');
   await until(() => evaluate('!!document.querySelector(".today-panel .cal-section")'), '无学习安排的今日页');
   assert(await noStudyGroup(), '无学习安排时也不显示学习空态或分组');
+
+  // 独立于网格的自然周、自然月；已完成事项继续显示，未排期事项不混入范围。
+  const addDay = (day, count) => new Date(Date.parse(day + 'T00:00:00Z') + count * 86400000).toISOString().slice(0, 10);
+  const weekStart = addDay(today, -((new Date(today + 'T00:00:00Z').getUTCDay() + 6) % 7));
+  const weekEnd = addDay(weekStart, 6);
+  const monthStart = today.slice(0, 7) + '-01';
+  const nextMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1)).toISOString().slice(0, 10);
+  const monthEnd = addDay(nextMonth, -1);
+  await nav('学习');
+  const seeds = [];
+  for (const [index, date] of [today, today, weekStart, weekEnd, monthStart, monthEnd, addDay(monthStart, -1), nextMonth, null].entries()) {
+    const todo = await invoke(`window.tododesk.todos.add(${JSON.stringify({ title: `范围验收-${index}`, due_date: date })})`);
+    if (index % 2 === 0) await invoke(`window.tododesk.todos.complete({id:${todo.id}})`);
+    seeds.push({ id: `todo:${todo.id}`, date, done: index % 2 === 0 });
+  }
+  await nav('今日');
+  const switchRange = async (mode) => {
+    await until(() => evaluate(`!!document.querySelector('#cal-agenda-tab-${mode}')`), `范围 ${mode} 入口就绪`);
+    await evaluate(`document.querySelector('#cal-agenda-tab-${mode}').click()`);
+    await until(() => evaluate(`document.querySelector('#cal-agenda-tab-${mode}[aria-selected=true]') && document.querySelector('.cal-day[aria-busy=false]') && !document.querySelector('.cal-day [role=alert]')`), `范围 ${mode} 加载完成`);
+  };
+  const rangeIds = () => evaluate(`[...document.querySelectorAll('.cal-day .cal-agenda-card')].map(e=>e.dataset.itemId)`);
+  const checkRange = async (mode, from, to) => {
+    await switchRange(mode);
+    const ids = await rangeIds();
+    for (const seed of seeds) assert(ids.includes(seed.id) === !!(seed.date && seed.date >= from && seed.date <= to), `${mode} 正确包含或排除 ${seed.id}`);
+    assert(await evaluate(`!!document.querySelector('.cal-day [data-status=done]') && !!document.querySelector('.cal-day [data-status=open]')`), `${mode} 同时显示已完成与未完成`);
+  };
+  await checkRange('day', today, today);
+  await checkRange('week', weekStart, weekEnd);
+  assert(await evaluate(`!!document.querySelector('.cal-agenda-date') && document.querySelector('.cal-agenda-summary').textContent.includes(${JSON.stringify(weekStart)}) && document.querySelector('.cal-agenda-summary').textContent.includes(${JSON.stringify(weekEnd)})`), '本周按日期分组并显示完整范围');
+  await evaluate('document.querySelector(".cal-day").scrollIntoView({block:"start"})');
+  await capture(send, 'agenda-week');
+  await checkRange('month', monthStart, monthEnd);
+  await send('Emulation.setDeviceMetricsOverride', { width: 760, height: 1000, deviceScaleFactor: 1, mobile: false });
+  assert(await evaluate(`(() => { const tabs=document.querySelector('.cal-agenda-tabs'), rect=tabs.getBoundingClientRect(); return rect.right<=innerWidth && tabs.scrollWidth<=tabs.clientWidth && [...tabs.querySelectorAll('button')].every(b=>b.getBoundingClientRect().width>=40); })()`), '窄窗口范围切换保持可见且无溢出');
+  await evaluate('document.querySelector(".cal-day").scrollIntoView({block:"start"})');
+  await capture(send, 'agenda-month-narrow');
+  await send('Emulation.clearDeviceMetricsOverride');
+  await evaluate('document.querySelector("[aria-label=下一周]").click()');
+  await until(() => evaluate('!document.querySelector(".cal-section[aria-busy=true]")'), '日历翻页完成');
+  assert(await evaluate('document.querySelector("#cal-agenda-tab-month").getAttribute("aria-selected")==="true"'), '日历翻页不改变本月范围');
+  await checkRange('month', monthStart, monthEnd);
+  // 月末可能位于网格之外，详情时间仍须取自列表当前切片。
+  const last = seeds[5];
+  await evaluate(`document.querySelector('.cal-day [data-item-id="${last.id}"] .cal-item-open').click()`);
+  await until(() => evaluate('!!document.querySelector(".cal-detail-preview")'), '月末待办详情');
+  assert(await evaluate(`document.querySelector('.cal-detail-preview').textContent.includes(${JSON.stringify(monthEnd)})`), '范围外网格事项详情仍显示实际日期');
+  await evaluate('document.querySelector(".cal-popover [aria-label=关闭日历浮层]").click()');
+  await evaluate('document.querySelector("#cal-agenda-tab-month").focus()');
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Home', code: 'Home' });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Home', code: 'Home' });
+  await until(() => evaluate('document.activeElement?.id==="cal-agenda-tab-day" && !!document.querySelector(".cal-day[aria-busy=false]")'), '键盘 Home 返回今日');
+  assert((await rangeIds()).includes(seeds[0].id), '今日标签恢复今天，完成状态保留');
+
+  // 用业务入口写入超过一页的真实数据，验收不会静默丢失第 501 项。
+  await nav('学习');
+  for (let offset = 0; offset < 505; offset += 50) {
+    await evaluate(`(async()=>{for(let i=${offset};i<${Math.min(offset + 50, 505)};i++){const result=await window.tododesk.todos.add({title:'分页范围验收-'+i,due_date:${JSON.stringify(monthEnd)}});if(!result.ok)throw new Error(result.error);}return true;})()`);
+  }
+  await nav('今日');
+  await switchRange('month');
+  assert(await evaluate(`[...document.querySelectorAll('.cal-day .cal-item-open')].filter(e=>e.textContent.startsWith('分页范围验收-')).length===505`), '本月完整展示超过 500 条事项');
   console.log('今日页隔离验收通过');
 } catch (error) {
   console.error(error);

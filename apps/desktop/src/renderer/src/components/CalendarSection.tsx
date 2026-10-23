@@ -1,10 +1,11 @@
-// 周、月、全天和当日明细共用统一日历投影及同一分类偏好。
+// 周、月、全天和范围明细共用统一日历投影及同一分类偏好。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CalendarPopover from './CalendarPopover';
+import CalendarAgenda from './CalendarAgenda';
 import { CALENDAR_HOUR_HEIGHT as HOUR_H, CALENDAR_STEP, slotMinute, draftEnd, draftTimes, type CalendarDraft } from './calendar-draft';
 import { api, call } from '../api';
 import { IconChevronLeft, IconChevronRight, IconPlus, IconTrash } from './icons';
-import { addDay, dayOfWeek, pad, clockAt, clockLabel, sliceItems, placeTimed, placeAllDay, type CalendarItem, type CalendarResult } from './calendar-view';
+import { addDay, dayOfWeek, weekDays, pad, clockAt, clockLabel, sliceItems, placeTimed, placeAllDay, type AgendaMode, type CalendarItem, type CalendarResult } from './calendar-view';
 import { loadCalendarPages } from './calendar-pages';
 import { useRuntimeRefresh } from './useRuntimeRefresh';
 import CalendarItemDetails from './CalendarItemDetails';
@@ -16,11 +17,11 @@ export type CalEvent = CalendarEvent;
 type Mode = 'week' | 'month';
 interface Form { id: number | null; title: string; date: string; endDate: string; allDay: boolean; start: string; end: string; color: string; note: string }
 const WEEK = ['日','一','二','三','四','五','六'], COLORS = ['blue','green','violet','amber','rose','slate'];
-const KIND: Record<CalendarItem['kind'],string> = { todo:'待办',plan_item:'学习',calendar_event:'日程',external_subscription:'订阅' };
 const emptyForm = (date: string,start='',end=''):Form => ({id:null,title:'',date,endDate:'',allDay:!start,start,end,color:'blue',note:''});
 
 export default function CalendarSection({ today }: { today:string }) {
   const [mode,setMode]=useState<Mode>(()=>localStorage.getItem('dayfolio.calView')==='month'?'month':'week');
+  const [agendaMode,setAgendaMode]=useState<AgendaMode>('day'),[detailTime,setDetailTime]=useState('');
   const [anchor,setAnchor]=useState(today),[selected,setSelected]=useState(today),[zone,setZone]=useState('');
   const [result,setResult]=useState<CalendarResult|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
   const [form,setForm]=useState<Form|null>(null),[detail,setDetail]=useState<CalendarItem|null>(null),[formError,setFormError]=useState(''),[saving,setSaving]=useState(false),[detailBusy,setDetailBusy]=useState(false);
@@ -30,7 +31,7 @@ export default function CalendarSection({ today }: { today:string }) {
   const [now,setNow]=useState(()=>new Date());
   const scroll=useRef<HTMLDivElement|null>(null), sequence=useRef(0);
   const days=useMemo(()=>{
-    if(mode==='week'){const start=addDay(anchor,-dayOfWeek(anchor));return Array.from({length:7},(_,i)=>addDay(start,i));}
+    if(mode==='week')return weekDays(anchor);
     const [y,m]=anchor.split('-').map(Number), first=`${y}-${pad(m)}-01`, offset=dayOfWeek(first);
     const count=new Date(Date.UTC(y,m,0)).getUTCDate(), start=addDay(first,-offset);
     return Array.from({length:Math.ceil((offset+count)/7)*7},(_,i)=>addDay(start,i));
@@ -53,14 +54,14 @@ export default function CalendarSection({ today }: { today:string }) {
   const currentClock=zone?clockAt(now,zone):null;
   useEffect(()=>{if(mode==='week'&&scroll.current&&currentClock&&days.includes(currentClock.day))scroll.current.scrollTop=Math.max(0,currentClock.minute/60*HOUR_H-240);},[mode,days,zone]);
   const slices=useMemo(()=>sliceItems(result?.items??[],days,zone||'UTC'),[result,days,zone]);
-  const selectedSlices=slices.filter(s=>s.day===selected), allDay=placeAllDay(slices,days);
+  const allDay=placeAllDay(slices,days);
   const colorOf=(item:CalendarItem)=>{const color=result?.itemColors?.[item.id]??result?.collections.find(c=>c.id===item.collectionId)?.color??'blue';return COLORS.includes(color)?color:'blue';};
   const dismissPopover=()=>{setPopoverAnchor(null);setForm(null);setDetail(null);setDetailBusy(false);setDraft(null);draftValue.current=null;};
   const closePopover=()=>{if(!saving&&!detailBusy)dismissPopover();};
   const openCreate=(element:HTMLElement,date=selected,start='',end='')=>{if(saving||detailBusy)return;setDraft(null);draftValue.current=null;setDetail(null);setPopoverAnchor(element);setForm(emptyForm(date,start,end));setFormError('');};
-  const openItem=(item:CalendarItem,element:HTMLElement)=>{
+  const openItem=(item:CalendarItem,element:HTMLElement,time='')=>{
     if(saving||detailBusy)return;
-    setDraft(null);draftValue.current=null;setForm(null);setFormError('');setDetail(item);setPopoverAnchor(element);
+    setDraft(null);draftValue.current=null;setForm(null);setFormError('');setDetailTime(time);setDetail(item);setPopoverAnchor(element);
   };
   const editEvent=async()=>{
     if(!detail||saving)return;
@@ -80,7 +81,7 @@ export default function CalendarSection({ today }: { today:string }) {
   };
   const remove=async()=>{if(form?.id==null)return;setSaving(true);try{await call(()=>api.calendar.delete({id:form.id!}));setPopoverAnchor(null);setForm(null);setDraft(null);await refresh();}catch(e){setFormError((e as Error).message);}finally{setSaving(false);}};
   const shift=(n:number)=>{closePopover();if(mode==='week')setAnchor(addDay(anchor,n*7));else{const[y,m]=anchor.split('-').map(Number);setAnchor(new Date(Date.UTC(y,m-1+n,1)).toISOString().slice(0,10));}};
-  const select=(day:string)=>{setSelected(day);};
+  const select=(day:string)=>{setSelected(day);setAgendaMode('day');};
   const updateDraft=(value:CalendarDraft)=>{draftValue.current=value;setDraft(value);};
   useEffect(()=>{
     const value=draftValue.current;
@@ -101,7 +102,7 @@ export default function CalendarSection({ today }: { today:string }) {
     const column=resize?event.currentTarget.closest<HTMLElement>('.cal-col')!:event.currentTarget;
     const start=slotMinute(event.clientY-column.getBoundingClientRect().top);
     const value=resize&&draftValue.current?draftValue.current:{day,start,end:start+CALENDAR_STEP};
-    updateDraft(value);setSelected(day);setDetail(null);if(!resize)setForm(null);setPopoverAnchor(null);setDragging(true);
+    updateDraft(value);setSelected(day);setAgendaMode('day');setDetail(null);if(!resize)setForm(null);setPopoverAnchor(null);setDragging(true);
     gesture.current={pointerId:event.pointerId,column,offset:value.end-(event.clientY-column.getBoundingClientRect().top)/HOUR_H*60,clientY:event.clientY};
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -125,7 +126,7 @@ export default function CalendarSection({ today }: { today:string }) {
   const pointerCancel=()=>{gesture.current=null;setDragging(false);setDraft(null);draftValue.current=null;setForm(null);setPopoverAnchor(null);};
   return <section className="group cal-section" aria-label="日历" aria-busy={loading}>
     <div className="cal-toolbar">
-      <button className="btn slim" onClick={()=>{closePopover();setAnchor(today);setSelected(today);}}>今天</button>
+      <button className="btn slim" onClick={()=>{closePopover();setAnchor(today);setSelected(today);setAgendaMode('day');}}>今天</button>
       <button className="icon-btn" aria-label={mode==='week'?'上一周':'上一月'} onClick={()=>shift(-1)}><IconChevronLeft width={15} height={15}/></button>
       <button className="icon-btn" aria-label={mode==='week'?'下一周':'下一月'} onClick={()=>shift(1)}><IconChevronRight width={15} height={15}/></button>
       <span className="cal-title serif">{mode==='week'?`${days[0]} — ${days[6]}`:`${anchor.slice(0,4)}年${Number(anchor.slice(5,7))}月`}</span><span className="spacer"/>
@@ -148,24 +149,7 @@ export default function CalendarSection({ today }: { today:string }) {
           {currentClock&&days.includes(currentClock.day)&&<div className="cal-nowline" style={{top:currentClock.minute/60*HOUR_H}} aria-hidden><span className="cal-nowtime mono">{currentClock.label}</span></div>}
         </div></div></div></div>
     </div>:<><div className="cal-week" aria-hidden>{WEEK.map(w=><span key={w} className="cal-wd mono">周{w}</span>)}</div><div className="cal-grid" role="grid" aria-label="月视图">{days.map(day=>{const entries=slices.filter(s=>s.day===day);return <div key={day} role="gridcell" tabIndex={0} className={`cal-cell cal-month-cell ${day.slice(0,7)!==anchor.slice(0,7)?'out':''} ${day===today?'today':''} ${day===selected?'sel':''}`} aria-label={day} aria-selected={day===selected} onClick={()=>select(day)} onKeyDown={e=>{if(e.target===e.currentTarget&&(e.key==='Enter'||e.key===' ')){e.preventDefault();select(day);}}}><span className="cal-num">{Number(day.slice(8))}</span>{entries.slice(0,2).map(s=><button key={s.item.id} className="cal-ev cal-month-item" onClick={e=>{e.stopPropagation();select(day);openItem(s.item,e.currentTarget);}} data-calendar-kind={s.item.kind}><i className={`cal-dot ${colorOf(s.item)}`}/><span className="cal-ev-text">{!s.allDay?`${clockLabel(s.startMinute)} `:''}{s.item.title}</span></button>)}{entries.length>2&&<span className="cal-more mono">+{entries.length-2}</span>}<span className="cal-day-meta mono">{result?.countsByDay[day]??0} 项</span></div>;})}</div></>}
-    <div className="cal-day"><div className="cal-day-head"><span className="cal-day-title serif">{Number(selected.slice(5,7))}月{Number(selected.slice(8))}日</span><span className="mono">周{WEEK[dayOfWeek(selected)]} · {selected} · {result?.countsByDay[selected]??0} 项</span>{selected===today&&<span className="cal-badge today-badge">今天</span>}</div>
-      {!selectedSlices.length&&!form&&<p className="sub cal-empty">这一天没有已显示的安排。可在更多菜单的「管理分类」中调整显示，或新建日程。</p>}
-      <div className="cal-agenda-cards">
-        {selectedSlices.map(s=><div key={s.item.id} className="cal-ev-row cal-agenda-card" data-calendar-kind={s.item.kind} data-item-id={s.item.id}>
-          <div className="cal-agenda-card-main">
-            <i className={`cal-dot ${colorOf(s.item)}`}/>
-            <button className="cal-item-open cal-ev-title" onClick={e=>openItem(s.item,e.currentTarget)}>{s.item.title}</button>
-          </div>
-          <div className="cal-agenda-card-meta">
-            <span className="cal-ev-time mono">{s.label}</span>
-            <span className="cal-badge">{KIND[s.item.kind]}</span>
-            {s.item.status==='done'&&<span className="cal-badge">已完成</span>}
-            {s.item.sourceStatus==='cancelled'&&<span className="cal-badge">来源已取消</span>}
-            <span>{result?.collections.find(c=>c.id===s.item.collectionId)?.title}</span>
-          </div>
-        </div>)}
-      </div>
-    </div>
+    <CalendarAgenda today={today} selected={selected} mode={agendaMode} zone={zone} revision={result?.revision} onModeChange={value=>{closePopover();if(value==='day'){setAnchor(today);setSelected(today);}setAgendaMode(value);}} onOpen={openItem}/>
     {popoverAnchor&&(form||detail)&&<CalendarPopover anchor={popoverAnchor} title={form?(form.id===null?'新建日程':'编辑日程'):'事项详情'} busy={saving||detailBusy} onClose={closePopover}>
       {form&&<div className="cal-form" aria-label={form.id===null?'新建日程':'编辑日程'}><div className="cal-form-row"><input className="inline-input cal-title-input" aria-label="日程标题" placeholder="添加主题" data-autofocus value={form.title} onChange={e=>setForm({...form,title:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'&&!e.nativeEvent.isComposing)void save();}} autoFocus/></div>
         <div className="cal-form-row"><label className="cal-field">日期<input className="chip-date" type="date" aria-label="开始日期" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label><label className="cal-field">结束<input className="chip-date" type="date" aria-label="结束日期" value={form.endDate} onChange={e=>setForm({...form,endDate:e.target.value})}/></label><label className="cal-check"><input type="checkbox" checked={form.allDay} onChange={e=>setForm({...form,allDay:e.target.checked})}/>全天</label><label className="cal-field">开始<input className="cal-time" type="time" aria-label="开始时间" disabled={form.allDay} value={form.start} onChange={e=>setForm({...form,start:e.target.value})}/></label><label className="cal-field">结束<input className="cal-time" type="time" aria-label="结束时间" disabled={form.allDay} value={form.end} onChange={e=>setForm({...form,end:e.target.value})}/></label></div>
@@ -174,11 +158,11 @@ export default function CalendarSection({ today }: { today:string }) {
       </div>}
       {detail&&(detail.target.objectType==='calendar_event'?<div className="cal-event-preview">
         <h4><i className={`cal-dot ${colorOf(detail)}`}/>{detail.title}</h4>
-        <p className="mono">{slices.filter(s=>s.item.id===detail.id).map(s=>`${s.day} ${s.label}`).join(' · ')}</p>
+        <p className="mono">{detailTime||slices.filter(s=>s.item.id===detail.id).map(s=>`${s.day} ${s.label}`).join(' · ')}</p>
         <CalendarEventNote key={detail.id} item={detail}/>
         {formError&&<div className="notice error">{formError}</div>}
         <div className="cal-form-row"><span className="cal-badge">日程</span><span className="spacer"/><button className="btn primary slim" disabled={saving} onClick={()=>void editEvent()}>编辑日程</button></div>
-      </div>:<CalendarItemDetails key={detail.id} item={detail} preview previewTime={slices.filter(s=>s.item.id===detail.id).map(s=>`${s.day} ${s.label}`).join(' · ')+` (${zone})`} onBusyChange={setDetailBusy} onClose={dismissPopover} onChanged={refresh}/>)}
+      </div>:<CalendarItemDetails key={detail.id} item={detail} preview previewTime={detailTime||slices.filter(s=>s.item.id===detail.id).map(s=>`${s.day} ${s.label}`).join(' · ')+` (${zone})`} onBusyChange={setDetailBusy} onClose={dismissPopover} onChanged={refresh}/>)}
     </CalendarPopover>}
     <div className="cal-legend mono">所有视图使用相同分类和统计；跨午夜按天展示，结束待定只使用视觉高度。{loading?'正在刷新…':''}</div>
   </section>;

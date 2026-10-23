@@ -252,8 +252,10 @@ export interface ToolCategory {
 export interface ToolItem {
   id: number;
   title: string;
-  /** 内置图标 key（渲染层图标集），未知时回退默认工具图标 */
+  /** 内置图标 key 或本地图片 data URL */
   icon: string;
+  /** 图标背景，auto 沿用内置配色 */
+  icon_background: string;
   /** 所属分类 id，null = 未分类 */
   category_id: number | null;
   /** 入口 html 文件名（相对 userData/tools/<id>/ 目录） */
@@ -271,6 +273,7 @@ export interface NewToolInput {
   files?: Array<{name:string;contentBase64:string}>;
   title: string;
   icon?: string;
+  icon_background?: string;
   category_id?: number | null;
   entry_file: string;
 }
@@ -279,6 +282,7 @@ export interface UpdateToolInput {
   files?: Array<{name:string;contentBase64:string}>;
   title?: string;
   icon?: string;
+  icon_background?: string;
   category_id?: number | null;
   entry_file?: string;
 }

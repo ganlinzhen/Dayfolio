@@ -57,6 +57,8 @@ export function registerTools(server: ToolRegistrar, { core, toolFilesRoot }: Mc
         id: t.id,
         title: t.title,
         icon: t.icon,
+        icon_background: t.icon_background,
+        sort_order: t.sort_order,
         category_id: t.category_id,
         category_name: t.category_id != null ? catName.get(t.category_id) ?? null : null,
         entry_file: t.entry_file,
@@ -71,7 +73,8 @@ export function registerTools(server: ToolRegistrar, { core, toolFilesRoot }: Mc
     '把一个 HTML 小工具装入 App 工具箱——用户说「把这个 html/文件加到工具箱」「帮我做个小工具放进去」时调用。文件来源二选一：file_paths（本地文件或目录路径，目录递归收集，适合已有文件）或 files（base64 内容，适合你现场生成的 HTML，无需落盘）。entry_file 缺省取 index.html；category_name 不存在会自动创建分类',
     {
       title: z.string().min(1).describe('工具名，如「色板转换器」'),
-      icon: z.string().optional().describe('图标名，默认 tool'),
+      icon: z.string().optional().describe('内置图标名或不超过 2 MB 的本地图片 data URL，默认 tool'),
+      icon_background: z.string().optional().describe('图标背景：auto 或六位十六进制颜色'),
       category_name: z.string().nullable().optional().describe('分类名，不存在自动创建；缺省未分类，传 null 强制未分类'),
       file_paths: z.array(z.string().min(1)).optional().describe('本地文件/目录路径列表（工具 HTML 及 css/js/图片等配套资源）'),
       files: z
@@ -80,14 +83,14 @@ export function registerTools(server: ToolRegistrar, { core, toolFilesRoot }: Mc
         .describe('文件内容列表，name 可含子目录（如 assets/app.js）'),
       entry_file: z.string().optional().describe('HTML 入口相对路径，缺省 index.html 或唯一 html 文件'),
     },
-    async ({ title, icon, category_name, file_paths, files, entry_file }) =>
+    async ({ title, icon, icon_background, category_name, file_paths, files, entry_file }) =>
       wrap(() => {
         const list = gatherToolFiles(file_paths, files);
         if (list.length === 0) throw new Error('未提供任何文件：需要 file_paths 或 files 之一');
         const names = list.map((f) => sanitizeToolPath(f.name));
         const entry = entry_file ? sanitizeToolPath(entry_file) : pickEntryFile(names);
         if (!names.includes(entry)) throw new Error(`entry_file "${entry}" 不在文件列表中`);
-        const tool = core.tools.addTool({ title, icon, category_id: resolveCategoryId(category_name), entry_file: entry, files:list });
+        const tool = core.tools.addTool({ title, icon, icon_background, category_id: resolveCategoryId(category_name), entry_file: entry, files:list });
         return { tool, files: listToolFiles(toolFilesRoot, tool.id) };
       })(),
   );
@@ -99,16 +102,18 @@ export function registerTools(server: ToolRegistrar, { core, toolFilesRoot }: Mc
       id: z.number().int().positive(),
       title: z.string().min(1).optional(),
       icon: z.string().optional(),
+      icon_background: z.string().optional().describe('图标背景：auto 或六位十六进制颜色'),
       category_name: z.string().nullable().optional().describe('分类名（不存在自动创建）；传 null 移到未分类'),
       entry_file: z.string().optional(),
       file_paths: z.array(z.string().min(1)).optional(),
       files: z.array(z.object({ name: z.string().min(1), content_base64: z.string().min(1) })).optional(),
     },
-    async ({ id, title, icon, category_name, entry_file, file_paths, files }) =>
+    async ({ id, title, icon, icon_background, category_name, entry_file, file_paths, files }) =>
       wrap(() => {
         const patch: Record<string, unknown> = {};
         if (title !== undefined) patch.title = title;
         if (icon !== undefined) patch.icon = icon;
+        if (icon_background !== undefined) patch.icon_background = icon_background;
         if (category_name !== undefined) patch.category_id = resolveCategoryId(category_name);
         if (entry_file !== undefined) patch.entry_file = sanitizeToolPath(entry_file);
         const list = gatherToolFiles(file_paths, files);
@@ -135,6 +140,10 @@ export function registerTools(server: ToolRegistrar, { core, toolFilesRoot }: Mc
         return { deleted: id };
       })(),
   );
+
+  server.tool('reorder_tools', '调整工具箱中的工具展示顺序时调用。先读取 list_tools，再按目标顺序提交全部工具 ID；分类内沿用此顺序，不改变分类归属。清单过期或重复时拒绝保存。', {
+    ids: z.array(z.number().int().positive()),
+  }, async ({ ids }) => wrap(() => { core.tools.reorderTools(ids); return core.tools.listTools(); })());
 
   server.tool(
     'list_tool_categories',

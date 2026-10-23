@@ -4,6 +4,19 @@ export type { CalendarItem, CalendarResult, CalendarCollection };
 export const addDay = (day: string, count: number) => new Date(Date.parse(day + 'T00:00:00Z') + count * 86400000).toISOString().slice(0, 10);
 export const dayOfWeek = (day: string) => new Date(day + 'T00:00:00Z').getUTCDay();
 export const pad = (n: number) => String(n).padStart(2, '0');
+export type AgendaMode = 'day' | 'week' | 'month';
+/** 指定日期所在的自然周，固定按周一至周日排列。 */
+export function weekDays(day: string): string[] {
+  const start = addDay(day, -((dayOfWeek(day) + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => addDay(start, i));
+}
+/** 明细范围独立于网格翻页；自然周从周一开始，日期运算不受夏令时影响。 */
+export function agendaDays(mode: AgendaMode, today: string, selected = today): string[] {
+  if (mode === 'day') return [selected];
+  if (mode === 'week') return weekDays(today);
+  const [year, month] = today.split('-').map(Number);
+  return Array.from({ length: new Date(Date.UTC(year, month, 0)).getUTCDate() }, (_, i) => `${today.slice(0, 7)}-${pad(i + 1)}`);
+}
 export const clockLabel = (minutes: number) => `${pad(Math.floor(minutes / 60))}:${pad(Math.round(minutes % 60))}`;
 export function clockAt(value: string | Date, zone: string): { day: string; minute: number; label: string } {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(value)).map(p => [p.type, p.value]));

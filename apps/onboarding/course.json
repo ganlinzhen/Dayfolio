@@ -3,7 +3,7 @@
   "slug": "tododesk-tour",
   "title": "Dayfolio 上手之旅",
   "goal": "五分钟认识 Dayfolio 的本地数据、学习闭环与 AI 协作方式",
-  "version": "1.24.0",
+  "version": "1.27.0",
   "overview": {
     "html": "overview.html"
   },
@@ -33,6 +33,10 @@
         {
           "name": "待办聚焦与编辑",
           "explanation": "按需展开新增，叠加日期、分类与搜索，按组排序；备注与标签编辑保留排期和来源跟随，保存冲突须显式重载。"
+        },
+        {
+          "name": "事项时间范围",
+          "explanation": "今日页明细右侧切换今日、本周、本月，包含未完成与已完成事项，周一至周日为本周，沿用日历分类并按日期分组。"
         }
       ],
       "is_sample": true

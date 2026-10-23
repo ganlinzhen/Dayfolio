@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { inTx, type DbAdapter } from '../db';
-import { MAX_TOOL_FILES_BYTES, sanitizeToolPath, toolsRootForDb } from '../utils/tool-files';
+import { MAX_TOOL_FILES_BYTES, sanitizeToolPath, toolsRootForDb, listToolFiles } from '../utils/tool-files';
 import type { ToolService } from './tool';
 import type { NewToolInput, UpdateToolInput, ToolItem } from '../types';
 
@@ -11,7 +11,11 @@ export function createToolAssetService(db:DbAdapter,service:ToolService,dbPath:s
   const root=toolsRootForDb(dbPath);
   const write=(input:NewToolInput|UpdateToolInput,id?:number):ToolItem=>{
     const files=input.files;
-    if(!files?.length)return id===undefined?service.addTool(input as NewToolInput):service.updateTool(id,input);
+    if(!files?.length){
+      if(id!==undefined && input.entry_file!==undefined && !/\.html?$/i.test(input.entry_file.trim()))throw new Error('工具入口必须是 HTML 文件');
+      if(id!==undefined && input.entry_file!==undefined && !listToolFiles(root,id).includes(sanitizeToolPath(input.entry_file)))throw new Error('入口文件不在现有文件中');
+      return id===undefined?service.addTool(input as NewToolInput):service.updateTool(id,input);
+    }
     const names=files.map(f=>sanitizeToolPath(f.name));
     if(new Set(names).size!==names.length)throw new Error('工具文件名重复');
     const entry=input.entry_file ?? (id===undefined?'':service.getTool(id).entry_file);

@@ -13835,6 +13835,7 @@ function mapTool(row) {
     id: Number(row.id),
     title: String(row.title),
     icon: String(row.icon ?? "tool"),
+    icon_background: String(row.icon_background ?? "auto"),
     category_id: row.category_id === null || row.category_id === void 0 ? null : Number(row.category_id),
     entry_file: String(row.entry_file),
     sort_order: Number(row.sort_order ?? 0),
@@ -14153,6 +14154,7 @@ var BOOT_OBJECT_TYPES = [
       { apiName: "id", dataType: I, nullable: false, isPrimaryKey: true, origin: "builtin" },
       { apiName: "title", dataType: S, nullable: false, origin: "builtin" },
       { apiName: "icon", dataType: S, nullable: false, origin: "builtin" },
+      { apiName: "icon_background", dataType: S, nullable: false, origin: "builtin" },
       { apiName: "category_id", dataType: I, nullable: true, indexed: true, origin: "builtin" },
       { apiName: "entry_file", dataType: S, nullable: false, origin: "builtin" },
       { apiName: "sort_order", dataType: I, nullable: false, origin: "builtin" },
@@ -16171,6 +16173,13 @@ var COMMAND_INPUTS = {
             }
           ]
         },
+        "icon_background": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
         "category_id": {
           "anyOf": [
             {
@@ -16236,6 +16245,13 @@ var COMMAND_INPUTS = {
             }
           ]
         },
+        "icon_background": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
         "category_id": {
           "anyOf": [
             {
@@ -16261,6 +16277,14 @@ var COMMAND_INPUTS = {
   "delete_tool": [
     {
       "type": "number"
+    }
+  ],
+  "reorder_tools": [
+    {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
     }
   ],
   "add_tool_category": [
@@ -18466,6 +18490,7 @@ for (const [name, title, method, params, targets] of [
   ["add_tool", "\u65B0\u589E\u5DE5\u5177", "addTool", [input], ["tool"]],
   ["update_tool", "\u66F4\u65B0\u5DE5\u5177", "updateTool", [id("tool"), patch], ["tool"]],
   ["delete_tool", "\u5220\u9664\u5DE5\u5177", "deleteTool", [id("tool")], ["tool"]],
+  ["reorder_tools", "\u6392\u5217\u5DE5\u5177", "reorderTools", [["ids", "json"]], ["tool"]],
   ["add_tool_category", "\u65B0\u589E\u5DE5\u5177\u5206\u7C7B", "addCategory", [input], ["tool_category"]],
   ["rename_tool_category", "\u91CD\u547D\u540D\u5DE5\u5177\u5206\u7C7B", "renameCategory", [id("tool_category"), ["name", "string"]], ["tool_category"]],
   ["delete_tool_category", "\u5220\u9664\u5DE5\u5177\u5206\u7C7B", "deleteCategory", [id("tool_category")], ["tool_category"]],
@@ -20383,6 +20408,9 @@ MIGRATIONS.push({ version: 28, name: "html_tool_following", up: (db) => {
     CREATE INDEX idx_tool_follow_sources_tool ON tool_follow_sources(tool_id);
     CREATE INDEX idx_tool_follow_rules_tool ON tool_follow_rules(tool_id,active);`);
   for (const table of ["tool_follow_catalogs", "tool_follow_sources", "tool_follow_rules", "tool_todo_links"]) for (const op of ["INSERT", "UPDATE", "DELETE"]) db.exec(`CREATE TRIGGER rev_${table}_${op.toLowerCase()} AFTER ${op} ON ${table} BEGIN UPDATE runtime_revision SET revision=revision+1 WHERE id=1; END`);
+} });
+MIGRATIONS.push({ version: 29, name: "tool_icon_background", up: (db) => {
+  db.exec("ALTER TABLE tools ADD COLUMN icon_background TEXT NOT NULL DEFAULT 'auto'");
 } });
 function runMigrations(db) {
   const row = db.prepare("PRAGMA user_version").get();
@@ -26520,7 +26548,11 @@ function createToolAssetService(db, service, dbPath, onFiles) {
   const root = toolsRootForDb(dbPath);
   const write = (input2, id2) => {
     const files = input2.files;
-    if (!files?.length) return id2 === void 0 ? service.addTool(input2) : service.updateTool(id2, input2);
+    if (!files?.length) {
+      if (id2 !== void 0 && input2.entry_file !== void 0 && !/\.html?$/i.test(input2.entry_file.trim())) throw new Error("\u5DE5\u5177\u5165\u53E3\u5FC5\u987B\u662F HTML \u6587\u4EF6");
+      if (id2 !== void 0 && input2.entry_file !== void 0 && !listToolFiles(root, id2).includes(sanitizeToolPath(input2.entry_file))) throw new Error("\u5165\u53E3\u6587\u4EF6\u4E0D\u5728\u73B0\u6709\u6587\u4EF6\u4E2D");
+      return id2 === void 0 ? service.addTool(input2) : service.updateTool(id2, input2);
+    }
     const names = files.map((f) => sanitizeToolPath(f.name));
     if (new Set(names).size !== names.length) throw new Error("\u5DE5\u5177\u6587\u4EF6\u540D\u91CD\u590D");
     const entry = input2.entry_file ?? (id2 === void 0 ? "" : service.getTool(id2).entry_file);
@@ -26588,6 +26620,17 @@ function createToolAssetService(db, service, dbPath, onFiles) {
 
 // packages/core/src/services/tool.ts
 function createToolService(db) {
+  const background = (value = "auto") => {
+    if (value !== "auto" && !/^#[0-9a-f]{6}$/i.test(value)) throw new Error("\u56FE\u6807\u80CC\u666F\u987B\u4E3A auto \u6216\u516D\u4F4D\u5341\u516D\u8FDB\u5236\u989C\u8272");
+    return value;
+  };
+  const iconValue = (value = "tool") => {
+    const icon = value.trim() || "tool";
+    if (icon.startsWith("data:") && (!/^data:image\/(?:png|jpeg|webp|gif|svg\+xml);base64,[a-zA-Z0-9+/]+={0,2}$/.test(icon) || Buffer.from(icon.split(",")[1] ?? "", "base64").length > 2 * 1024 * 1024)) {
+      throw new Error("\u56FE\u6807\u987B\u4E3A\u4E0D\u8D85\u8FC7 2 MB \u7684\u672C\u5730\u56FE\u7247");
+    }
+    return icon;
+  };
   const listCategories = () => db.prepare("SELECT * FROM tool_categories ORDER BY sort_order, id").all().map(mapToolCategory);
   const addCategory = (input2) => {
     const name = input2.name.trim();
@@ -26640,20 +26683,24 @@ function createToolService(db) {
     const max = db.prepare("SELECT MAX(sort_order) AS m FROM tools").get();
     const order = Number(max?.m ?? 0) + 1;
     const r = db.prepare(
-      "INSERT INTO tools (title, icon, category_id, entry_file, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).run(title, input2.icon?.trim() || "tool", input2.category_id ?? null, entry, order, now, now);
+      "INSERT INTO tools (title, icon, icon_background, category_id, entry_file, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(title, iconValue(input2.icon), background(input2.icon_background), input2.category_id ?? null, entry, order, now, now);
     return getTool(Number(r.lastInsertRowid));
   };
   const updateTool = (id2, patch2) => {
     const cur = getTool(id2);
+    const title = (patch2.title ?? cur.title).trim();
+    if (!title) throw new Error("\u5DE5\u5177\u540D\u4E0D\u80FD\u4E3A\u7A7A");
+    if (title.length > 40) throw new Error("\u5DE5\u5177\u540D\u6700\u957F 40 \u4E2A\u5B57\u7B26");
     if (patch2.entry_file !== void 0 && !/\.html?$/i.test(patch2.entry_file.trim())) throw new Error("\u5DE5\u5177\u5165\u53E3\u5FC5\u987B\u662F HTML \u6587\u4EF6");
     if (patch2.category_id != null) {
       const cat = db.prepare("SELECT id FROM tool_categories WHERE id = ?").get(patch2.category_id);
       if (!cat) throw new Error("\u5206\u7C7B\u4E0D\u5B58\u5728");
     }
-    db.prepare("UPDATE tools SET title = ?, icon = ?, category_id = ?, entry_file = ?, updated_at = ? WHERE id = ?").run(
-      (patch2.title ?? cur.title).trim() || cur.title,
-      patch2.icon?.trim() || cur.icon,
+    db.prepare("UPDATE tools SET title = ?, icon = ?, icon_background = ?, category_id = ?, entry_file = ?, updated_at = ? WHERE id = ?").run(
+      title,
+      iconValue(patch2.icon ?? cur.icon),
+      background(patch2.icon_background ?? cur.icon_background),
       patch2.category_id === void 0 ? cur.category_id : patch2.category_id,
       patch2.entry_file?.trim() || cur.entry_file,
       nowIso(),
@@ -26663,6 +26710,17 @@ function createToolService(db) {
   };
   const deleteTool = (id2) => {
     db.prepare("DELETE FROM tools WHERE id = ?").run(id2);
+  };
+  const reorderTools = (ids) => {
+    inTx(db, () => {
+      const current = listTools();
+      if (ids.length !== current.length || new Set(ids).size !== ids.length || current.some((t) => !ids.includes(t.id))) {
+        throw new Error("\u5DE5\u5177\u5217\u8868\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u65B0\u6392\u5E8F");
+      }
+      const stmt = db.prepare("UPDATE tools SET sort_order = ?, updated_at = ? WHERE id = ?");
+      const now = nowIso();
+      ids.forEach((id2, i) => stmt.run(i + 1, now, id2));
+    });
   };
   return {
     listCategories,
@@ -26674,7 +26732,8 @@ function createToolService(db) {
     getTool,
     addTool,
     updateTool,
-    deleteTool
+    deleteTool,
+    reorderTools
   };
 }
 
@@ -27319,7 +27378,7 @@ var manifest_schema_default = {
 };
 
 // package.json
-var version2 = "0.42.0";
+var version2 = "0.45.0";
 var package_default = {
   name: "tododesk-monorepo",
   private: true,
@@ -38148,6 +38207,8 @@ function registerTools10(server, { core, toolFilesRoot }) {
         id: t.id,
         title: t.title,
         icon: t.icon,
+        icon_background: t.icon_background,
+        sort_order: t.sort_order,
         category_id: t.category_id,
         category_name: t.category_id != null ? catName.get(t.category_id) ?? null : null,
         entry_file: t.entry_file,
@@ -38161,19 +38222,20 @@ function registerTools10(server, { core, toolFilesRoot }) {
     "\u628A\u4E00\u4E2A HTML \u5C0F\u5DE5\u5177\u88C5\u5165 App \u5DE5\u5177\u7BB1\u2014\u2014\u7528\u6237\u8BF4\u300C\u628A\u8FD9\u4E2A html/\u6587\u4EF6\u52A0\u5230\u5DE5\u5177\u7BB1\u300D\u300C\u5E2E\u6211\u505A\u4E2A\u5C0F\u5DE5\u5177\u653E\u8FDB\u53BB\u300D\u65F6\u8C03\u7528\u3002\u6587\u4EF6\u6765\u6E90\u4E8C\u9009\u4E00\uFF1Afile_paths\uFF08\u672C\u5730\u6587\u4EF6\u6216\u76EE\u5F55\u8DEF\u5F84\uFF0C\u76EE\u5F55\u9012\u5F52\u6536\u96C6\uFF0C\u9002\u5408\u5DF2\u6709\u6587\u4EF6\uFF09\u6216 files\uFF08base64 \u5185\u5BB9\uFF0C\u9002\u5408\u4F60\u73B0\u573A\u751F\u6210\u7684 HTML\uFF0C\u65E0\u9700\u843D\u76D8\uFF09\u3002entry_file \u7F3A\u7701\u53D6 index.html\uFF1Bcategory_name \u4E0D\u5B58\u5728\u4F1A\u81EA\u52A8\u521B\u5EFA\u5206\u7C7B",
     {
       title: external_exports.string().min(1).describe("\u5DE5\u5177\u540D\uFF0C\u5982\u300C\u8272\u677F\u8F6C\u6362\u5668\u300D"),
-      icon: external_exports.string().optional().describe("\u56FE\u6807\u540D\uFF0C\u9ED8\u8BA4 tool"),
+      icon: external_exports.string().optional().describe("\u5185\u7F6E\u56FE\u6807\u540D\u6216\u4E0D\u8D85\u8FC7 2 MB \u7684\u672C\u5730\u56FE\u7247 data URL\uFF0C\u9ED8\u8BA4 tool"),
+      icon_background: external_exports.string().optional().describe("\u56FE\u6807\u80CC\u666F\uFF1Aauto \u6216\u516D\u4F4D\u5341\u516D\u8FDB\u5236\u989C\u8272"),
       category_name: external_exports.string().nullable().optional().describe("\u5206\u7C7B\u540D\uFF0C\u4E0D\u5B58\u5728\u81EA\u52A8\u521B\u5EFA\uFF1B\u7F3A\u7701\u672A\u5206\u7C7B\uFF0C\u4F20 null \u5F3A\u5236\u672A\u5206\u7C7B"),
       file_paths: external_exports.array(external_exports.string().min(1)).optional().describe("\u672C\u5730\u6587\u4EF6/\u76EE\u5F55\u8DEF\u5F84\u5217\u8868\uFF08\u5DE5\u5177 HTML \u53CA css/js/\u56FE\u7247\u7B49\u914D\u5957\u8D44\u6E90\uFF09"),
       files: external_exports.array(external_exports.object({ name: external_exports.string().min(1), content_base64: external_exports.string().min(1) })).optional().describe("\u6587\u4EF6\u5185\u5BB9\u5217\u8868\uFF0Cname \u53EF\u542B\u5B50\u76EE\u5F55\uFF08\u5982 assets/app.js\uFF09"),
       entry_file: external_exports.string().optional().describe("HTML \u5165\u53E3\u76F8\u5BF9\u8DEF\u5F84\uFF0C\u7F3A\u7701 index.html \u6216\u552F\u4E00 html \u6587\u4EF6")
     },
-    async ({ title, icon, category_name, file_paths, files, entry_file }) => wrap(() => {
+    async ({ title, icon, icon_background, category_name, file_paths, files, entry_file }) => wrap(() => {
       const list = gatherToolFiles(file_paths, files);
       if (list.length === 0) throw new Error("\u672A\u63D0\u4F9B\u4EFB\u4F55\u6587\u4EF6\uFF1A\u9700\u8981 file_paths \u6216 files \u4E4B\u4E00");
       const names = list.map((f) => sanitizeToolPath(f.name));
       const entry = entry_file ? sanitizeToolPath(entry_file) : pickEntryFile(names);
       if (!names.includes(entry)) throw new Error(`entry_file "${entry}" \u4E0D\u5728\u6587\u4EF6\u5217\u8868\u4E2D`);
-      const tool = core.tools.addTool({ title, icon, category_id: resolveCategoryId(category_name), entry_file: entry, files: list });
+      const tool = core.tools.addTool({ title, icon, icon_background, category_id: resolveCategoryId(category_name), entry_file: entry, files: list });
       return { tool, files: listToolFiles(toolFilesRoot, tool.id) };
     })()
   );
@@ -38184,15 +38246,17 @@ function registerTools10(server, { core, toolFilesRoot }) {
       id: external_exports.number().int().positive(),
       title: external_exports.string().min(1).optional(),
       icon: external_exports.string().optional(),
+      icon_background: external_exports.string().optional().describe("\u56FE\u6807\u80CC\u666F\uFF1Aauto \u6216\u516D\u4F4D\u5341\u516D\u8FDB\u5236\u989C\u8272"),
       category_name: external_exports.string().nullable().optional().describe("\u5206\u7C7B\u540D\uFF08\u4E0D\u5B58\u5728\u81EA\u52A8\u521B\u5EFA\uFF09\uFF1B\u4F20 null \u79FB\u5230\u672A\u5206\u7C7B"),
       entry_file: external_exports.string().optional(),
       file_paths: external_exports.array(external_exports.string().min(1)).optional(),
       files: external_exports.array(external_exports.object({ name: external_exports.string().min(1), content_base64: external_exports.string().min(1) })).optional()
     },
-    async ({ id: id2, title, icon, category_name, entry_file, file_paths, files }) => wrap(() => {
+    async ({ id: id2, title, icon, icon_background, category_name, entry_file, file_paths, files }) => wrap(() => {
       const patch2 = {};
       if (title !== void 0) patch2.title = title;
       if (icon !== void 0) patch2.icon = icon;
+      if (icon_background !== void 0) patch2.icon_background = icon_background;
       if (category_name !== void 0) patch2.category_id = resolveCategoryId(category_name);
       if (entry_file !== void 0) patch2.entry_file = sanitizeToolPath(entry_file);
       const list = gatherToolFiles(file_paths, files);
@@ -38216,6 +38280,12 @@ function registerTools10(server, { core, toolFilesRoot }) {
       return { deleted: id2 };
     })()
   );
+  server.tool("reorder_tools", "\u8C03\u6574\u5DE5\u5177\u7BB1\u4E2D\u7684\u5DE5\u5177\u5C55\u793A\u987A\u5E8F\u65F6\u8C03\u7528\u3002\u5148\u8BFB\u53D6 list_tools\uFF0C\u518D\u6309\u76EE\u6807\u987A\u5E8F\u63D0\u4EA4\u5168\u90E8\u5DE5\u5177 ID\uFF1B\u5206\u7C7B\u5185\u6CBF\u7528\u6B64\u987A\u5E8F\uFF0C\u4E0D\u6539\u53D8\u5206\u7C7B\u5F52\u5C5E\u3002\u6E05\u5355\u8FC7\u671F\u6216\u91CD\u590D\u65F6\u62D2\u7EDD\u4FDD\u5B58\u3002", {
+    ids: external_exports.array(external_exports.number().int().positive())
+  }, async ({ ids }) => wrap(() => {
+    core.tools.reorderTools(ids);
+    return core.tools.listTools();
+  })());
   server.tool(
     "list_tool_categories",
     "\u67E5\u770B\u5DE5\u5177\u7BB1\u5168\u90E8\u5206\u7C7B\uFF08\u542B\u6BCF\u4E2A\u5206\u7C7B\u4E0B\u7684\u5DE5\u5177\u6570\u4E0E\u5DE5\u5177\u540D\uFF09",

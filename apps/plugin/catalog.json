@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "dayfolio",
-  "version": "0.42.0",
+  "version": "0.45.0",
   "serverId": "tododesk",
   "tools": [
     {
@@ -942,6 +942,17 @@
     {
       "name": "delete_tool",
       "desc": "从工具箱删除一个工具及全部文件，停止持续关注但保留个人待办。不可恢复，请先与用户确认",
+      "group": {
+        "id": "toolbox",
+        "title": "工具箱",
+        "entity": "tool / tool_category",
+        "desc": "安装和更新 HTML 小工具。",
+        "section": "业务模块"
+      }
+    },
+    {
+      "name": "reorder_tools",
+      "desc": "调整工具箱中的工具展示顺序时调用。先读取 list_tools，再按目标顺序提交全部工具 ID；分类内沿用此顺序，不改变分类归属。清单过期或重复时拒绝保存。",
       "group": {
         "id": "toolbox",
         "title": "工具箱",

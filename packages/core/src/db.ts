@@ -400,6 +400,7 @@ export function mapTool(row: Record<string, unknown>): ToolItemRow {
     id: Number(row.id),
     title: String(row.title),
     icon: String(row.icon ?? 'tool'),
+    icon_background: String(row.icon_background ?? 'auto'),
     category_id: row.category_id === null || row.category_id === undefined ? null : Number(row.category_id),
     entry_file: String(row.entry_file),
     sort_order: Number(row.sort_order ?? 0),
@@ -412,6 +413,7 @@ export interface ToolItemRow {
   id: number;
   title: string;
   icon: string;
+  icon_background: string;
   category_id: number | null;
   entry_file: string;
   sort_order: number;

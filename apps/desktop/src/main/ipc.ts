@@ -5,6 +5,7 @@ import {
   runtimeErrorInfo,
   deleteToolFilesAt,
   sanitizeToolPath,
+  listToolFiles,
   saveToolFilesTo,
   type TodoDeskCore,
   type ToolItem,
@@ -230,10 +231,21 @@ export function registerIpc(core: TodoDeskCore, newsAgent: ReturnType<typeof cre
   });
 
   handle('tools:list', () => core.tools.listTools());
+  handle('tools:listFiles', p => {
+    const id = (p as { id: number }).id;
+    core.tools.getTool(id);
+    return listToolFiles(toolsRoot(), id);
+  });
+  handle('tools:reorder', p => {
+    core.tools.reorderTools((p as { ids: number[] }).ids);
+    return core.tools.listTools();
+  });
   handle('tools:add', (p) => {
-    const { title, icon, category_id, files } = p as {
+    const { title, icon, icon_background, category_id, files, entry_file } = p as {
       title: string;
       icon?: string;
+      icon_background?: string;
+      entry_file?: string;
       category_id?: number | null;
       files: Array<{ name: string; contentBase64: string }>;
     };
@@ -243,29 +255,34 @@ export function registerIpc(core: TodoDeskCore, newsAgent: ReturnType<typeof cre
     const tool = core.tools.addTool({
       title,
       icon,
+      icon_background,
       category_id: category_id ?? null,
-      entry_file: sanitizeToolPath(entry.name),
+      entry_file: sanitizeToolPath(entry_file ?? entry.name),
       files:list,
     });
     return tool;
   });
   handle('tools:update', (p) => {
-    const { id, title, icon, category_id, files } = p as {
+    const { id, title, icon, icon_background, category_id, files, entry_file } = p as {
       id: number;
       title?: string;
       icon?: string;
+      icon_background?: string;
+      entry_file?: string;
       category_id?: number | null;
       files?: Array<{ name: string; contentBase64: string }>;
     };
     const patch: Record<string, unknown> = {};
     if (title !== undefined) patch.title = title;
     if (icon !== undefined) patch.icon = icon;
+    if (icon_background !== undefined) patch.icon_background = icon_background;
+    if (entry_file !== undefined) patch.entry_file = sanitizeToolPath(entry_file);
     if (category_id !== undefined) patch.category_id = category_id;
     const list = Array.isArray(files) ? files : null;
     if (list && list.length > 0) {
       const entry = list.find((f) => /\.html?$/i.test(f.name));
       if (!entry) throw new Error('文件中缺少 HTML 入口');
-      patch.entry_file = sanitizeToolPath(entry.name);
+      patch.entry_file = sanitizeToolPath(entry_file ?? entry.name);
       patch.files=list;
       return core.tools.updateTool(id, patch as never);
     }

@@ -20,11 +20,11 @@ apps/onboarding/
 
 | 课程内容 | 对应说明文档 |
 | --- | --- |
-| 今日页日历、更多菜单中的分类管理与时区、逾期分组、当日明细卡片、15 分钟草稿拖动与详情浮层、当天待办详情与学习安排入口 | `../help/docs/01-today.md`、`../help/docs/16-calendar.md` |
+| 今日页日历（周视图为周一至周日）、更多菜单中的分类管理与时区、逾期分组、今日/本周/本月明细卡片（含已完成与未完成）、15 分钟草稿拖动与详情浮层、当天待办详情与学习安排入口 | `../help/docs/01-today.md`、`../help/docs/16-calendar.md` |
 | 应用内弹窗结构、键盘操作与关闭边界 | `../help/docs/00-quickstart.md` |
 | 侧边栏导航顺序与新闻、学习入口 | `../help/docs/00-quickstart.md`、`../help/docs/05-news.md` |
 | 待办按需展开新增、日期筛选与组内排序、完整行内编辑、并发保护、完成撤销及删除确认 | `../help/docs/02-todos.md` |
-| HTML 工具导入、横向卡片、打开、删除，以及单条与批量待办预览、确认后创建分类与分类筛选、通用持续关注及来源更新和手动/完成保护 | `../help/docs/06-toolbox.md`、`../help/docs/02-todos.md`、`../help/docs/16-calendar.md` |
+| HTML 工具导入、横向卡片、打开、编辑模式、分类排序与分组、完整信息与图片图标编辑、弹窗内删除，以及单条与批量待办预览、确认后创建分类与分类筛选、通用持续关注及来源更新和手动/完成保护 | `../help/docs/06-toolbox.md`、`../help/docs/02-todos.md`、`../help/docs/16-calendar.md` |
 | 通用 Agent 选择、CLI 路径、模型、连接检查与保存 | `../help/docs/19-settings.md` |
 | 本地数据与文件、AI 接入 | `../help/docs/08-mcp.md` |
 | 计划、课程入口与逐日学习 | `../help/docs/03-plans.md`、`../help/docs/11-course.md` |

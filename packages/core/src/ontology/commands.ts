@@ -81,6 +81,7 @@ command('claim_course_request','认领课程生成','courses','claimRequest',['c
 command('complete_course_request','完成课程生成','courses','completeRequest',['course_request'],[id('course_request'),['claimed_by','string']]);
 for (const [name,title,method,params,targets] of [
   ['add_tool','新增工具','addTool',[input],['tool']],['update_tool','更新工具','updateTool',[id('tool'),patch],['tool']],['delete_tool','删除工具','deleteTool',[id('tool')],['tool']],
+  ['reorder_tools','排列工具','reorderTools',[['ids','json']],['tool']],
   ['add_tool_category','新增工具分类','addCategory',[input],['tool_category']],['rename_tool_category','重命名工具分类','renameCategory',[id('tool_category'),['name','string']],['tool_category']],
   ['delete_tool_category','删除工具分类','deleteCategory',[id('tool_category')],['tool_category']],['reorder_tool_categories','排列工具分类','reorderCategories',[['ids','json']],['tool_category']],
 ] as Array<[string,string,string,Param[],string[]]>) command(name,title,'tools',method,targets,params);

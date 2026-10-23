@@ -110,6 +110,8 @@ const api = {
     deleteCategory: invoke('tools:deleteCategory'),
     reorderCategories: invoke('tools:reorderCategories'),
     list: invoke('tools:list'),
+    listFiles: invoke('tools:listFiles'),
+    reorder: invoke('tools:reorder'),
     add: invoke('tools:add'),
     update: invoke('tools:update'),
     delete: invoke('tools:delete'),

@@ -2255,6 +2255,30 @@ describe('P2 统一日历 MCP 合同',()=>{
 });
 
 describe('HTML 工具箱管理边界', () => {
+ it('通过 MCP 编辑图片、背景、分类和顺序，保留原页面文件', async () => {
+  const call = async (name: string, args: Record<string, unknown> = {}) => arg(await client.callTool({ name, arguments: args }));
+  const a = (await call('add_tool', { title: '整理测试甲', files: [{ name: 'index.html', content_base64: Buffer.from('<p>保留</p>').toString('base64') }] })).data.tool;
+  const b = (await call('add_tool', { title: '整理测试乙', files: [{ name: 'index.html', content_base64: Buffer.from('<p>乙</p>').toString('base64') }] })).data.tool;
+  try {
+   const image = 'data:image/png;base64,aGVsbG8=';
+   const updated = await call('update_tool', { id: a.id, title: '图片工具', icon: image, icon_background: '#6650bd', category_name: '整理测试分组' });
+   expect(updated.ok).toBe(true);
+   expect(updated.data.tool).toMatchObject({ title: '图片工具', icon: image, icon_background: '#6650bd' });
+   expect(readFileSync(join(dbDir, 'tools', String(a.id), 'index.html'), 'utf8')).toBe('<p>保留</p>');
+   const before = (await call('list_tools')).data.tools;
+   const ids = [b.id, a.id, ...before.filter((t: {id: number}) => t.id !== a.id && t.id !== b.id).map((t: {id: number}) => t.id)];
+   expect((await call('reorder_tools', { ids })).ok).toBe(true);
+   const after = (await call('list_tools')).data.tools;
+   expect(after.map((t: {id: number}) => t.id)).toEqual(ids);
+   expect(after.find((t: {id: number}) => t.id === a.id)).toMatchObject({ icon_background: '#6650bd', category_name: '整理测试分组', sort_order: 2 });
+   expect((await call('reorder_tools', { ids: [a.id, a.id] })).ok).toBe(false);
+  } finally {
+   await call('delete_tool', { id: a.id }); await call('delete_tool', { id: b.id });
+   const cats = (await call('list_tool_categories')).data.categories;
+   const cat = cats.find((c: {name: string}) => c.name === '整理测试分组');
+   if (cat) await call('delete_tool_category', { id: cat.id });
+  }
+ });
  it('提供 HTML 工具管理，撤下工具包安装、启停、卸载与回滚接口', async () => {
   const names = (await client.listTools()).tools.map(tool => tool.name);
   expect(names).toEqual(expect.arrayContaining(['list_tools', 'add_tool', 'delete_tool']));

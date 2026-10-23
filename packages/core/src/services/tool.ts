@@ -7,6 +7,17 @@ import type { NewToolInput, ToolCategory, ToolItem, UpdateToolInput } from '../t
 import { nowIso } from '../utils/date';
 
 export function createToolService(db: DbAdapter) {
+  const background = (value = 'auto'): string => {
+    if (value !== 'auto' && !/^#[0-9a-f]{6}$/i.test(value)) throw new Error('图标背景须为 auto 或六位十六进制颜色');
+    return value;
+  };
+  const iconValue = (value = 'tool'): string => {
+    const icon = value.trim() || 'tool';
+    if (icon.startsWith('data:') && (!/^data:image\/(?:png|jpeg|webp|gif|svg\+xml);base64,[a-zA-Z0-9+/]+={0,2}$/.test(icon) || Buffer.from(icon.split(',')[1] ?? '', 'base64').length > 2 * 1024 * 1024)) {
+      throw new Error('图标须为不超过 2 MB 的本地图片');
+    }
+    return icon;
+  };
   // ---------- 分类 ----------
 
   const listCategories = (): ToolCategory[] =>
@@ -84,22 +95,26 @@ export function createToolService(db: DbAdapter) {
     const order = Number(max?.m ?? 0) + 1;
     const r = db
       .prepare(
-        'INSERT INTO tools (title, icon, category_id, entry_file, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO tools (title, icon, icon_background, category_id, entry_file, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(title, input.icon?.trim() || 'tool', input.category_id ?? null, entry, order, now, now);
+      .run(title, iconValue(input.icon), background(input.icon_background), input.category_id ?? null, entry, order, now, now);
     return getTool(Number(r.lastInsertRowid));
   };
 
   const updateTool = (id: number, patch: UpdateToolInput): ToolItem => {
     const cur = getTool(id);
+    const title = (patch.title ?? cur.title).trim();
+    if (!title) throw new Error('工具名不能为空');
+    if (title.length > 40) throw new Error('工具名最长 40 个字符');
     if (patch.entry_file !== undefined && !/\.html?$/i.test(patch.entry_file.trim())) throw new Error('工具入口必须是 HTML 文件');
     if (patch.category_id != null) {
       const cat = db.prepare('SELECT id FROM tool_categories WHERE id = ?').get(patch.category_id);
       if (!cat) throw new Error('分类不存在');
     }
-    db.prepare('UPDATE tools SET title = ?, icon = ?, category_id = ?, entry_file = ?, updated_at = ? WHERE id = ?').run(
-      (patch.title ?? cur.title).trim() || cur.title,
-      patch.icon?.trim() || cur.icon,
+    db.prepare('UPDATE tools SET title = ?, icon = ?, icon_background = ?, category_id = ?, entry_file = ?, updated_at = ? WHERE id = ?').run(
+      title,
+      iconValue(patch.icon ?? cur.icon),
+      background(patch.icon_background ?? cur.icon_background),
       patch.category_id === undefined ? cur.category_id : patch.category_id,
       patch.entry_file?.trim() || cur.entry_file,
       nowIso(),
@@ -110,6 +125,19 @@ export function createToolService(db: DbAdapter) {
 
   const deleteTool = (id: number): void => {
     db.prepare('DELETE FROM tools WHERE id = ?').run(id);
+  };
+
+  /** 提交完整工具顺序，拒绝过期清单，避免漏项或重复导致排序混乱。 */
+  const reorderTools = (ids: number[]): void => {
+    inTx(db, () => {
+      const current = listTools();
+      if (ids.length !== current.length || new Set(ids).size !== ids.length || current.some(t => !ids.includes(t.id))) {
+        throw new Error('工具列表已变化，请刷新后重新排序');
+      }
+      const stmt = db.prepare('UPDATE tools SET sort_order = ?, updated_at = ? WHERE id = ?');
+      const now = nowIso();
+      ids.forEach((id, i) => stmt.run(i + 1, now, id));
+    });
   };
 
   return {
@@ -123,6 +151,7 @@ export function createToolService(db: DbAdapter) {
     addTool,
     updateTool,
     deleteTool,
+    reorderTools,
   };
 }
 

@@ -63,9 +63,9 @@ Node 要求 22.13+ 的 22.x 或 24.x。若 shell 报 `node: command not found`�
 - 新闻采集与异常处理见下文；旧 `fetch_news`、源/话题管理和 `news:fetch` 命令已移除
 
 **工具箱（仅 HTML）**
-- App 工具管理只有「导入 HTML」和删除，没有编辑、启停、卸载或版本管理；不再生成、预览或安装运行时工具包。
+- App 工具首页只有「编辑」和「导入」；编辑模式支持分类管理、工具排序与分组、名称/图标/本地图片/背景/HTML 入口/完整文件集编辑，删除入口在编辑弹窗中。元信息编辑保留原文件，替换文件须提交完整目录。没有启停、卸载或版本管理；不再生成、预览或安装运行时工具包。
 - `add_tool` — 导入 HTML：`files`（base64 内容，现场生成的 HTML 用这个，无需落盘）或 `file_paths`（本地文件/目录）；`category_name` 不存在会自动建
-- `list_tools` / `update_tool` / `delete_tool`
+- `list_tools` / `update_tool` / `reorder_tools` / `delete_tool`
 - `preview_tool_todos` / `add_tool_todos` / `get_tool_todo_status`：将已定位 HTML 工具的事项按用户要求添加为待办快照；稳定来源键去重，不自动覆盖、复活或持续关注。页面接入方式见 [HTML 待办接口](references/html-todos.md)。
 - HTML 待办分类在首次确认并实际创建新待办时创建或复用；默认使用工具名，制作页面时可按内容声明分类键、名称和颜色。预览与取消不创建分类，已有分类的日历隐藏偏好保持不变；待办列表可按分类筛选。日历更多菜单的「管理分类」支持显示控制、编辑及删除自定义分类；MCP 使用共用分类业务工具，删除须核对 ID、原名称和删除限制，并保留内容。
 - 持续关注使用 `publish_tool_follow_sources`、`preview_tool_follow`、`follow_tool_scope`、`unfollow_tool_scope` 与 `get_tool_follow_state`；待办管理用 `get_tool_todo_following`、`stop_tool_todo_following`、`resume_tool_todo_following`。来源更新自动同步已授权规则；恢复个人安排前必须说明覆盖标题和时间的影响并取得用户明确确认。

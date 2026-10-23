@@ -182,6 +182,7 @@ export const BOOT_OBJECT_TYPES: BootObject[] = [
       { apiName: 'id', dataType: I, nullable: false, isPrimaryKey: true, origin: 'builtin' },
       { apiName: 'title', dataType: S, nullable: false, origin: 'builtin' },
       { apiName: 'icon', dataType: S, nullable: false, origin: 'builtin' },
+      { apiName: 'icon_background', dataType: S, nullable: false, origin: 'builtin' },
       { apiName: 'category_id', dataType: I, nullable: true, indexed: true, origin: 'builtin' },
       { apiName: 'entry_file', dataType: S, nullable: false, origin: 'builtin' },
       { apiName: 'sort_order', dataType: I, nullable: false, origin: 'builtin' },

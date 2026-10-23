@@ -1685,6 +1685,13 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
             }
           ]
         },
+        "icon_background": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
         "category_id": {
           "anyOf": [
             {
@@ -1750,6 +1757,13 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
             }
           ]
         },
+        "icon_background": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
         "category_id": {
           "anyOf": [
             {
@@ -1775,6 +1789,14 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
   "delete_tool": [
     {
       "type": "number"
+    }
+  ],
+  "reorder_tools": [
+    {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
     }
   ],
   "add_tool_category": [
