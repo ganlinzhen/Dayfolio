@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 空库启动正式入口：自动导入、快捷入口、离线阅读、重启保留进度；只使用临时库。
+// 隔离验收弹窗布局、键盘焦点与当前工具入口；只使用临时库。
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -126,8 +126,8 @@ try {
     assert(result.label && result.inside && result.closeRight && result.headLine && result.scroll && (!footer || result.footer), '标题、右上角关闭、正文与固定操作区布局：' + JSON.stringify(result));
   };
   await click('工具箱');
-  await until(() => evaluate('[...document.querySelectorAll("button")].some(b => b.textContent.trim() === "导入 HTML")'), '工具箱');
-  await click('导入 HTML');
+  await until(() => evaluate('[...document.querySelectorAll("[aria-label=工具箱] .panel-head button")].some(b => b.textContent.trim() === "导入")'), '工具箱');
+  await click('导入', '[aria-label=工具箱] .panel-head button');
   await until(() => evaluate('!!document.querySelector(".modal input")'), '导入 HTML弹窗');
   await layout();
   await capture(send, 'tool-form');
@@ -138,10 +138,13 @@ try {
   assert(await evaluate('document.activeElement === document.querySelector(".modal-foot button:last-child")'), 'Shift+Tab 返回最后一个操作');
   await escape();
   assert(await evaluate('document.activeElement === window.modalOpener'), '关闭后焦点返回打开入口');
+  await click('编辑', '[aria-label=工具箱] .panel-head button');
+  await until(() => evaluate('[...document.querySelectorAll("[aria-label=工具箱] .panel-head button")].some(b => b.textContent.trim() === "管理分类")'), '工具编辑模式');
   await click('管理分类');
   await layout();
   await capture(send, 'categories');
   await escape();
+  await click('完成编辑');
   await evaluate('document.querySelector(".nav-item-version").click()');
   await layout(false);
   await capture(send, 'changelog');
