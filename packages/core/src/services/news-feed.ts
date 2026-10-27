@@ -4,6 +4,7 @@ import { inTx, mapNews, type DbAdapter } from '../db';
 import type { NewsArticleMetadata, NewsItem, NewsSubmissionItem, NewsCandidateTopic } from '../types';
 import type { NewsService } from './news';
 import { validateSourceUrl } from './news';
+import { createNewsDailyEditionService } from './news-daily-editions';
 import type { NewsContentOptions, NewsFeedConfig, NewsFeedBatch, NewsFeedBatchModule, NewsTaskContext, NewsEventFollow, NewsEventInput, NewsFeedbackInput, NewsTopicInput, NewsSourceInput, NewsTopicInterest, NewsInterestState, NewsFeedItem, NewsCorrection, NewsCorrectionInput, NewsFeedPreview } from '../news-types';
 type StoredTaskContext = NewsTaskContext & { module_snapshot?: NewsFeedConfig['modules'][number] };
 
@@ -48,6 +49,7 @@ function validateConfig(input: NewsFeedConfig): NewsFeedConfig {
 }
 
 export function createNewsFeedService(db: DbAdapter, news: NewsService) {
+  const daily = createNewsDailyEditionService(db);
   if (!db.prepare('SELECT 1 FROM news_feed_state WHERE id=1').get()) {
     db.prepare('INSERT INTO news_feed_state(id,config_json) VALUES(1,?)').run(JSON.stringify(defaultNewsFeedConfig()));
     for (const [id, name] of [['russia-ukraine', '俄乌'], ['us-iran', '美伊']]) {
@@ -165,6 +167,7 @@ export function createNewsFeedService(db: DbAdapter, news: NewsService) {
       `摘要深度：${content.summary_depth}。summary 应直接讲清主体、发生什么、关键事实与意义，让读者不用打开原文也能理解。${content.show_background ? 'background 提供必要背景。' : ''}${content.show_impact ? 'impact 区分已发生影响和可能影响。' : ''}${content.show_uncertainty ? 'uncertainty 说明未核实或存在分歧的部分。' : ''}`,
       content.image_policy === 'none' ? '本模块不要提交图片。' : '提取来源页面公开原图，提交 image_url、image_source_url 和准确图注 image_caption；无可靠原图则省略，不用生成图代替新闻事实。',
       '每则独立提交，不打包为 brief。附 source_url、source_name、topic_keys，时事需 event_id。同一事件的转载不重复收录；实质进展说明新增事实。已有新闻不要重复提交；缺口和联网故障分别如实说明。',
+      '完成本模块前，重新调用 get_news_task，读取 daily_edition 的当天累计新闻、原重点总结和最新 revision。用已核实的重点3~5条新闻写一段120~300字的综合事实总结（不足3条时按实际数量），说明主要进展和关联意义，不拼接标题、不虚构事实、不写用户画像。调用 submit_news_daily_summary 保存总结、news_ids依据和 expected_revision；同日后续更新应把新增重要事实融入原总结，而不是另建日报。没有已收录新闻则不生成总结。',
       `优先来源：${m?.source_preferences?.join('、') || '官方发布与可信一手报道'}；排除来源：${m?.source_exclusions?.join('、') || '无额外排除'}。${m?.extra_instructions || ''}`];
     if (m?.kind === 'public') lines.push('保留公共重要性与地区覆盖，不因个人点击兴趣缩小选题。');
     if (m?.kind === 'events') lines.push(`只允许有效事件：${e.map(v => `${v.name}（event_id=${v.id}，${v.scope}）`).join('；') || '无活跃事件，本模块不检索'}。暂停、结束、到期的事件不能恢复跟踪。`);
@@ -194,7 +197,7 @@ export function createNewsFeedService(db: DbAdapter, news: NewsService) {
     for (const [id, rev] of Object.entries(ctx.event_revisions)) { const e = liveEvents().find(e => e.id === id); if (!e || e.revision !== rev) throw new Error('事件关注已撤回或变化，旧任务不再允许提交'); }
     const count = Number(db.prepare('SELECT COUNT(*) AS n FROM news_feed_members WHERE batch_id=? AND module_id=?').get(b.id, ctx.module_id)!.n), m = b.modules.find(m => m.module_id === ctx.module_id)!;
     const candidate = db.prepare('SELECT data_json FROM news_feed_candidates WHERE batch_id=? AND epoch=?').get(b.id, epoch());
-    return { ...ctx, candidate_topic: candidate ? json(candidate.data_json) : null, task: news.getTask(taskId), remaining: Math.max(0, Math.min(news.getTask(taskId).remaining, m.target - count)), accepted_ids: db.prepare('SELECT news_id FROM news_feed_members WHERE batch_id=?').all(b.id).map(r => Number(r.news_id)), excluded_ids: db.prepare('SELECT id FROM news').all().map(r => Number(r.id)) };
+    return { ...ctx, daily_edition: daily.forTask(b.created_at,ctx.module_id!,taskId), candidate_topic: candidate ? json(candidate.data_json) : null, task: news.getTask(taskId), remaining: Math.max(0, Math.min(news.getTask(taskId).remaining, m.target - count)), accepted_ids: db.prepare('SELECT news_id FROM news_feed_members WHERE batch_id=?').all(b.id).map(r => Number(r.news_id)), excluded_ids: db.prepare('SELECT id FROM news').all().map(r => Number(r.id)) };
   };
   const getTaskContext = (taskId: number): NewsTaskContext | null => assertContext(Number(taskId));
   const makeTask = (b: NewsFeedBatch, c: NewsFeedConfig, m: NewsFeedBatchModule, phase: 1 | 2): void => {
@@ -511,6 +514,6 @@ export function createNewsFeedService(db: DbAdapter, news: NewsService) {
     const limit = Math.max(1, Math.min(opts.limit ?? (opts.history ? 100 : 10), 1000)), offset = Math.max(0, opts.offset ?? 0);
     return rows.slice(offset, offset + limit).map(r => ({ ...mapNews(r), hidden: opts.filter === 'hidden', corrections: correctionRows(Number(r.id)), ...(selected.has(Number(r.id)) ? { selection_kind: selected.get(Number(r.id)) === 1 ? 'headline' as const : 'supplement' as const } : {}) }));
   };
-  return { getConfig, updateConfig, preview, startUpdate, advance, stopUpdate, continueUpdate, listBatches, getTaskContext, list, recordFeedback, getInterests, manageTopic, manageSource, resetLearning, updateEvent, dismissEventReminder, importStarred, submitCorrection, dismissCorrection, beforeSubmit, afterSubmit, beforeComplete, assertContext };
+  return { getConfig, updateConfig, preview, startUpdate, advance, stopUpdate, continueUpdate, listBatches, getTaskContext, list, listDailyEditions:daily.listDailyEditions,getDailyEdition:daily.getDailyEdition,saveDailyEditionSummary:daily.saveDailyEditionSummary, recordFeedback, getInterests, manageTopic, manageSource, resetLearning, updateEvent, dismissEventReminder, importStarred, submitCorrection, dismissCorrection, beforeSubmit, afterSubmit, beforeComplete, assertContext };
 }
 export type NewsFeedService = ReturnType<typeof createNewsFeedService>;

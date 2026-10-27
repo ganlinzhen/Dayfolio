@@ -2178,6 +2178,35 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
       "type": "string"
     }
   ],
+  "save_news_daily_summary": [
+    {
+      "type": "object",
+      "properties": {
+        "edition_id": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "news_ids": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "expected_revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "edition_id",
+        "summary",
+        "news_ids",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    }
+  ],
   "update_agent_settings": [
     {
       "type": "object",

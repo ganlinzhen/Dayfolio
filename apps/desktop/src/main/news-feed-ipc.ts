@@ -45,6 +45,8 @@ export function registerNewsFeedIpc(core: TodoDeskCore, runner: ReturnType<typeo
   handle('feedStopUpdate', input => core.newsFeed.stopUpdate(input.batch_id));
   handle('feedBatches', input => core.newsFeed.listBatches(input ?? {}));
   handle('feedList', input => core.newsFeed.list(input ?? {}));
+  handle('feedDailyEditions', input => core.newsFeed.listDailyEditions(input ?? {}));
+  handle('feedDailyEdition', input => core.newsFeed.getDailyEdition(input));
   handle('feedInterests', () => core.newsFeed.getInterests());
   handle('feedManageTopic', input => core.newsFeed.manageTopic(input));
   handle('feedManageSource', input => core.newsFeed.manageSource(input));

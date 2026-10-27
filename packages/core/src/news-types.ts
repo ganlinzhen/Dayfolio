@@ -78,6 +78,30 @@ export interface NewsFeedItem extends NewsItem {
   hidden: boolean; corrections: NewsCorrection[];
   selection_kind?: 'headline' | 'supplement';
 }
+export type NewsDailyFilter = 'all' | 'unread' | 'starred' | 'hidden';
+/** 每个北京时间日期、每个模块只有一条记录，条目保存当天各批次的去重并集。 */
+export interface NewsDailyEdition {
+  id: string; date: string; module_id: string; module_name: string;
+  summary: string | null; summary_news_ids: number[];
+  summary_status: 'ready' | 'pending' | 'stale';
+  news_count: number; matching_count: number; unread_count: number;
+  starred_count: number; hidden_count: number; revision: number;
+  created_at: string; updated_at: string; preview_titles: string[];
+}
+export interface NewsDailyEditionQuery {
+  filter?: NewsDailyFilter; search?: string; limit?: number; offset?: number;
+}
+export interface NewsDailyEditionDetailQuery extends NewsDailyEditionQuery { id: string; }
+export interface NewsDailyEditionPage {
+  edition: NewsDailyEdition; items: NewsFeedItem[]; total: number; has_more: boolean;
+}
+export interface NewsDailyEditionSummaryInput {
+  edition_id: string; summary: string; news_ids: number[]; expected_revision: number;
+}
+export interface NewsTaskDailyEdition {
+  edition: NewsDailyEdition;
+  news: Array<{ id: number; title: string; summary: string; published_at: string | null; url: string; corrections: NewsCorrection[] }>;
+}
 export interface NewsTaskContext {
   task: NewsTask; batch_id: string | null; module_id: string | null;
   instructions: string; window_start: string; window_end: string;
@@ -88,5 +112,6 @@ export interface NewsTaskContext {
   interest_evidence: Array<{ news_id: number; title: string; topic_keys: string[]; signals: string[] }>;
   exploration_seed: { scope: string; basis_module_id?: string } | null;
   candidate_topic: NewsCandidateTopic | null;
+  daily_edition?: NewsTaskDailyEdition;
 }
 export interface NewsFeedPreview { config_revision: number; modules: Array<{ module_id: string; name: string; instructions: string }>; }

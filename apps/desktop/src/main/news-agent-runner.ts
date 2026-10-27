@@ -106,7 +106,7 @@ export function createNewsAgentRunner(options: RunnerOptions) {
       // 标准错误可能包含本地路径或令牌，不落公开日志；失败展示稳定、可操作的中文原因。
       child.stderr.on('data', () => {});
       child.stdin.on('error', () => {});
-      child.stdin.end('你是 Dayfolio 新闻采集执行器。全程使用简体中文。先调用 get_news_task，严格执行其中保存的动态采集要求、固定时间窗和实时剩余预算。优先寻找上次更新后的新增事实或实质进展，已有内容不要重复提交；先及时保存少量已核实重点，再继续补充。使用实时网页搜索，并逐条打开原始来源核实标题、事实及真实发布时间；不要仅凭搜索摘要或记忆提交。不要使用本机文件、其他技能或其他任务。通过 submit_news_items 保存独立图文新闻，每批最多10条，失败时修正输入；旧任务的brief子消息必须各有来源和真实时间。优先提取来源原图并标注图片来源与图注，没有可靠图片就省略，不生成伪现场图片。若发现get_news_task所列既有新闻有实质错误或来源撤回，用report_news_correction附核实依据，不静默改写原摘要。最后通过 complete_news_task 记录实际结果及缺口。没有合格新闻可以0条完成，但搜索不可用、认证失败或无法联网属于失败，请说明并停止。当前执行有时间预算，请先保存核实结果，不为凑数持续等待。最后简短汇报。');
+      child.stdin.end('你是 Dayfolio 新闻采集执行器。全程使用简体中文。先调用 get_news_task，严格执行其中保存的动态采集要求、固定时间窗和实时剩余预算。优先寻找上次更新后的新增事实或实质进展，已有内容不要重复提交；先及时保存少量已核实重点，再继续补充。使用实时网页搜索，并逐条打开原始来源核实标题、事实及真实发布时间；不要仅凭搜索摘要或记忆提交。不要使用本机文件、其他技能或其他任务。通过 submit_news_items 保存独立图文新闻，每批最多10条，失败时修正输入；旧任务的brief子消息必须各有来源和真实时间。优先提取来源原图并标注图片来源与图注，没有可靠图片就省略，不生成伪现场图片。若发现get_news_task所列既有新闻有实质错误或来源撤回，用report_news_correction附核实依据，不静默改写原摘要。完成采集前再次读取get_news_task；当daily_edition含新闻时，结合本日已有内容与本次新增事实，选重点几条写一段可独立读懂的综合总结，不能只拼接标题，也不能把本地汇总当作新来源事实。调用submit_news_daily_summary，使用该上下文公开的news身份作为news_ids并携带edition最新revision；如版本冲突，重读上下文后重新综合，不覆盖新进展。没有合格新闻则如实保留待整理，不虚构总结。最后通过 complete_news_task 记录实际结果及缺口。搜索不可用、认证失败或无法联网属于失败，请说明并停止。当前执行有时间预算，请先保存核实结果，不为凑数持续等待。最后简短汇报。');
       const poll = setInterval(() => {
         try {
           if (stopping || core.newsRuns.get(id).status === 'cancelling') { reason = 'cancelled'; stopChild(); return; }

@@ -47,8 +47,8 @@ function useEffectiveReading(item: NewsFeedItem, enabled: boolean, epoch: number
   return content;
 }
 
-export default function NewsFeedReader({ item, config, learningEpoch, onBack, onFeedback, onRead, onToggleRead, onDelete, onCorrectionRead }: {
-  item: NewsFeedItem; config: NewsFeedConfig | null; learningEpoch: number; onBack: () => void;
+export default function NewsFeedReader({ item, config, learningEpoch, backLabel = '返回新闻列表', onBack, onFeedback, onRead, onToggleRead, onDelete, onCorrectionRead }: {
+  item: NewsFeedItem; config: NewsFeedConfig | null; learningEpoch: number; backLabel?: string; onBack: () => void;
   onFeedback: (item: NewsFeedItem, kind: NewsFeedbackKind, topic?: string) => void;
   onRead: (id: number, token: string) => void; onToggleRead: (item: NewsFeedItem) => void;
   onDelete: (item: NewsFeedItem) => void; onCorrectionRead: (id: string) => void;
@@ -60,7 +60,7 @@ export default function NewsFeedReader({ item, config, learningEpoch, onBack, on
   useEffect(() => { const node = view.current; if (!node) return; const ready = () => setSourceStatus('已加载'); const failed = () => setSourceStatus('加载失败，可在浏览器打开原文'); node.addEventListener('dom-ready', ready); node.addEventListener('did-fail-load', failed); return () => { node.removeEventListener('dom-ready', ready); node.removeEventListener('did-fail-load', failed); }; }, [embedded, nonce]);
   const openSource = (url = item.url) => { onFeedback(item, 'source_open'); void call(() => api.news.openUrl({ url })).catch(e => toast((e as Error).message)); };
   return <section className="news3-detail nf-reader" aria-label="新闻详情页">
-    <div className="nf-reader-top"><button className="backlink news3-back" onClick={onBack}>返回列表</button><span className="nf-note">AI 整理 · 事实与分析分开展示</span></div>
+    <div className="nf-reader-top"><button className="backlink news3-back" onClick={onBack}>{backLabel}</button><span className="nf-note">AI 整理 · 事实与分析分开展示</span></div>
     <article ref={content} className="news3-detail-body nf-reader-content" tabIndex={0} aria-label="新闻正文">
       <h1 className="news3-title">{item.title}</h1><div className="news3-detail-meta"><span className="ref-badge">{newsSource(item)}</span><time>{newsTime(item)}（北京时间）</time>{item.brief && <span className="ref-badge">专题简报 · {item.brief.items.length} 则</span>}{item.content_kind === 'html' && <span className="ref-badge">本地快照</span>}</div>
       <div className="nf-actions nf-reader-actions"><button className={`btn slim ${item.is_starred ? 'primary' : ''}`} aria-pressed={item.is_starred} onClick={() => onFeedback(item, item.is_starred ? 'unstar' : 'star')}><IconStar width={14} height={14} />{item.is_starred ? '已收藏' : '收藏'}</button><button className="btn slim" onClick={() => onFeedback(item, 'interested')}>感兴趣</button><button className="btn slim" onClick={() => onToggleRead(item)}>{item.is_read ? '标为未读' : '标为已读'}</button><button className="btn slim" onClick={() => openSource()}><IconExternal width={13} height={13} />打开原文</button></div>

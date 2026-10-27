@@ -84,6 +84,17 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
     module_id: z.string().optional().describe('模块稳定 ID；for_you 查询猜你喜欢'), filter: z.enum(['all', 'unread', 'starred', 'hidden']).optional(), history: z.boolean().optional().describe('true 查询全部历史，否则按当前精选范围'), search: z.string().max(500).optional().describe('标题和摘要库内搜索，不联网'), corrections_only: z.boolean().optional().describe('只看已读且有未确认更正的新闻，可配 history=true 查历史'),
     limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),
   }, async (input) => wrap(() => core.newsFeed.list(input))());
+  server.tool('list_news_daily_editions', '查询每日模块记录：同一天同模块只有一条，包含 AI 重点综合总结、累计新闻数及匹配数。什么场景调用我：阅读新闻首页或查往日模块；未读、收藏、隐藏及搜索按内部新闻匹配，不把回读作为阅读证据。', {
+    filter: z.enum(['all', 'unread', 'starred', 'hidden']).optional(), search: z.string().max(500).optional(),
+    limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),
+  }, async (input) => wrap(() => core.newsFeed.listDailyEditions(input))());
+  server.tool('get_news_daily_edition', '读取一条每日模块记录及其新闻列表。什么场景调用我：从首页的日期和模块进入新闻列表，再选择单条详情；同日多次更新累计去重，超过十条可分页，不把打开模块当作整份已读。', {
+    id: z.string().min(1), filter: z.enum(['all', 'unread', 'starred', 'hidden']).optional(), search: z.string().max(500).optional(),
+    limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),
+  }, async (input) => wrap(() => core.newsFeed.getDailyEdition(input))());
+  server.tool('save_news_daily_summary', '保存 AI 对某日模块重点几则新闻的综合总结及依据。什么场景调用我：完成该模块采集后更新首页总结，或为已采集的每日模块补写总结；先读取模块，结合实际新闻事实整理，不拼接标题冒充总结；携带 revision 和已读到的依据 news_ids。', {
+    edition_id: z.string().min(1), summary: z.string().min(1).max(2000), news_ids: z.array(z.number().int().positive()).min(1).max(30), expected_revision: z.number().int().min(0),
+  }, async (input) => wrap(() => core.newsFeed.saveDailyEditionSummary(input))());
   server.tool('record_news_feedback', '记录用户明确表达的新闻反馈：感兴趣、减少主题/来源、隐藏/撤销或收藏。什么场景调用我：用户在对话中明确反馈；source 必须为 explicit，禁止把助手查询、回读、批量已读或删除伪造为用户阅读。重复请求复用 idempotency_key；学习关闭时不会新增推断证据。', {
     news_id: z.number().int().positive(), kind: z.enum(['interested', 'less_topic', 'less_source', 'hide', 'undo_hide', 'star', 'unstar']),
     source: z.literal('explicit'), idempotency_key: z.string().min(1).max(200), topic_key: z.string().optional(),

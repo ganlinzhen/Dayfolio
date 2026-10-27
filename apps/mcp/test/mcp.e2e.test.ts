@@ -180,7 +180,7 @@ describe('MCP 端到端主流程', () => {
         PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(dbDir, 'home'),
         TODODESK_DB: join(dbDir, 'e2e.db'), DAYFOLIO_NEWS_RUN_ID: run.id, DAYFOLIO_NEWS_RUN_TOKEN: owner,
       } }));
-      expect((await scoped.listTools()).tools.map(t => t.name).sort()).toEqual(['complete_news_task','get_news_task','report_news_correction','submit_news_items']);
+      expect((await scoped.listTools()).tools.map(t => t.name).sort()).toEqual(['complete_news_task','get_news_task','report_news_correction','submit_news_daily_summary','submit_news_items']);
       const blockedBusiness = await scoped.callTool({ name: 'add_todo', arguments: { title: '后台不得创建待办' } }).then(result => result.isError === true, () => true);
       expect(blockedBusiness).toBe(true);
       expect(arg(await scoped.callTool({ name: 'get_news_task', arguments: {} })).data.task.id).toBe(run.task_id);
@@ -207,6 +207,90 @@ describe('MCP 端到端主流程', () => {
       const next = core.newsRuns.enqueue();
       expect(arg(await client.callTool({ name: 'cancel_news_agent_run', arguments: { run_id: next.id } })).data.status).toBe('cancelled');
     } finally { await scoped.close(); db.close(); }
+  }, 30000);
+
+  it('每日模块 MCP：同日累计只有一条首页记录，AI总结依据与筛选共用真实新闻状态', async () => {
+    const call = async (name: string, input: Record<string, unknown> = {}) => arg(await client.callTool({ name, arguments: input }));
+    const before = (await call('get_news_feed_config')).data;
+    const config = { ...before, modules: [{ ...before.modules[0], id: 'daily-mcp', name: '每日MCP核验', headline_count: 1, max_items: 2 }], learning: { enabled: false, exploration_enabled: false } };
+    let activeId: string | undefined;
+    try {
+      expect((await call('update_news_feed_config', { config, expected_revision: before.revision })).ok).toBe(true);
+      const first = (await call('start_news_feed_update')).data; activeId = first.id;
+      const collect = async (taskId: number, suffix: string) => {
+        const claim = (await call('claim_news_task', { task_id: taskId })).data;
+        const context = (await call('get_news_task_context', { task_id: taskId })).data;
+        const submitted = await call('submit_news_items', { task_id: taskId, claim_token: claim.claim_token, items: [{ title: `MCP每日记录重点${suffix}`, summary: `已核实的每日模块进展${suffix}，包含具体行动与结果。`, source_url: `https://example.com/daily-mcp/${suffix}`, published_at: new Date(Date.parse(context.window_end) - 60000).toISOString() }] });
+        expect(submitted.ok, submitted.error).toBe(true);
+        return { claim, item: submitted.data.items[0] };
+      };
+      const one = await collect(first.next_task_id, '甲');
+      await call('complete_news_task', { task_id: first.next_task_id, claim_token: one.claim.claim_token });
+      const phaseTwo = (await call('advance_news_feed_update', { batch_id: first.id })).data;
+      const two = await collect(phaseTwo.next_task_id, '乙');
+      const context = (await call('get_news_task_context', { task_id: phaseTwo.next_task_id })).data;
+      const edition = context.daily_edition.edition;
+      expect(edition).toMatchObject({ module_id: 'daily-mcp', news_count: 2, summary_status: 'pending' });
+      const overview = '今天的两项重点进展相互补充：甲项形成了可核实的新结果，乙项补齐了后续行动。两者的关键事实分别保存在独立报道中，可继续逐条查看来源。';
+      const summaryInput = { edition_id: edition.id, summary: overview, news_ids: [one.item.id, two.item.id], expected_revision: edition.revision };
+      expect((await call('save_news_daily_summary', { ...summaryInput, news_ids: [one.item.id + 1000000] })).ok).toBe(false);
+      const saved = await call('save_news_daily_summary', summaryInput); expect(saved.ok, saved.error).toBe(true);
+      expect(saved.data.summary).toBe(overview);
+      expect((await call('save_news_daily_summary', summaryInput)).ok).toBe(false);
+      const readOnly = (await call('get_news_daily_edition', { id: edition.id })).data;
+      expect(readOnly.items.every((item: any) => item.is_read === false)).toBe(true);
+      await call('mark_news_starred', { id: one.item.id, starred: true });
+      const stars = (await call('list_news_daily_editions', { filter: 'starred', search: 'MCP每日记录重点' })).data;
+      expect(stars.find((value: any) => value.id === edition.id)).toMatchObject({ news_count: 2, matching_count: 1 });
+      expect((await call('get_news_daily_edition', { id: edition.id, filter: 'starred' })).data.items.map((item: any) => item.id)).toEqual([one.item.id]);
+      await call('complete_news_task', { task_id: phaseTwo.next_task_id, claim_token: two.claim.claim_token });
+      expect((await call('advance_news_feed_update', { batch_id: first.id })).data.status).toBe('completed');
+      const next = (await call('start_news_feed_update')).data; activeId = next.id;
+      await collect(next.next_task_id, '丙');
+      const accumulated = (await call('get_news_task_context', { task_id: next.next_task_id })).data.daily_edition.edition;
+      expect(accumulated.id).toBe(edition.id); expect(accumulated.news_count).toBe(3);
+      const home = (await call('list_news_daily_editions', { search: 'MCP每日记录重点' })).data;
+      expect(home.filter((value: any) => value.module_id === 'daily-mcp')).toHaveLength(1);
+    } finally {
+      if (activeId) await call('stop_news_feed_update', { batch_id: activeId });
+      const current = (await call('get_news_feed_config')).data;
+      await call('update_news_feed_config', { config: before, expected_revision: current.revision });
+    }
+  }, 30000);
+
+  it('每日模块受限总结只接受已公开同日同模块依据，租约过期与停止后拒绝写入', async () => {
+    const path = join(dbDir, 'daily-scoped.db'), db = openNodeSqliteDb(path), core = createCore(db, { dbPath: path });
+    const config = core.newsFeed.getConfig(); config.modules = config.modules.filter(module => ['domestic', 'ai'].includes(module.id)).map(module => ({ ...module, headline_count: 1, max_items: 1 })); config.learning.exploration_enabled = false;
+    core.newsFeed.updateConfig({ config, expected_revision: config.revision });
+    const initial = core.newsFeed.startUpdate();
+    let batch = initial, priorDomestic = 0, otherModule = 0;
+    while (batch.status === 'active') {
+      const claim = core.news.claimTask(batch.next_task_id!); const context = core.newsFeed.getTaskContext(claim.task.id)!;
+      const item = core.news.submitItems(claim.task.id, claim.claim_token, [{ title: `受限每日旧报道${context.module_id}`, summary: '已核实的旧重点及其具体结果。', source_url: `https://example.com/daily-scoped/prior/${context.module_id}`, published_at: new Date(Date.parse(context.window_end) - 60000).toISOString() }]).items[0];
+      if (context.module_id === 'domestic') priorDomestic = item.id; else otherModule = item.id;
+      core.news.completeTask(claim.task.id, claim.claim_token); batch = core.newsFeed.advance(batch.id)!;
+    }
+    batch = core.newsFeed.startUpdate(); const run = core.newsRuns.enqueue(batch.next_task_id!), owner = 'daily-scoped-owner'; core.newsRuns.claimNext(owner, process.pid);
+    const scoped = new Client({ name: 'daily-scoped-summary', version: '1' });
+    const call = async (name: string, input: Record<string, unknown> = {}) => arg(await scoped.callTool({ name, arguments: input }));
+    try {
+      await scoped.connect(new StdioClientTransport({ command: process.execPath, args: [SERVER], env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(dbDir, 'home'), TODODESK_DB: path, TODODESK_USER_DATA: join(dbDir, 'daily-user-data'), DAYFOLIO_NEWS_RUN_ID: run.id, DAYFOLIO_NEWS_RUN_TOKEN: owner } }));
+      expect((await scoped.listTools()).tools.map(tool => tool.name).sort()).toEqual(['complete_news_task','get_news_task','report_news_correction','submit_news_daily_summary','submit_news_items']);
+      const shown = (await call('get_news_task')).data.context.daily_edition;
+      expect(shown.news.some((item: any) => item.id === priorDomestic)).toBe(true);
+      const submitted = await call('submit_news_items', { items: [{ title: '受限每日新增重点', summary: '当天补充的新进展已独立核实。', source_url: 'https://example.com/daily-scoped/new', published_at: new Date(Date.now() - 60000).toISOString() }] });
+      expect(submitted.ok, submitted.error).toBe(true);
+      const newId = submitted.data.items[0].id, current = core.newsFeed.getTaskContext(run.task_id)!.daily_edition!;
+      expect((await call('submit_news_daily_summary', { summary: '新进展综合总结。', news_ids: [newId], expected_revision: current.edition.revision })).ok).toBe(false);
+      const fresh = (await call('get_news_task')).data.context.daily_edition;
+      expect((await call('submit_news_daily_summary', { summary: '不能引用其他模块。', news_ids: [otherModule], expected_revision: fresh.edition.revision })).ok).toBe(false);
+      const saved = await call('submit_news_daily_summary', { summary: '今天的重点是既有事项取得延伸进展：新增报道补充了具体行动与结果，原报道提供前期依据。可沿两则原始链接继续核对。', news_ids: [priorDomestic, newId], expected_revision: fresh.edition.revision });
+      expect(saved.ok, saved.error).toBe(true); expect(saved.data.id).toBe(fresh.edition.id);
+      db.prepare('UPDATE news_tasks SET claim_expires_at=? WHERE id=?').run(new Date(Date.now() - 1000).toISOString(), run.task_id);
+      expect((await call('submit_news_daily_summary', { summary: '过期不得继续写。', news_ids: [newId], expected_revision: saved.data.revision })).ok).toBe(false);
+      core.newsFeed.stopUpdate(batch.id);
+      expect((await call('submit_news_daily_summary', { summary: '停止不得继续写。', news_ids: [newId], expected_revision: saved.data.revision })).ok).toBe(false);
+    } finally { await scoped.close(); try { core.newsRuns.finish(run.id, owner, 'cancelled'); } catch { /* 断言失败后也关闭隔离进程。 */ } db.close(); }
   }, 30000);
 
   it('Agent 设置经 MCP 读写同一配置，保留其他供应商偏好并拒绝过期修订', async () => {

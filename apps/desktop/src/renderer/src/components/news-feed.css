@@ -10,27 +10,15 @@
 .nf-global-error span { flex: 1; }
 .nf-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .nf-note { color: var(--text-2); font-size: 12px; line-height: 1.7; }
-.nf-list-head { padding-top: 22px; padding-bottom: 0; gap: 14px; }
+.nf-list-head { padding-block: 20px 14px; gap: 14px; }
 .nf-titlebar { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
-.nf-titlebar h1 { font-family: var(--serif); margin: 0; font-size: 25px; line-height: 1.4; font-weight: 600; }
-.nf-titlebar p { margin: 4px 0 0; color: var(--text-2); font-size: 12px; line-height: 1.6; }
-.nf-module-tabs { display: flex; gap: 18px; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--surface); }
-.nf-module-tabs button { appearance: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--text-2); font: inherit; font-size: 13px; padding: 8px 0 10px; white-space: nowrap; cursor: pointer; }
-.nf-module-tabs button:hover { color: var(--text); }
-.nf-module-tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-.nf-list-head .news3-toolbar { padding-bottom: 13px; flex-wrap: wrap; gap: 12px; }
+.nf-list-head .news3-toolbar { flex-wrap: wrap; gap: 12px; }
 .nf-list-head .news3-search { min-width: 160px; }
 .nf-list-head .news3-search input { width: 100%; }
 .nf-feed-scroll { scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--surface); padding-bottom: 40px; }
-.nf-update-notice { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--sel); border-bottom: 1px solid var(--line-strong); padding: 9px 28px; font-size: 12px; flex: none; }
 .nf-correction-list, .nf-event-reminder { margin: 16px 28px !important; }
 .nf-correction-list { display: flex; flex-direction: column; gap: 8px; }
 .nf-event-reminder { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.nf-module-group { margin: 0; }
-.nf-group-head { display: flex; gap: 14px; align-items: baseline; padding: 26px 28px 12px; border-bottom: 1px solid var(--line); }
-.nf-group-head h2 { margin: 0; font-family: var(--serif); font-size: 19px; line-height: 1.5; font-weight: 600; }
-.nf-group-head span { color: var(--text-2); font-size: 12px; }
-.nf-group-note { margin: 12px 28px 0; color: var(--text-2); font-size: 12px; line-height: 1.7; }
 .nf-news-row { display: flex; padding: 20px 28px 17px; gap: 24px; cursor: default; align-items: flex-start; }
 .nf-news-row:hover { background: var(--surface); }
 .nf-row-content { min-width: 0; flex: 1; }
@@ -132,13 +120,9 @@
   .nf-titlebar { align-items: flex-start; flex-direction: column; gap: 12px; }
   .nf-titlebar .nf-actions { width: 100%; }
   .nf-news-row { padding: 17px 16px; gap: 14px; }
-  .nf-list-head { padding: 16px 16px 0; }
-  .nf-group-head { padding: 22px 16px 10px; }
-  .nf-group-note { margin-inline: 16px; }
-  .nf-module-tabs { gap: 16px; }
+  .nf-list-head { padding: 16px; }
   .nf-reader { padding: 16px 16px 0; }
   .nf-reader .news3-title { font-size: 22px; }
-  .nf-update-notice { padding-inline: 16px; }
   .nf-reader-top .nf-note { display: none; }
   .nf-image-open { max-width: 96px; }
   .nf-thumbnail { width: 96px; }
@@ -150,7 +134,7 @@
   .nf-correction-list, .nf-event-reminder { margin-inline: 16px !important; }
   .nf-batch > summary > span { display: block; margin-left: 0; }
 }
-@media (max-width: 520px) { .nf-image-open { display: none; } .nf-list-head .news3-search { min-width: 100%; } .nf-module-tabs { gap: 13px; } .nf-story-open .news3-row-title { font-size: 15px; } }
+@media (max-width: 520px) { .nf-image-open { display: none; } .nf-list-head .news3-search { min-width: 100%; } .nf-story-open .news3-row-title { font-size: 15px; } }
 @media (prefers-reduced-motion: reduce) { .nf-panel *, .nf-panel *::before, .nf-panel *::after { transition-duration: 0s !important; scroll-behavior: auto !important; } }
 
 .nf-feed-exploration { margin: 16px 28px; }
@@ -160,3 +144,31 @@
 .nf-source-preferences h4 { font-size: 13px; }
 .nf-source-preferences .nf-actions { padding: 8px 0; font-size: 13px; }
 @media (max-width: 760px) { .nf-feed-exploration { margin-inline: 16px; } }
+
+/* 每日模块摘要是首页条目；具体新闻在下一级连续阅读。 */
+.nf-daily-toolbar { min-height: 32px; }
+.nf-update-status { margin: 0; font-size: 12px; line-height: 1.7; color: var(--text-2); }
+.nf-edition-row { margin: 0; border-bottom: 1px solid var(--line); }
+.nf-edition-open { display: block; width: 100%; padding: 24px 28px 22px; border: 0; border-radius: 0; background: none; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.nf-edition-open:hover { background: var(--bg); }
+.nf-edition-open:active { background: var(--sel); }
+.nf-edition-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 14px; color: var(--text-2); font-size: 12px; line-height: 1.7; }
+.nf-edition-meta time { color: var(--text); font-variant-numeric: tabular-nums; }
+.nf-edition-time { margin-left: auto; font-variant-numeric: tabular-nums; }
+.nf-edition-open h2 { margin: 12px 0 8px; font-family: var(--serif); font-size: 19px; line-height: 1.5; font-weight: 600; }
+.nf-edition-summary { max-width: 75ch; margin: 0; white-space: pre-wrap; color: var(--text-2); font-size: 14px; line-height: 1.9; }
+.nf-summary-pending { font-size: 13px; }
+.nf-edition-enter { display: inline-block; margin-top: 12px; color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.nf-edition-open:hover .nf-edition-enter { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.nf-edition-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px 14px; padding: 8px 0 2px; }
+.nf-edition-heading h1 { font-family: var(--serif); font-size: 21px; line-height: 1.5; font-weight: 600; margin: 0; }
+.nf-edition-heading :is(time, span) { font-size: 12px; line-height: 1.7; color: var(--text-2); }
+@media (max-width: 760px) {
+  .nf-daily-toolbar { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .nf-daily-toolbar .nf-actions { width: auto; margin-left: auto; }
+  .nf-edition-open { padding: 20px 16px; }
+  .nf-edition-meta { gap: 5px 10px; }
+  .nf-edition-time { margin-left: 0; }
+  .nf-edition-open h2 { font-size: 18px; }
+  .nf-edition-summary { font-size: 13.5px; }
+}

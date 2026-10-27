@@ -34,8 +34,24 @@ describe('新闻前台阅读与受信宿主 IPC', () => {
 
   it('拒绝子页面和外部来源，即使使用相同路由也不能读取或写入新闻设置', async () => {
     expect((await request('feedConfig', undefined, { ...event, senderFrame: { url: event.senderFrame.url } })).ok).toBe(false);
+    expect((await request('feedDailyEditions', undefined, { ...event, senderFrame: { url: event.senderFrame.url } })).ok).toBe(false);
     event.senderFrame.url = 'https://example.com/';
     expect((await request('feedConfig')).ok).toBe(false);
+  });
+
+  it('每日模块与内部新闻通过同一宿主接口查询，打开模块不冒充读过新闻', async () => {
+    const batch = ctx.core.newsFeed.startUpdate();
+    const claim = ctx.core.news.claimTask(batch.next_task_id!);
+    const saved = ctx.core.news.submitItems(claim.task.id, claim.claim_token, [{ title: '每日模块里的独立消息', summary: '模块入口只组织消息，不代替用户实际阅读。', source_url: 'https://example.com/daily-ipc', published_at: new Date().toISOString() }]);
+    const list = await request('feedDailyEditions');
+    expect(list.ok).toBe(true);
+    const edition = list.data.find((item: { module_id: string }) => item.module_id === 'domestic');
+    expect(edition.news_count).toBe(1);
+    const detail = await request('feedDailyEdition', { id: edition.id });
+    expect(detail.ok).toBe(true);
+    expect(detail.data.items.map((item: { id: number }) => item.id)).toEqual([saved.items[0].id]);
+    expect(detail.data.items[0].is_read).toBe(false);
+    expect(ctx.core.db.prepare("SELECT COUNT(*) AS n FROM news_feed_feedback WHERE kind='read'").get()?.n).toBe(0);
   });
 
   it('页面自报超长阅读时长无效，连续前台心跳满二十秒才记录一次', async () => {

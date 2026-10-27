@@ -85,6 +85,7 @@ for (const [name, title, method, params] of [
   ['import_news_starred_interests', '导入指定历史收藏线索', 'importStarred', [['input', 'json', false]]],
   ['report_news_correction', '记录新闻事实更正', 'submitCorrection', [input]],
   ['dismiss_news_correction', '确认查看新闻更正', 'dismissCorrection', [['id', 'string']]],
+  ['save_news_daily_summary', '保存每日模块重点总结', 'saveDailyEditionSummary', [input]],
 ] as Array<[string, string, string, Param[]]>) command(name, title, 'newsFeed', method, [], params, 'args', false, true);
 command('update_agent_settings','更新 Agent 连接配置','agentSettings','update',[],[input]);
 command('import_course','导入课程','courses','importCourse',['course','course_lesson','course_overview'],[['staging_dir','string']]);

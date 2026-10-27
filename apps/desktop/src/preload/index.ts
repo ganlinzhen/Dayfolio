@@ -97,6 +97,8 @@ const api = {
     feedContinueUpdate: invoke('news:feedContinueUpdate'),
     feedBatches: invoke('news:feedBatches'),
     feedList: invoke('news:feedList'),
+    feedDailyEditions: invoke('news:feedDailyEditions'),
+    feedDailyEdition: invoke('news:feedDailyEdition'),
     feedFeedback: invoke('news:feedFeedback'),
     feedReadingState: invoke('news:feedReadingState'),
     feedInterests: invoke('news:feedInterests'),

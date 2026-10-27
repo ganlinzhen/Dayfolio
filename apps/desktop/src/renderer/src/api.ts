@@ -147,6 +147,8 @@ interface TododeskApi {
     feedContinueUpdate: (p: { batch_id: string }) => Promise<ApiResult<import('../../../../../packages/core/src/news-types').NewsFeedBatch>>;
     feedBatches: (p?: { limit?: number }) => Promise<ApiResult<import('../../../../../packages/core/src/news-types').NewsFeedBatch[]>>;
     feedList: (p?: { module_id?: string; filter?: 'all' | 'unread' | 'starred' | 'hidden'; search?: string; history?: boolean; corrections_only?: boolean; hidden?: boolean; limit?: number; offset?: number }) => Promise<ApiResult<import('../../../../../packages/core/src/news-types').NewsFeedItem[]>>;
+    feedDailyEditions: (p?: import('../../../../../packages/core/src/news-types').NewsDailyEditionQuery) => Promise<ApiResult<import('../../../../../packages/core/src/news-types').NewsDailyEdition[]>>;
+    feedDailyEdition: (p: import('../../../../../packages/core/src/news-types').NewsDailyEditionDetailQuery) => Promise<ApiResult<import('../../../../../packages/core/src/news-types').NewsDailyEditionPage>>;
     feedFeedback: (p: import('../../../../../packages/core/src/news-types').NewsFeedbackInput & { reading_token?: string }) => Promise<ApiResult<unknown>>;
     feedReadingState: (p: { id: number }) => Promise<ApiResult<{ visible: boolean; token: string }>>;
     feedInterests: () => Promise<ApiResult<import('../../../../../packages/core/src/news-types').NewsInterestState>>;

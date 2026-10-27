@@ -6,6 +6,7 @@ import { newsDedupKey } from './utils/news-dedup';
 import { migrateRuntimeSchema } from './services/runtime-schema';
 import { randomBytes } from 'node:crypto';
 import { cleanupLegacyNews } from './services/news-legacy-cleanup';
+import { migrateNewsDailyEditions } from './services/news-daily-editions';
 
 interface Migration {
   version: number;
@@ -761,6 +762,7 @@ MIGRATIONS.push({ version: 30, name: 'news_modular_feed', up: db => {
 }});
 
 MIGRATIONS.push({ version: 31, name: 'news_legacy_reset', up: cleanupLegacyNews });
+MIGRATIONS.push({ version: 32, name: 'news_daily_editions', up: migrateNewsDailyEditions });
 
 export function runMigrations(db: DbAdapter): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;

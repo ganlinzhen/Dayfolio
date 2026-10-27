@@ -36,6 +36,13 @@ try {
   await new Promise(resolve => setTimeout(resolve, 450));
   if (items.length) await call('submit_news_items', { items });
   console.log(JSON.stringify({ type: 'item.completed', item: { type: 'mcp_tool_call', tool: 'submit_news_items' } }));
+  const latest = await call('get_news_task');
+  const daily = latest.context?.daily_edition;
+  if (!daily) throw new Error('日报任务缺少当天模块上下文');
+  if (daily.news.length) await call('submit_news_daily_summary', {
+    summary: `本期${daily.edition.module_name}重点：相关机构发布了新一阶段行动与结果，已收录报道分别交代关键进展、理解背景和需要继续观察的影响。本次更新将新增事实纳入当天总结，保留独立新闻及其原始来源。此段是隔离验收的综合总结，不代表真实新闻。`,
+    news_ids: daily.news.slice(0, 5).map(item => item.id), expected_revision: daily.edition.revision,
+  });
   await call('complete_news_task', { note: `隔离验收：实际提交 ${items.length} 则，未访问真实新闻网站` });
   console.log(JSON.stringify({ type: 'turn.completed' }));
 } finally { await client.close(); }
