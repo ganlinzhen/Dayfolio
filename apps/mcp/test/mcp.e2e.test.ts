@@ -180,11 +180,20 @@ describe('MCP 端到端主流程', () => {
         PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(dbDir, 'home'),
         TODODESK_DB: join(dbDir, 'e2e.db'), DAYFOLIO_NEWS_RUN_ID: run.id, DAYFOLIO_NEWS_RUN_TOKEN: owner,
       } }));
-      expect((await scoped.listTools()).tools.map(t => t.name).sort()).toEqual(['complete_news_task','get_news_task','submit_news_items']);
+      expect((await scoped.listTools()).tools.map(t => t.name).sort()).toEqual(['complete_news_task','get_news_task','report_news_correction','submit_news_items']);
+      const blockedBusiness = await scoped.callTool({ name: 'add_todo', arguments: { title: '后台不得创建待办' } }).then(result => result.isError === true, () => true);
+      expect(blockedBusiness).toBe(true);
       expect(arg(await scoped.callTool({ name: 'get_news_task', arguments: {} })).data.task.id).toBe(run.task_id);
       expect(arg(await scoped.callTool({ name: 'submit_news_items', arguments: { items: [{
         title: '后台运行 MCP 测试', summary: '通过限定任务的 MCP 提交', source_url: 'https://example.com/e2e-run-scope', published_at: new Date(Date.now()-60000).toISOString(),
       }] } })).ok).toBe(true);
+      const notYetShown = core.news.list({ task_id: run.task_id })[0].id;
+      expect(arg(await scoped.callTool({ name: 'report_news_correction', arguments: { news_id: notYetShown, summary: '尚未公开列表不得更正', evidence_url: 'https://example.com/not-shown' } })).ok).toBe(false);
+      const scopeData = arg(await scoped.callTool({ name: 'get_news_task', arguments: {} })).data;
+      expect(scopeData.prior_items).toHaveLength(1);
+      const allowedId = scopeData.prior_items[0].id;
+      expect(arg(await scoped.callTool({ name: 'report_news_correction', arguments: { news_id: allowedId, summary: '核实后的关键数字更正', evidence_url: 'https://example.com/e2e-scope-correction' } })).ok).toBe(true);
+      expect(arg(await scoped.callTool({ name: 'report_news_correction', arguments: { news_id: allowedId + 100000, summary: '越界更正', evidence_url: 'https://example.com/outside' } })).ok).toBe(false);
       expect(arg(await scoped.callTool({ name: 'complete_news_task', arguments: { note: '范围验证完成' } })).ok).toBe(true);
       expect(core.newsRuns.finish(run.id, owner, 'succeeded').status).toBe('succeeded');
       const records = arg(await client.callTool({ name: 'list_news_agent_runs', arguments: { task_id: run.task_id } }));
@@ -194,6 +203,7 @@ describe('MCP 端到端主流程', () => {
       expect(arg(await scoped.callTool({ name: 'submit_news_items', arguments: { items: [{
         title: '结束后拒绝写入', summary: '不应提交', source_url: 'https://example.com/blocked-after-finish', published_at: new Date().toISOString(),
       }] } })).ok).toBe(false);
+      expect(arg(await scoped.callTool({ name: 'report_news_correction', arguments: { news_id: allowedId, summary: '终止后更正拒绝', evidence_url: 'https://example.com/after-stop' } })).ok).toBe(false);
       const next = core.newsRuns.enqueue();
       expect(arg(await client.callTool({ name: 'cancel_news_agent_run', arguments: { run_id: next.id } })).data.status).toBe('cancelled');
     } finally { await scoped.close(); db.close(); }
@@ -724,6 +734,109 @@ describe('MCP 端到端主流程', () => {
     expect(arg(await client.callTool({ name: 'complete_news_task', arguments: { task_id: task.id, claim_token: claim.claim_token } })).data.status).toBe('completed');
     const stale = await client.callTool({ name: 'update_news_collection_settings', arguments: { ...saved, expected_revision: current.revision } });
     expect(stale.isError).toBe(true);
+  });
+
+  it('模块新闻：配置快照、批次复用、图文摘要、阶段推进、反馈与学习代次经真实 MCP 闭环', async () => {
+    const call = async (name: string, input: Record<string, unknown> = {}) => arg(await client.callTool({ name, arguments: input }));
+    const before = (await call('get_news_feed_config')).data;
+    expect(before.schedule).toMatchObject({ enabled: true, timezone: 'Asia/Shanghai', times: ['08:00', '12:00', '17:00'] });
+    expect(before.learning.enabled).toBe(false);
+    const config = { ...before, modules: [{ ...before.modules.find((m: any) => m.id === 'ai'), scope: '端到端开源编程工具测试', headline_count: 5, max_items: 10, source_preferences: ['原始发布公告'], source_exclusions: ['无署名转载'], extra_instructions: '用中文解释关键变化' }], content: { ...before.content, image_display: 'detail_only' }, learning: { enabled: true, exploration_enabled: true } };
+    const saved = await call('update_news_feed_config', { config, expected_revision: before.revision });
+    expect(saved.ok, saved.error).toBe(true);
+    expect((await call('update_news_feed_config', { config, expected_revision: before.revision })).ok).toBe(false);
+    expect((await call('manage_news_topic', { key: 'agenttools', name: '开源编程工具', action: 'follow' })).ok).toBe(true);
+    const preview = (await call('preview_news_feed')).data;
+    expect(preview.modules[0].instructions).toContain('端到端开源编程工具测试');
+    expect(preview.modules[0].instructions).toContain('image_source_url');
+    expect(preview.modules[0].instructions).toContain('原始发布公告');
+    expect(preview.modules[0].instructions).toContain('无署名转载');
+    const batchResult = await call('start_news_feed_update');
+    expect(batchResult.ok).toBe(true);
+    const batch = batchResult.data;
+    expect((await call('start_news_feed_update')).data.id).toBe(batch.id);
+    const ctx = (await call('get_news_task_context', { task_id: batch.next_task_id })).data;
+    expect(ctx).toMatchObject({ module_id: 'ai', config_revision: saved.data.revision, remaining: 5 });
+    expect(Date.parse(ctx.window_end) - Date.parse(ctx.window_start)).toBe(24 * 3600000);
+    const claimed = await call('claim_news_task', { task_id: batch.next_task_id });
+    expect(claimed.ok).toBe(true);
+    const submitted = await call('submit_news_items', { task_id: batch.next_task_id, claim_token: claimed.data.claim_token, items: [{
+      title: '模块 MCP 图文独立新闻', summary: '已核实的主体、发布内容与关键变化。', source_url: 'https://example.com/feed-e2e/article', source_name: '核实来源',
+      published_at: new Date(Date.parse(ctx.window_end) - 60000).toISOString(), module_id: 'ai', topic_keys: ['agenttools'],
+      background: '独立的背景说明', impact: '明确说明可能影响', uncertainty: '尚待进一步核实的部分',
+      image_url: 'https://example.com/feed-e2e/photo.jpg', image_source_url: 'https://example.com/feed-e2e/article', image_caption: '来源发布页面的产品配图',
+    }] });
+    expect(submitted.ok).toBe(true);
+    const item = submitted.data.items[0];
+    expect((await call('get_news_task_context', { task_id: batch.next_task_id })).data.remaining).toBe(4);
+    const feed = (await call('list_news_feed', { module_id: 'ai' })).data;
+    expect(feed.find((n: any) => n.id === item.id)).toMatchObject({ module_id: 'ai', background: '独立的背景说明', image_caption: '来源发布页面的产品配图', topic_keys: ['agenttools'] });
+    const feedback = { news_id: item.id, kind: 'interested', source: 'explicit', idempotency_key: 'e2e-feed-explicit-once', topic_key: 'agenttools' };
+    expect((await call('record_news_feedback', feedback)).data.recorded).toBe(true);
+    expect((await call('record_news_feedback', feedback)).data.recorded).toBe(false);
+    expect((await call('manage_news_source', { source_name: '核实来源', action: 'reduce' })).data.reduced_sources).toContain('核实来源');
+    expect((await call('manage_news_source', { source_name: '核实来源', action: 'restore' })).data.reduced_sources).not.toContain('核实来源');
+    await call('mark_news_read', { id: item.id });
+    await call('mark_news_starred', { id: item.id });
+    expect((await call('import_news_starred_interests', { news_ids: [item.id] })).ok).toBe(true);
+    const correction = await call('report_news_correction', { news_id: item.id, summary: '来源已更正发布范围', evidence_url: 'https://example.com/feed-e2e/correction' });
+    expect(correction.ok).toBe(true);
+    expect((await call('list_news_feed', { history: true, corrections_only: true })).data.some((n: any) => n.id === item.id)).toBe(true);
+    expect((await call('dismiss_news_correction', { id: correction.data.id })).data.acknowledged).toBe(true);
+    expect((await call('list_news_feed', { module_id: 'ai' })).data.find((n: any) => n.id === item.id).is_read).toBe(true);
+    await call('complete_news_task', { task_id: batch.next_task_id, claim_token: claimed.data.claim_token, note: '先提交一则重点，继续覆盖其他模块' });
+    const next = (await call('advance_news_feed_update', { batch_id: batch.id })).data;
+    const personal = (await call('get_news_task_context', { task_id: next.next_task_id })).data;
+    expect(personal.module_id).toBe('for_you');
+    expect(personal.instructions).toContain('开源编程工具');
+    expect(personal.interest_evidence.some((e: any) => e.news_id === item.id && e.signals.includes('star'))).toBe(true);
+    const personalClaim = (await call('claim_news_task', { task_id: next.next_task_id })).data;
+    const sample = { title: '本地编程 Agent 新细分方向试读', summary: '核实本地运行的编程 Agent 新进展。', source_url: 'https://example.com/feed-e2e/exploration', source_name: '探索原始来源', published_at: new Date(Date.parse(personal.window_end) - 30000).toISOString(), module_id: 'for_you', topic_keys: ['localagents'] };
+    const candidate = { key: 'localagents', name: '本地编程 Agent', scope: '关注本地运行、隐私与离线编程 Agent', reason: '你关注并收藏过开源编程工具，可试读相邻的本地运行方向', basis_news_ids: [item.id], basis_module_id: 'ai' };
+    expect((await call('submit_news_items', { task_id: next.next_task_id, claim_token: personalClaim.claim_token, items: [{ ...sample, candidate_topic: { ...candidate, basis_news_ids: [item.id + 100000] } }] })).ok).toBe(false);
+    const explored = await call('submit_news_items', { task_id: next.next_task_id, claim_token: personalClaim.claim_token, items: [{ ...sample, candidate_topic: candidate }] });
+    expect(explored.ok, explored.error).toBe(true);
+    expect((await call('get_news_interests')).data.exploration).toMatchObject({ key: 'localagents', name: '本地编程 Agent' });
+    expect((await call('manage_news_topic', { key: 'localagents', name: '本地编程 Agent', action: 'follow' })).ok).toBe(true);
+    const stopped = await call('stop_news_feed_update', { batch_id: batch.id });
+    expect(stopped.data.status).toBe('stopped');
+    const continued = await call('continue_news_feed_update', { batch_id: batch.id });
+    expect(continued.ok).toBe(true);
+    expect(continued.data.id).toBe(batch.id);
+    expect(continued.data.modules.find((m: any) => m.module_id === 'ai').accepted_count).toBe(1);
+    expect((await call('get_news_task_context', { task_id: continued.data.next_task_id })).data.instructions).toContain('本地编程 Agent');
+    const removed = (await call('manage_news_topic', { key: 'localagents', action: 'remove' })).data;
+    expect(removed.topics.find((t: any) => t.key === 'localagents')).toMatchObject({ state: 'followed' });
+    expect(Date.parse(removed.topics.find((t: any) => t.key === 'localagents').candidate_cooldown_until)).toBeGreaterThan(Date.now());
+    expect(removed.exploration?.key).not.toBe('localagents');
+    const state = (await call('get_news_interests')).data;
+    const event = state.events.find((e: any) => e.id === 'us-iran');
+    const ended = await call('update_news_event', { id: event.id, status: 'ended', expected_revision: event.revision });
+    expect(ended.ok).toBe(true);
+    expect((await call('update_news_event', { id: event.id, status: 'active', expected_revision: event.revision })).ok).toBe(false);
+    const reset = (await call('reset_news_learning')).data;
+    expect(reset.epoch).toBeGreaterThan(state.epoch);
+    expect(reset.topics.find((t: any) => t.key === 'agenttools').state).toBe('followed');
+    expect(reset.events.find((e: any) => e.id === event.id).status).toBe('ended');
+    expect((await call('get_news_task_context', { task_id: continued.data.next_task_id })).ok).toBe(false);
+    expect((await call('list_news_feed', { module_id: 'ai', filter: 'starred' })).data.some((n: any) => n.id === item.id)).toBe(true);
+    const live = (await call('get_news_feed_config')).data;
+    expect((await call('update_news_feed_config', { config: before, expected_revision: live.revision })).ok).toBe(true);
+  });
+
+  it('MCP 收藏反馈重放不会撤销后来明确的取消收藏', async () => {
+    const call = async (name: string, input: Record<string, unknown> = {}) => arg(await client.callTool({ name, arguments: input }));
+    const task = (await call('create_news_task', { title: '收藏反馈收据回归' })).data;
+    const claim = (await call('claim_news_task', { task_id: task.id })).data;
+    const submitted = (await call('submit_news_items', { task_id: task.id, claim_token: claim.claim_token, items: [{ title: '收藏重放边界新闻', summary: '验证明确反馈收据的实际收藏状态。', source_url: 'https://example.com/mcp-star-replay', published_at: new Date(Date.now() - 60000).toISOString() }] })).data;
+    const newsId = submitted.items[0].id;
+    const original = { news_id: newsId, kind: 'star', source: 'explicit', idempotency_key: 'mcp-original-star-a' };
+    expect((await call('record_news_feedback', original)).ok).toBe(true);
+    expect((await call('list_news', { task_id: task.id })).data.news[0].is_starred).toBe(true);
+    expect((await call('record_news_feedback', { ...original, kind: 'unstar', idempotency_key: 'mcp-new-unstar-b' })).ok).toBe(true);
+    expect((await call('record_news_feedback', original)).data.recorded).toBe(false);
+    expect((await call('list_news', { task_id: task.id })).data.news[0].is_starred).toBe(false);
+    await call('complete_news_task', { task_id: task.id, claim_token: claim.claim_token });
   });
 
   it('新闻本地快照：submit 带 html 落盘消毒 → list/read 回读 → 删除随行清理', async () => {

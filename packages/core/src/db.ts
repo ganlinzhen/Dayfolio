@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS news (
 CREATE INDEX IF NOT EXISTS idx_news_date ON news(published_date);
 -- 注：idx_news_read 与 idx_news_task 由迁移创建（旧库 news 表先经迁移补列，SCHEMA 不能提前建索引）
 
--- 新闻任务（agent-only）：规则 + 认领租约；旧源/话题/采集任务表保留为历史数据，新代码不再读写
+-- 新闻任务（agent-only）：规则 + 认领租约；下方旧表仅供历史迁移执行，升级后清空且不再注册专属模型。
 CREATE TABLE IF NOT EXISTS news_tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,
@@ -173,7 +173,6 @@ CREATE TABLE IF NOT EXISTS news_sources (
   last_checked_at TEXT,
   last_error TEXT
 );
-INSERT OR IGNORE INTO news_sources (id, name, enabled) VALUES ('x', 'X', 1);
 
 CREATE TABLE IF NOT EXISTS news_topics (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,6 +375,15 @@ export function mapNews(row: Record<string, unknown>): NewsItem {
     content_kind: row.content_kind === 'brief' ? 'brief' : row.content_kind === 'html' ? 'html' : 'url',
     brief: row.brief_json ? JSON.parse(String(row.brief_json)) : null,
     html_rel: (row.html_rel as string | null) ?? null,
+    module_id: (row.module_id as string | null) ?? null,
+    event_id: (row.event_id as string | null) ?? null,
+    topic_keys: row.topic_keys_json ? JSON.parse(String(row.topic_keys_json)) : [],
+    image_url: (row.image_url as string | null) ?? null,
+    image_source_url: (row.image_source_url as string | null) ?? null,
+    image_caption: (row.image_caption as string | null) ?? null,
+    background: (row.background as string | null) ?? null,
+    impact: (row.impact as string | null) ?? null,
+    uncertainty: (row.uncertainty as string | null) ?? null,
   };
 }
 

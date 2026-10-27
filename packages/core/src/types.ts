@@ -311,7 +311,24 @@ export interface NewsCollectionSettings {
   updated_at: string | null;
 }
 
-export interface NewsItem {
+export interface NewsArticleMetadata {
+  module_id?: string | null;
+  event_id?: string | null;
+  topic_keys?: string[];
+  image_url?: string | null;
+  image_source_url?: string | null;
+  image_caption?: string | null;
+  background?: string | null;
+  impact?: string | null;
+  uncertainty?: string | null;
+}
+/** AI 根据真实反馈或明确模块配置提出的具体细分主题，随已核实试读原子提交。 */
+export interface NewsCandidateTopic {
+  key: string; name: string; scope: string; reason: string;
+  basis_news_ids: number[]; basis_module_id?: string;
+}
+
+export interface NewsItem extends NewsArticleMetadata {
   id: number;
   source: NewsSource;
   title: string;
@@ -376,7 +393,8 @@ export interface NewsTask {
 }
 
 /** agent 提交的一条新闻（提交前校验：标题/摘要/来源 URL/发布时间） */
-export interface NewsSubmissionItem {
+export interface NewsSubmissionItem extends NewsArticleMetadata {
+  candidate_topic?: NewsCandidateTopic;
   /** 多条已核实新闻组成的一份专题简报，列表只占一条。不能与 html 同传。 */
   brief?: NewsBrief;
   title: string;

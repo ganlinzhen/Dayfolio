@@ -1,3 +1,7 @@
+import { createNewsFeedService, type NewsFeedService } from './services/news-feed';
+export * from './news-types';
+export { defaultNewsFeedConfig } from './services/news-feed';
+export type { NewsFeedService } from './services/news-feed';
 // Dayfolio 共享核心层入口：App（Electron 主进程）与 MCP Server 共同复用
 import { createNewsRunService, type NewsRunService } from './services/news-run';
 import { createAgentSettingsService, type AgentSettingsService } from './services/agent-settings';
@@ -139,6 +143,7 @@ export interface TodoDeskCore {
   plans: PlanService;
   checkins: CheckinService;
   news: NewsService;
+  newsFeed: Omit<NewsFeedService, 'beforeSubmit' | 'afterSubmit' | 'beforeComplete' | 'assertContext'>;
   newsRuns: NewsRunService;
   agentSettings: AgentSettingsService;
   reviews: ReviewService;
@@ -217,7 +222,9 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
     },
   });
   const today = createTodayService(db, plans, checkins);
-  const news = createNewsService(db, { dbPath: opts.dbPath ?? defaultDbPath() });
+  let newsFeed: NewsFeedService;
+  const news = createNewsService(db, { dbPath: opts.dbPath ?? defaultDbPath(), beforeSubmit: (id,items) => newsFeed.beforeSubmit(id,items), afterSubmit: (id,raw,inserted) => newsFeed.afterSubmit(id,raw,inserted), beforeComplete: id => newsFeed.beforeComplete(id) });
+  newsFeed = createNewsFeedService(db, { ...news, createTask: (...args) => publicNews.createTask(...args), markStarred: (...args) => publicNews.markStarred(...args) });
   const newsRuns = createNewsRunService(db, { ...news,
     createTask: (...args) => publicNews.createTask(...args),
     claimTask: (...args) => publicNews.claimTask(...args),
@@ -260,7 +267,7 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
   const extensionModule=createExtensionService(db,{dbPath:opts.dbPath??defaultDbPath(),events:()=>commands.wrap('externalEvents',externalEvents),guard:name=>commands.guard(name)});
   const extensions=extensionModule.service;extensionModule.recover();
   const agentSettings = createAgentSettingsService(db);
-  const services = { toolFollowing,toolTodos, agentSettings, newsRuns, extensions,todos, plans, checkins, news, reviews, study, tools, courses, vaults, media, calendar, runtime,subscriptions,externalEvents };
+  const services = { toolFollowing,toolTodos, agentSettings, newsRuns, newsFeed, extensions,todos, plans, checkins, news, reviews, study, tools, courses, vaults, media, calendar, runtime,subscriptions,externalEvents };
   commands = createCommandService(db, ontology, services);
   publicNews=commands.wrap('news',news);
   publicTodos=commands.wrap('todos',todos); publicPlans=commands.wrap('plans',plans);
@@ -297,9 +304,10 @@ export function createCore(db: DbAdapter, opts: { dbPath?: string;providerNetwor
     const ev={...createExternalEventService(db,scopedSubs.syncEvent,{extensionId}),...refreshModule.forActor({extensionId})};const sub=scopedSubs.service;
     return {externalEvents:{...ev,refresh:guarded('refresh_event_provider',ev.refresh),import:guarded('import_external_events',ev.import),archive:guarded('archive_external_event',ev.archive),deleteUnused:guarded('delete_unused_external_event',ev.deleteUnused),updateProvider:guarded('update_event_provider',ev.updateProvider)},subscriptions:scopeSubscriptionService({...sub,subscribe:guarded('subscribe_event',sub.subscribe),unsubscribe:guarded('unsubscribe_event',sub.unsubscribe),resumeFollowing:guarded('resume_event_following',sub.resumeFollowing)})};
   };
+  const { beforeSubmit: _beforeSubmit, afterSubmit: _afterSubmit, beforeComplete: _beforeComplete, assertContext: _assertContext, ...publicNewsFeed } = newsFeed;
   return { db, today, ontology, objects, queries, actions, actionRuns: actionRunStore.public, commands, relations,providerWorker:refreshModule.worker,extensions:commands.wrap('extensions',extensions),runtime:commands.wrap('runtime',runtime),externalEvents:commands.wrap('externalEvents',externalEvents),subscriptions:commands.wrap('subscriptions',subscriptions),forExtension,
     todos:publicTodos, plans:publicPlans, checkins:commands.wrap('checkins',checkins),
-    news:publicNews, newsRuns:commands.wrap('newsRuns',newsRuns), agentSettings:commands.wrap('agentSettings',agentSettings), reviews:commands.wrap('reviews',reviews), study:commands.wrap('study',study),
+    news:publicNews, newsFeed:commands.wrap('newsFeed',publicNewsFeed), newsRuns:commands.wrap('newsRuns',newsRuns), agentSettings:commands.wrap('agentSettings',agentSettings), reviews:commands.wrap('reviews',reviews), study:commands.wrap('study',study),
     toolFollowing:commands.wrap('toolFollowing',toolFollowing),toolTodos:commands.wrap('toolTodos',toolTodos), tools:commands.wrap('tools',tools), courses:commands.wrap('courses',courses), vaults:commands.wrap('vaults',vaults), media:commands.wrap('media',media),
     calendar:{...commands.wrap('calendar',calendar),...createCalendarQueryService(db,runtime),listCollections:runtime.listCollections,setVisibility:commands.wrap('runtime',runtime).setVisibility,updateCollection:commands.wrap('runtime',runtime).updateCollection,deleteCollection:commands.wrap('runtime',runtime).deleteCollection},
   };

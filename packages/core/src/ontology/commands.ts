@@ -70,6 +70,22 @@ for (const [name,title,method,params] of [
   ['recover_news_agent_run','恢复已退出执行器的运行','recover',[['id','string']]],
 ] as Array<[string,string,string,Param[]]>) command(name,title,'newsRuns',method,[],params);
 command('update_news_collection_settings','更新新闻采集提示词','news','updateCollectionSettings',[],[input]);
+for (const [name, title, method, params] of [
+  ['update_news_feed_config', '保存新闻模块配置', 'updateConfig', [input]],
+  ['start_news_feed_update', '开始模块新闻更新', 'startUpdate', [['input', 'json', false]]],
+  ['advance_news_feed_update', '推进模块新闻更新', 'advance', [['batch_id', 'string', false]]],
+  ['stop_news_feed_update', '停止模块新闻更新', 'stopUpdate', [['batch_id', 'string']]],
+  ['continue_news_feed_update', '接续模块新闻更新', 'continueUpdate', [input]],
+  ['record_news_feedback', '记录新闻兴趣反馈', 'recordFeedback', [input]],
+  ['manage_news_topic', '管理新闻兴趣主题', 'manageTopic', [input]],
+  ['manage_news_source', '调整新闻来源推荐', 'manageSource', [input]],
+  ['reset_news_learning', '清空新闻学习结果', 'resetLearning', []],
+  ['update_news_event', '管理阶段性时事关注', 'updateEvent', [input]],
+  ['dismiss_news_event_reminder', '收起时事关注提醒', 'dismissEventReminder', [['id', 'string']]],
+  ['import_news_starred_interests', '导入指定历史收藏线索', 'importStarred', [['input', 'json', false]]],
+  ['report_news_correction', '记录新闻事实更正', 'submitCorrection', [input]],
+  ['dismiss_news_correction', '确认查看新闻更正', 'dismissCorrection', [['id', 'string']]],
+] as Array<[string, string, string, Param[]]>) command(name, title, 'newsFeed', method, [], params, 'args', false, true);
 command('update_agent_settings','更新 Agent 连接配置','agentSettings','update',[],[input]);
 command('import_course','导入课程','courses','importCourse',['course','course_lesson','course_overview'],[['staging_dir','string']]);
 command('delete_course','删除课程','courses','remove',['course','course_lesson','course_overview','course_request'],[id('course'),['expected_slug','string']]);
@@ -189,6 +205,10 @@ export function createCommandService(db: DbAdapter, ontology: OntologyService, s
   const execute = (name: string, params: Record<string,unknown>) => {
     const d = defs.find(d=>d.apiName===name);
     if (!d) throw new Error(`命令 ${name} 不存在`);
+    // 通用动作没有宿主前台时钟，不能冒充 App 的阅读会话或被动点击。
+    if (name === 'record_news_feedback' && (params.input as { source?: string } | undefined)?.source !== 'explicit') {
+      throw new OntologyError('ACTION_CHANNEL_DENIED', '通用动作只能记录用户明确表达的新闻反馈，不能冒充前台阅读');
+    }
     for (const key of Object.keys(params)) if (!d.parameters.some(p=>p.name===key)) throw new Error(`未知参数 ${key}`);
     for (const [index,p] of d.parameters.entries()) {
       const v=params[p.name];

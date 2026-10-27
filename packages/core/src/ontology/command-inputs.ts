@@ -1252,6 +1252,48 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
       "items": {
         "type": "object",
         "properties": {
+          "candidate_topic": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "basis_news_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    }
+                  },
+                  "basis_module_id": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "key",
+                  "name",
+                  "scope",
+                  "reason",
+                  "basis_news_ids"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
           "brief": {
             "anyOf": [
               {
@@ -1324,6 +1366,96 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
           },
           "html": {
             "anyOf": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "module_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "topic_keys": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "image_source_url": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "image_caption": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "impact": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "uncertainty": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
               {
                 "type": "string"
               }
@@ -1517,6 +1649,533 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
         "expected_revision"
       ],
       "additionalProperties": false
+    }
+  ],
+  "update_news_feed_config": [
+    {
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "number"
+            },
+            "updated_at": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "modules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "enum": [
+                      false,
+                      true
+                    ]
+                  },
+                  "kind": {
+                    "enum": [
+                      "public",
+                      "topic",
+                      "events"
+                    ]
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "exclusions": {
+                    "type": "string"
+                  },
+                  "window_hours": {
+                    "type": "number"
+                  },
+                  "headline_count": {
+                    "type": "number"
+                  },
+                  "max_items": {
+                    "type": "number"
+                  },
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "summary_depth": {
+                        "enum": [
+                          "brief",
+                          "standard",
+                          "deep"
+                        ]
+                      },
+                      "image_policy": {
+                        "enum": [
+                          "prefer_original",
+                          "none"
+                        ]
+                      },
+                      "image_display": {
+                        "enum": [
+                          "list_thumbnail",
+                          "detail_only"
+                        ]
+                      },
+                      "show_background": {
+                        "enum": [
+                          false,
+                          true
+                        ]
+                      },
+                      "show_impact": {
+                        "enum": [
+                          false,
+                          true
+                        ]
+                      },
+                      "show_uncertainty": {
+                        "enum": [
+                          false,
+                          true
+                        ]
+                      }
+                    },
+                    "required": [],
+                    "additionalProperties": false
+                  },
+                  "source_preferences": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "source_exclusions": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ]
+                  },
+                  "extra_instructions": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "enabled",
+                  "kind",
+                  "scope",
+                  "exclusions",
+                  "window_hours",
+                  "headline_count",
+                  "max_items",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "content": {
+              "type": "object",
+              "properties": {
+                "summary_depth": {
+                  "enum": [
+                    "brief",
+                    "standard",
+                    "deep"
+                  ]
+                },
+                "image_policy": {
+                  "enum": [
+                    "prefer_original",
+                    "none"
+                  ]
+                },
+                "image_display": {
+                  "enum": [
+                    "list_thumbnail",
+                    "detail_only"
+                  ]
+                },
+                "show_background": {
+                  "enum": [
+                    false,
+                    true
+                  ]
+                },
+                "show_impact": {
+                  "enum": [
+                    false,
+                    true
+                  ]
+                },
+                "show_uncertainty": {
+                  "enum": [
+                    false,
+                    true
+                  ]
+                }
+              },
+              "required": [
+                "summary_depth",
+                "image_policy",
+                "show_background",
+                "show_impact",
+                "show_uncertainty"
+              ],
+              "additionalProperties": false
+            },
+            "schedule": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "enum": [
+                    false,
+                    true
+                  ]
+                },
+                "timezone": {
+                  "const": "Asia/Shanghai"
+                },
+                "times": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "enabled",
+                "timezone",
+                "times"
+              ],
+              "additionalProperties": false
+            },
+            "learning": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "enum": [
+                    false,
+                    true
+                  ]
+                },
+                "exploration_enabled": {
+                  "enum": [
+                    false,
+                    true
+                  ]
+                }
+              },
+              "required": [
+                "enabled",
+                "exploration_enabled"
+              ],
+              "additionalProperties": false
+            },
+            "budget_minutes": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "revision",
+            "updated_at",
+            "modules",
+            "content",
+            "schedule",
+            "learning",
+            "budget_minutes"
+          ],
+          "additionalProperties": false
+        },
+        "expected_revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "config",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "start_news_feed_update": [
+    {
+      "type": "object",
+      "properties": {
+        "trigger": {
+          "enum": [
+            "manual",
+            "scheduled"
+          ]
+        },
+        "slot_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  ],
+  "advance_news_feed_update": [
+    {
+      "anyOf": [
+        {
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "stop_news_feed_update": [
+    {
+      "type": "string"
+    }
+  ],
+  "continue_news_feed_update": [
+    {
+      "type": "object",
+      "properties": {
+        "batch_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "batch_id"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "record_news_feedback": [
+    {
+      "type": "object",
+      "properties": {
+        "news_id": {
+          "type": "number"
+        },
+        "kind": {
+          "enum": [
+            "open",
+            "read",
+            "source_open",
+            "star",
+            "unstar",
+            "interested",
+            "less_topic",
+            "less_source",
+            "hide",
+            "undo_hide"
+          ]
+        },
+        "source": {
+          "enum": [
+            "app",
+            "explicit"
+          ]
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "topic_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "reading_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "news_id",
+        "kind",
+        "source",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "manage_news_topic": [
+    {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "action": {
+          "enum": [
+            "follow",
+            "unfollow",
+            "reduce",
+            "remove",
+            "restore"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "action"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "manage_news_source": [
+    {
+      "type": "object",
+      "properties": {
+        "source_name": {
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "reduce",
+            "restore"
+          ]
+        }
+      },
+      "required": [
+        "source_name",
+        "action"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "reset_news_learning": [],
+  "update_news_event": [
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "active",
+            "paused",
+            "ended"
+          ]
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "expected_revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "dismiss_news_event_reminder": [
+    {
+      "type": "string"
+    }
+  ],
+  "import_news_starred_interests": [
+    {
+      "type": "object",
+      "properties": {
+        "news_ids": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  ],
+  "report_news_correction": [
+    {
+      "type": "object",
+      "properties": {
+        "news_id": {
+          "type": "number"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "evidence_url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "news_id",
+        "summary",
+        "evidence_url"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "dismiss_news_correction": [
+    {
+      "type": "string"
     }
   ],
   "update_agent_settings": [
@@ -1959,9 +2618,9 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
         },
         "source": {
           "enum": [
+            "manual",
             "news",
-            "knowledge",
-            "manual"
+            "knowledge"
           ]
         },
         "source_news_id": {
@@ -2175,9 +2834,9 @@ export const COMMAND_INPUTS: Record<string,unknown[]> = {
         },
         "source": {
           "enum": [
+            "manual",
             "news",
-            "knowledge",
-            "manual"
+            "knowledge"
           ]
         },
         "source_news_id": {

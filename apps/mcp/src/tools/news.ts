@@ -1,6 +1,8 @@
 import type { ToolRegistrar, McpContext } from '../shared/context';
 import { z } from 'zod';
 import { wrap } from '../shared/response';
+import { randomUUID } from 'node:crypto';
+import { inTx } from '../../../../packages/core/src';
 
 export const newsItemsSchema = z.array(z.object({
         title: z.string().min(1).max(300).describe('新闻标题'),
@@ -8,6 +10,19 @@ export const newsItemsSchema = z.array(z.object({
         source_url: z.string().min(1).max(2048).describe('原始来源网页链接（http(s)，你亲自核实过的公开页面）'),
         source_name: z.string().max(120).optional().describe('来源站点名，如「TechCrunch」'),
         published_at: z.string().min(1).describe('来源页面的真实发布时间（ISO 格式）'),
+        module_id: z.string().min(1).max(80).optional().describe('所属模块的稳定 ID，必须与当前模块任务一致'),
+        event_id: z.string().min(1).max(80).optional().describe('时事关注的稳定 ID；只关联当前任务仍有效的事件'),
+        topic_keys: z.array(z.string().min(1).max(80)).max(12).optional().describe('新闻涉及的细分主题稳定键，不据此推断用户立场'),
+        background: z.string().max(2000).optional().describe('已核实的背景；与主要事实分开'),
+        impact: z.string().max(2000).optional().describe('影响或意义；推断须明确说明依据与边界'),
+        uncertainty: z.string().max(2000).optional().describe('尚未确认、存在争议或需要后续核实的部分'),
+        image_url: z.string().max(2048).optional().describe('原始来源中的公开配图地址，无可靠图片则省略图片全部字段'),
+        image_source_url: z.string().max(2048).optional().describe('可核对图片出处的来源网页，与 image_url、image_caption 成套填写'),
+        image_caption: z.string().max(500).optional().describe('说明图中内容及其与本条新闻的关系，不把资料图写成现场图'),
+        candidate_topic: z.object({
+          key: z.string().min(1).max(80), name: z.string().min(1).max(80), scope: z.string().min(1).max(600), reason: z.string().min(1).max(600),
+          basis_news_ids: z.array(z.number().int().positive()).max(12), basis_module_id: z.string().max(80).optional(),
+        }).optional().describe('仅猜你喜欢任务：基于 context 公开的真实兴趣证据或模块种子，提出一个新的细分主题，并随本则已核实试读新闻提交；全批次最多一个主题，不得虚构依据或把大模块换名冒充新主题'),
         brief: z.object({
           overview: z.string().min(1).max(2000).describe('专题总体看点'),
           items: z.array(z.object({
@@ -19,12 +34,89 @@ export const newsItemsSchema = z.array(z.object({
         html: z.string().max(1000000).optional().describe('本地 HTML 快照（可选）：X/Twitter 等无法内嵌展示的来源用。写成自包含 HTML（作者/发布时间/正文/图片 https 外链/原帖链接），脚本与事件属性会被剥离，保存后用 read_news_html 核对'),
       })).min(1).max(10).describe('本批条目（1~10 条）');
 
+const contentOptionsSchema = z.object({
+  summary_depth: z.enum(['brief', 'standard', 'deep']), image_policy: z.enum(['prefer_original', 'none']),
+  image_display: z.enum(['list_thumbnail', 'detail_only']).optional(),
+  show_background: z.boolean(), show_impact: z.boolean(), show_uncertainty: z.boolean(),
+});
+const feedConfigSchema = z.object({
+  revision: z.number().int().min(0), updated_at: z.string().nullable(),
+  modules: z.array(z.object({
+    id: z.string().min(1), name: z.string().min(1), enabled: z.boolean(), kind: z.enum(['public', 'topic', 'events']),
+    scope: z.string(), exclusions: z.string(), window_hours: z.number().int().min(1).max(720),
+    source_preferences: z.array(z.string().min(1).max(200)).max(20).optional(), source_exclusions: z.array(z.string().min(1).max(200)).max(20).optional(), extra_instructions: z.string().max(1500).optional(),
+    headline_count: z.number().int().min(1).max(5), max_items: z.number().int().min(1).max(10), content: contentOptionsSchema.partial(),
+  })).max(20),
+  content: contentOptionsSchema,
+  schedule: z.object({ enabled: z.boolean(), timezone: z.literal('Asia/Shanghai'), times: z.array(z.string()) }),
+  learning: z.object({ enabled: z.boolean(), exploration_enabled: z.boolean() }),
+  budget_minutes: z.number().int().min(5).max(120),
+});
+
 export function registerTools(server: ToolRegistrar, { core }: McpContext): void {
+  server.tool('get_news_feed_config', '读取结构化新闻模块、摘要与配图要求、早中晚定时及兴趣开关。什么场景调用我：采集前读取最新规则，或用户调整模块前取得 revision；不会联网或启动采集。', {},
+    async () => wrap(() => core.newsFeed.getConfig())());
+  server.tool('update_news_feed_config', '保存 App 与 MCP 共用的新闻模块和展示配置。什么场景调用我：用户明确调整模块、采集频率、摘要或学习开关；先读取当前配置并携带 expected_revision 防并发覆盖。保存不代表新闻已更新；关闭学习停止使用推断兴趣但不清空历史。', {
+    config: feedConfigSchema, expected_revision: z.number().int().min(0),
+  }, async (input) => wrap(() => core.newsFeed.updateConfig(input))());
+  server.tool('preview_news_feed', '预览当前配置或配置草稿编译出的各模块动态采集要求。什么场景调用我：解释本轮会搜索什么、检查兴趣或时事修改是否进入提示词；只读，不保存、不启动采集。', {
+    module_id: z.string().optional(), config: feedConfigSchema.optional(),
+  }, async (input) => wrap(() => core.newsFeed.preview(input))());
+  server.tool('start_news_feed_update', '建立一次模块新闻更新，已有活动批次时复用，不重置预算。什么场景调用我：用户要求按保存配置更新新闻；返回模块任务后须在当前对话接续认领、核实、提交与推进，不能仅建批次就报告完成。定时由 App 使用北京时间 08:00/12:00/17:00 触发，休眠恢复合并补最新一次。', {
+    trigger: z.enum(['manual', 'scheduled']).optional(), slot_key: z.string().max(100).optional(),
+  }, async (input) => wrap(() => core.newsFeed.startUpdate(input))());
+  server.tool('advance_news_feed_update', '推进模块批次到下一项待执行任务，先各模块少量重点再补足。什么场景调用我：完成一个模块任务后取得下一任务或核对整批收尾；不会替你联网核实。', {
+    batch_id: z.string().min(1).optional(),
+  }, async ({ batch_id }) => wrap(() => core.newsFeed.advance(batch_id))());
+  server.tool('stop_news_feed_update', '停止一轮模块更新并保留已收录新闻。什么场景调用我：用户要求停止整轮更新；不要用于把检索失败伪装成完成。', {
+    batch_id: z.string().min(1),
+  }, async ({ batch_id }) => wrap(() => core.newsFeed.stopUpdate(batch_id))());
+  server.tool('continue_news_feed_update', '继续已停止或预算用尽的同一模块批次，保留固定时间窗和累计收录配额。什么场景调用我：用户明确继续补采；配置或兴趣代次变化时须新建一轮，不能用继续绕过撤回权限。', {
+    batch_id: z.string().min(1),
+  }, async (input) => wrap(() => core.newsFeed.continueUpdate(input))());
+  server.tool('list_news_feed_batches', '查看模块更新批次、各模块实际数量、缺口与执行状态。什么场景调用我：用户询问早午晚更新进度、预算耗尽或失败原因；只读。', {
+    limit: z.number().int().min(1).max(100).optional(),
+  }, async (input) => wrap(() => core.newsFeed.listBatches(input))());
+  server.tool('get_news_task_context', '读取指定模块任务的动态要求快照、固定时间窗、实时剩余配额、已收录身份、画像代次与事件版本。什么场景调用我：认领后开始搜索或接续前防止重复和使用过期关注；旧临时任务可返回空。', {
+    task_id: z.number().int().positive(),
+  }, async ({ task_id }) => wrap(() => core.newsFeed.getTaskContext(task_id))());
+  server.tool('list_news_feed', '查询按模块组织的新闻与更正、隐藏状态。什么场景调用我：读今日精选、查未读或收藏和更正；仅查本地库，不把 MCP 回读当作用户阅读兴趣。', {
+    module_id: z.string().optional().describe('模块稳定 ID；for_you 查询猜你喜欢'), filter: z.enum(['all', 'unread', 'starred', 'hidden']).optional(), history: z.boolean().optional().describe('true 查询全部历史，否则按当前精选范围'), search: z.string().max(500).optional().describe('标题和摘要库内搜索，不联网'), corrections_only: z.boolean().optional().describe('只看已读且有未确认更正的新闻，可配 history=true 查历史'),
+    limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),
+  }, async (input) => wrap(() => core.newsFeed.list(input))());
+  server.tool('record_news_feedback', '记录用户明确表达的新闻反馈：感兴趣、减少主题/来源、隐藏/撤销或收藏。什么场景调用我：用户在对话中明确反馈；source 必须为 explicit，禁止把助手查询、回读、批量已读或删除伪造为用户阅读。重复请求复用 idempotency_key；学习关闭时不会新增推断证据。', {
+    news_id: z.number().int().positive(), kind: z.enum(['interested', 'less_topic', 'less_source', 'hide', 'undo_hide', 'star', 'unstar']),
+    source: z.literal('explicit'), idempotency_key: z.string().min(1).max(200), topic_key: z.string().optional(),
+  }, async (input) => wrap(() => core.newsFeed.recordFeedback(input))());
+  server.tool('get_news_interests', '查看可解释的主题兴趣、探索理由、减少的来源与短期时事状态。什么场景调用我：用户问为什么推荐、想核对关注或清空后的状态；不从阅读内容推断政治立场。', {},
+    async () => wrap(() => core.newsFeed.getInterests())());
+  server.tool('manage_news_topic', '关注、取消关注、降频、移除或恢复细分主题。什么场景调用我：用户明确管理兴趣；关注影响后续猜你喜欢搜索，不自动新建模块，加入模块须另行保存模块配置。', {
+    key: z.string().min(1).max(100), name: z.string().max(200).optional(), action: z.enum(['follow', 'unfollow', 'reduce', 'remove', 'restore']),
+  }, async (input) => wrap(() => core.newsFeed.manageTopic(input))());
+  server.tool('manage_news_source', '减少或恢复指定新闻来源的推荐。什么场景调用我：用户明确管理来源偏好；先读 get_news_interests 核对来源名，恢复撤回对应来源降频，不修改模块公共重要新闻要求。', {
+    source_name: z.string().min(1).max(120), action: z.enum(['reduce', 'restore']),
+  }, async (input) => wrap(() => core.newsFeed.manageSource(input))());
+  server.tool('reset_news_learning', '清空 Dayfolio 内新闻行为历史与派生画像，递增学习代次使旧推断任务失效。什么场景调用我：用户明确要求清空学习；保留新闻、已读、收藏、模块、明确关注和事件结束记录，旧收藏不自动回流。不声称能删除已发送给外部 Agent 的会话副本。', {},
+    async () => wrap(() => core.newsFeed.resetLearning())());
+  server.tool('update_news_event', '新增、修改、暂停、结束或明确恢复临时时事关注。什么场景调用我：用户改变阶段性关注；先读事件 revision，新事件 expected_revision=0。暂停/结束停止专门搜索并保留历史，恢复只授权新执行，旧点击不会恢复事件。', {
+    id: z.string().min(1).max(80), name: z.string().max(200).optional(), scope: z.string().max(2000).optional(),
+    status: z.enum(['active', 'paused', 'ended']).optional(), expires_at: z.string().nullable().optional(), expected_revision: z.number().int().min(0),
+  }, async (input) => wrap(() => core.newsFeed.updateEvent(input))());
+  server.tool('report_news_correction', '为一条已保存新闻报告有来源证据的重要事实更正。什么场景调用我：亲自核实后发现原报道数字、主体或结果有误；保留更正说明和依据，不强标未读，不把普通措辞调整当作新新闻。', {
+    news_id: z.number().int().positive(), summary: z.string().min(1).max(2000), evidence_url: z.string().min(1).max(2048),
+  }, async (input) => wrap(() => core.newsFeed.submitCorrection(input))());
+  server.tool('dismiss_news_correction', '确认已查看一条新闻更正提示。什么场景调用我：用户明确表示已查看更正；保留更正记录及新闻已读状态。', { id: z.string().min(1) },
+    async ({ id }) => wrap(() => core.newsFeed.dismissCorrection(id))());
+  server.tool('dismiss_news_event_reminder', '暂时收起时事较少查看提醒。什么场景调用我：用户选择继续关注或收起提醒；不擅自暂停、结束关注。', { id: z.string().min(1) },
+    async ({ id }) => wrap(() => core.newsFeed.dismissEventReminder(id))());
+  server.tool('import_news_starred_interests', '由用户选择的历史收藏一次性初始化新闻兴趣。什么场景调用我：用户明确同意导入指定收藏；默认不回放旧收藏，清空学习后也不得自动重建。', {
+    news_ids: z.array(z.number().int().positive()).min(1).max(500),
+  }, async (input) => wrap(() => core.newsFeed.importStarred(input))());
   server.tool('get_news_collection_settings',
-    '读取 App 当前保存的新闻采集提示词、收录上限和时间窗。什么场景调用我：每日采集开始前读取最新规则；不要把旧自动任务里的固定要求当作当前规则。读取不会创建任务或联网。', {},
+    '读取历史长提示词、旧单主题任务上限和时间窗。什么场景调用我：查询旧配置或执行兼容临时任务；默认模块更新使用 get_news_feed_config，不以旧自动任务要求覆盖模块规则。读取不会联网。', {},
     async () => wrap(() => core.news.getCollectionSettings())());
   server.tool('update_news_collection_settings',
-    '保存新闻采集提示词，App 与 MCP 共用。什么场景调用我：用户明确要求调整以后的新闻内容、结构或采集范围时；先读取当前 revision，保存仅影响后续按提示词创建的请求，已有请求保留快照。', {
+    '保存兼容旧任务的历史长提示词。什么场景调用我：用户明确调整旧单主题流程；默认新闻模块与展示设置应使用 update_news_feed_config。先读当前 revision；仅影响后续旧请求，已有快照保留。', {
       prompt: z.string().min(1).max(12000), max_items: z.number().int().min(1).max(11),
       window_hours: z.number().int().min(1).max(720), expected_revision: z.number().int().min(0),
     }, async (input) => wrap(() => core.news.updateCollectionSettings(input))());
@@ -145,9 +237,13 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
 
   server.tool(
     'mark_news_starred',
-    '收藏/取消收藏一条新闻（幂等，持久化）',
+    '收藏/取消收藏一条新闻（状态幂等，持久化）。什么场景调用我：用户明确要求收藏或取消；学习开启时记录明确反馈，取消撤回收藏贡献，助手回读不调用本工具。',
     { id: z.number().int().positive(), starred: z.boolean().optional().describe('缺省 true=收藏') },
-    async ({ id, starred }) => wrap(() => core.news.markStarred(id, starred ?? true))(),
+    async ({ id, starred }) => wrap(() => inTx(core.db, () => {
+      const value = core.news.markStarred(id, starred ?? true);
+      core.newsFeed.recordFeedback({ news_id: id, kind: (starred ?? true) ? 'star' : 'unstar', source: 'explicit', idempotency_key: `mcp:${randomUUID()}` });
+      return value;
+    }))(),
   );
 
   server.tool(
