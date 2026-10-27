@@ -5,6 +5,8 @@ import { ONTOLOGY_META_DDL } from './ontology/registry';
 import { newsDedupKey } from './utils/news-dedup';
 import { migrateRuntimeSchema } from './services/runtime-schema';
 import { randomBytes } from 'node:crypto';
+import { cleanupLegacyNews } from './services/news-legacy-cleanup';
+import { migrateNewsDailyEditions } from './services/news-daily-editions';
 
 interface Migration {
   version: number;
@@ -726,6 +728,41 @@ MIGRATIONS.push({ version: 28, name: 'html_tool_following', up: db => {
 MIGRATIONS.push({ version: 29, name: 'tool_icon_background', up: db => {
   db.exec("ALTER TABLE tools ADD COLUMN icon_background TEXT NOT NULL DEFAULT 'auto'");
 }});
+
+MIGRATIONS.push({ version: 30, name: 'news_modular_feed', up: db => {
+  db.exec(`ALTER TABLE news ADD COLUMN module_id TEXT;
+    ALTER TABLE news ADD COLUMN event_id TEXT;
+    ALTER TABLE news ADD COLUMN topic_keys_json TEXT;
+    ALTER TABLE news ADD COLUMN image_url TEXT;
+    ALTER TABLE news ADD COLUMN image_source_url TEXT;
+    ALTER TABLE news ADD COLUMN image_caption TEXT;
+    ALTER TABLE news ADD COLUMN background TEXT;
+    ALTER TABLE news ADD COLUMN impact TEXT;
+    ALTER TABLE news ADD COLUMN uncertainty TEXT;
+    CREATE TABLE news_feed_state (id INTEGER PRIMARY KEY CHECK(id=1), config_json TEXT NOT NULL,
+      learning_epoch INTEGER NOT NULL DEFAULT 1, last_slot_key TEXT);
+    CREATE TABLE news_feed_events (id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+    CREATE TABLE news_feed_batches (id TEXT PRIMARY KEY, data_json TEXT NOT NULL);
+    CREATE TABLE news_feed_tasks (task_id INTEGER PRIMARY KEY REFERENCES news_tasks(id), batch_id TEXT NOT NULL,
+      module_id TEXT NOT NULL, phase INTEGER NOT NULL, context_json TEXT NOT NULL);
+    CREATE TABLE news_feed_members (batch_id TEXT NOT NULL,module_id TEXT NOT NULL,news_id INTEGER NOT NULL,phase INTEGER NOT NULL DEFAULT 2,candidate_key TEXT,
+      PRIMARY KEY(batch_id,news_id));
+    CREATE TABLE news_feed_feedback (id TEXT PRIMARY KEY, news_id INTEGER NOT NULL, kind TEXT NOT NULL,
+      source TEXT NOT NULL, topic_key TEXT, created_at TEXT NOT NULL, epoch INTEGER NOT NULL);
+    CREATE TABLE news_feed_feedback_receipts (key_hash TEXT PRIMARY KEY);
+    CREATE TABLE news_feed_topics (key TEXT PRIMARY KEY, name TEXT NOT NULL,state TEXT NOT NULL,scope TEXT,
+      cooldown_until TEXT,updated_at TEXT NOT NULL);
+    CREATE TABLE news_feed_candidates (batch_id TEXT PRIMARY KEY, epoch INTEGER NOT NULL, data_json TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE news_feed_corrections (id TEXT PRIMARY KEY,news_id INTEGER NOT NULL,summary TEXT NOT NULL,
+      evidence_url TEXT NOT NULL,created_at TEXT NOT NULL,acknowledged INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE news_schedule_slots(slot_key TEXT PRIMARY KEY, scheduled_at TEXT NOT NULL, attempted_at TEXT NOT NULL, batch_id TEXT, error TEXT);
+    CREATE INDEX news_feed_task_batch ON news_feed_tasks(batch_id,module_id);
+    CREATE INDEX news_feed_feedback_news ON news_feed_feedback(news_id,epoch);
+  `);
+}});
+
+MIGRATIONS.push({ version: 31, name: 'news_legacy_reset', up: cleanupLegacyNews });
+MIGRATIONS.push({ version: 32, name: 'news_daily_editions', up: migrateNewsDailyEditions });
 
 export function runMigrations(db: DbAdapter): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;

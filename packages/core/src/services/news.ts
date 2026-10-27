@@ -150,14 +150,19 @@ export function validateSourceUrl(raw: string): string {
     throw new Error(`来源链接无效：${s.slice(0, 80)}`);
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('来源链接仅支持 http(s)');
+  if (u.username || u.password) throw new Error('来源链接不能包含账号或密码');
   const host = u.hostname.toLowerCase();
   if (!host.includes('.')) throw new Error('来源链接主机名无效（须为真实域名）');
   if (
     host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.startsWith('[') ||
     host.endsWith('.local') ||
     host.endsWith('.internal') ||
     /^(10\.|127\.|192\.168\.|169\.254\.|0\.)/.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host) ||
+    /^198\.(18|19)\./.test(host) || /^(22[4-9]|23\d|24\d|25[0-5])\./.test(host)
   ) {
     throw new Error('来源链接不能指向本地/内网地址');
   }
@@ -167,7 +172,7 @@ export function validateSourceUrl(raw: string): string {
 // 与共享事务使用同一保存点机制，支持后台运行记录与新闻认领原子提交。
 const immediateTx = inTx;
 
-export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseMs?: number } = {}) {
+export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseMs?: number; beforeSubmit?: (taskId: number, items: NewsSubmissionItem[]) => { window_end: string } | null; afterSubmit?: (taskId: number, raw: NewsSubmissionItem[], inserted: NewsItem[]) => void; beforeComplete?: (taskId: number) => unknown } = {}) {
   const LEASE_MS = Math.max(opts.leaseMs ?? NEWS_TASK_LEASE_MS, 1);
   const leaseUntil = (): string => isoAfter(LEASE_MS);
   // 本地快照根目录：必须从数据库路径推导（App 与 MCP 共用；缺省交给 createCore 传真实路径）
@@ -393,7 +398,8 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
     return immediateTx(db, () => {
       const row = assertHeldClaim(Number(taskId), String(claimToken ?? ''));
       const task = mapTask(row);
-      const now = Date.now();
+      const feedContext = opts.beforeSubmit?.(taskId, items);
+      const now = feedContext ? Date.parse(feedContext.window_end) : Date.now();
       const cleaned = items.map((it, i) => validateItem(it, task.window_hours, now, i));
 
       // 简报各来源与独立新闻共同去重；简报自身使用首条来源，不重复计入。
@@ -467,6 +473,7 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
         }
         throw e;
       }
+      opts.afterSubmit?.(taskId, items, inserted);
       // 历史累计收录数随提交递增（删除不减）：预算跨批次/跨重试累计的唯一依据
       db.prepare('UPDATE news_tasks SET accepted_count = accepted_count + ?, updated_at = ? WHERE id = ?')
         .run(cleaned.length, nowStr, Number(task.id));
@@ -480,6 +487,7 @@ export function createNewsService(db: DbAdapter, opts: { dbPath?: string; leaseM
     if (completedNote.length > 500) throw new Error('完成说明过长（≤500 字）');
     return immediateTx(db, () => {
       const row = assertHeldClaim(Number(taskId), String(claimToken ?? ''));
+      opts.beforeComplete?.(taskId);
       const now = nowIso();
       db.prepare(
         "UPDATE news_tasks SET status = 'completed', completed_at = ?, completed_note = ?, claim_token = NULL, claim_expires_at = NULL, claimed_by = NULL, updated_at = ? WHERE id = ?",

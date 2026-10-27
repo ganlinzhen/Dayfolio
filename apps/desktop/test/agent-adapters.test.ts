@@ -26,7 +26,7 @@ describe('Agent 适配协议', () => {
           const config = JSON.parse(readFileSync(join(cwd, 'gemini-home/.gemini/settings.json'), 'utf8'));
           expect(config.tools.core).toEqual(['google_web_search', 'web_fetch']);
           expect(config.mcp.allowed).toEqual(['dayfolio_news']);
-          expect(config.mcpServers.dayfolio_news.includeTools).toEqual(['get_news_task', 'submit_news_items', 'complete_news_task']);
+          expect(config.mcpServers.dayfolio_news.includeTools).toEqual(['get_news_task', 'submit_news_items', 'complete_news_task', 'report_news_correction', 'submit_news_daily_summary']);
         }
       }
     } finally { rmSync(cwd, { recursive: true, force: true }); }

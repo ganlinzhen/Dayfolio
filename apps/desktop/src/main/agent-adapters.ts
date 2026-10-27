@@ -49,7 +49,7 @@ export async function checkAgent(connection: AgentConnection | null): Promise<Ag
 }
 
 interface Invocation { connection: AgentConnection; cwd: string; nodeBinary: string; mcpServer: string; dbPath: string; runId: string }
-const tools = ['get_news_task', 'submit_news_items', 'complete_news_task'];
+const tools = ['get_news_task', 'submit_news_items', 'complete_news_task', 'report_news_correction', 'submit_news_daily_summary'];
 export function buildAgentInvocation({ connection, cwd, nodeBinary, mcpServer, dbPath, runId }: Invocation) {
   const { provider, model } = connection;
   const env: NodeJS.ProcessEnv = {};

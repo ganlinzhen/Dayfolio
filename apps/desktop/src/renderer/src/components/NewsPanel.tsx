@@ -1,571 +1,209 @@
-import NewsAgentControls, { useNewsAgent } from './NewsAgentControls';
-// 新闻面板（agent-only）：任务/规则/结果/收藏的持久展示。
-// - App 不抓取 RSS、不配置新闻源或凭证、无任何定时抓取入口；
-// - 新闻由配置的 Agent 或对话中的 Agent 采集，经受限业务入口提交；
-// - 新闻按发布时间倒序，滚动到底部自动分页加载；
-// - 内容两种形态：'url' 详情页内嵌来源网页；'html' 用 agent 提交的本地快照展示
-//   （X/Twitter 等无法内嵌的来源；快照经 news-file:// 协议在 iframe 中加载，可外开原文）；
-// - 旧新闻与收藏（is_starred）全部保留；已读/收藏为用户本地操作，与 MCP 共享同一状态。
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { NewsDailyEdition, NewsDailyEditionPage, NewsFeedConfig, NewsFeedItem, NewsFeedbackKind, NewsInterestState } from '../../../../../../packages/core/src/news-types';
 import { api, call } from '../api';
-import EmbeddedFrame from './EmbeddedFrame';
 import NewsCollectionEditor from './NewsCollectionEditor';
-import type { NewsBrief } from '../../../../../../packages/core/src/types';
-import { IconExternal, IconRefresh, IconSearch, IconStar, IconTrash, IconX } from './icons';
+import NewsAgentControls, { useNewsAgent } from './NewsAgentControls';
+import NewsFeedReader, { NewsFeedImage, newsSource, newsTime } from './NewsFeedReader';
+import { IconSearch, IconStar } from './icons';
 import { toast } from './Toast';
-import type { WebViewElement } from '../webview';
+import './news-feed.css';
 
-interface NewsRow {
-  id: number;
-  source: string;
-  title: string;
-  url: string;
-  summary: string;
-  published_date: string;
-  published_at: string | null;
-  is_read: boolean;
-  is_starred: boolean;
-  task_id: number | null;
-  source_name: string | null;
-  content_kind: 'url' | 'html' | 'brief';
-  brief: NewsBrief | null;
-  html_rel: string | null;
-}
-interface NewsTask {
-  id: number;
-  title: string;
-  instructions: string;
-  max_items: number;
-  window_hours: number;
-  status: 'pending' | 'claimed' | 'completed' | 'cancelled';
-  created_by: string;
-  claimed_by: string | null;
-  claim_expires_at: string | null;
-  attempts: number;
-  inserted_count: number;
-  accepted_count: number;
-  remaining: number;
-  completed_at: string | null;
-  completed_note: string | null;
-  last_error: string | null;
-  created_at: string;
-}
-type Filter = 'all' | 'unread' | 'starred';
-type SourceStatus = 'idle' | 'loading' | 'ready' | 'failed';
-
-const PAGE_SIZE = 30;
-
-const STATUS_LABEL: Record<NewsTask['status'], string> = {
-  pending: '未完成',
-  claimed: '核实中',
-  completed: '已完成',
-  cancelled: '已取消',
-};
-
-const sourceBadge = (n: NewsRow): string => {
-  if (n.source === 'agent') return n.source_name || 'Agent 提交';
-  if (n.source === 'x') return 'X';
-  return n.source;
-};
-
-/** 新闻发布时间统一按北京时间展示；入库时间使用 UTC ISO 字符串。 */
-const publishedTime = (n: NewsRow): string => {
-  if (!n.published_at) return n.published_date;
-  const timestamp = Date.parse(n.published_at);
-  if (Number.isNaN(timestamp)) return n.published_date;
-  return new Date(timestamp + 8 * 60 * 60_000).toISOString().slice(0, 16).replace('T', ' ');
-};
-
-/** 内嵌原文只放行干净的 HTTPS 地址；其他来源保留外部打开入口 */
-const isEmbeddableSource = (url: string): boolean => {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'https:' && parsed.username === '' && parsed.password === '';
-  } catch {
-    return false;
-  }
-};
-const sourceHost = (url: string): string => {
-  try { return new URL(url).host; } catch { return '原文'; }
-};
-
-const publishedSortValue = (n: NewsRow): number => {
-  const timestamp = Date.parse(n.published_at ?? `${n.published_date}T23:59:59+08:00`);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
+type Filter = 'all' | 'unread' | 'starred' | 'hidden';
+type Page = 'read' | 'config' | 'progress';
+const labels: Record<Filter, string> = { all: '全部', unread: '未读', starred: '收藏', hidden: '已隐藏' };
+const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
+const dateLabel = (date: string) => `${date.slice(0, 4)}年${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`;
+const timeLabel = (stamp: string) => new Date(stamp).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit' });
+const unique = <T extends { id: number | string }>(items: T[]): T[] => [...new Map(items.map(item => [item.id, item])).values()];
+const retainOrder = <T extends { id: number | string }>(previous: T[], incoming: T[]): T[] => {
+  const next = new Map(incoming.map(item => [item.id, item]));
+  return [...previous.filter(item => next.has(item.id)).map(item => next.get(item.id)!), ...incoming.filter(item => !previous.some(old => old.id === item.id))];
 };
 
 export default function NewsPanel() {
-  const [items, setItems] = useState<NewsRow[]>([]);
-  const [tasks, setTasks] = useState<NewsTask[]>([]);
-  const [filter, setFilter] = useState<Filter>('all');
-  const [search, setSearch] = useState('');
-  const [taskFilter, setTaskFilter] = useState<number | null>(null); // 选中任务 → 只看该任务结果
-  const [selected, setSelected] = useState<NewsRow | null>(null);
-  const [sourceStatus, setSourceStatus] = useState<SourceStatus>('idle');
-  const [sourceNonce, setSourceNonce] = useState(0);
+  const [config, setConfig] = useState<NewsFeedConfig | null>(null);
+  const [interests, setInterests] = useState<NewsInterestState | null>(null);
+  const [corrections, setCorrections] = useState<NewsFeedItem[]>([]);
+  const [editions, setEditions] = useState<NewsDailyEdition[]>([]);
+  const [homeFilter, setHomeFilter] = useState<Filter>('all');
+  const [homeSearch, setHomeSearch] = useState('');
+  const [homeQuery, setHomeQuery] = useState('');
+  const [homeLimit, setHomeLimit] = useState(40);
+  const [homeHasMore, setHomeHasMore] = useState(false);
+  const [homeLoading, setHomeLoading] = useState(true);
+  const [editionId, setEditionId] = useState<string | null>(null);
+  const [editionPage, setEditionPage] = useState<NewsDailyEditionPage | null>(null);
+  const [editionFilter, setEditionFilter] = useState<Filter>('all');
+  const [editionSearch, setEditionSearch] = useState('');
+  const [editionQuery, setEditionQuery] = useState('');
+  const [expandedLimit, setExpandedLimit] = useState<number | null>(null);
+  const editionModuleId = editionPage?.edition.module_id || editions.find(value => value.id === editionId)?.module_id;
+  const headlineCount = config?.modules.find(module => module.id === editionModuleId)?.headline_count || 5;
+  const articleLimit = expandedLimit ?? headlineCount;
+  const [editionLoading, setEditionLoading] = useState(false);
+  const [selected, setSelected] = useState<NewsFeedItem | null>(null);
+  const [page, setPage] = useState<Page>('read');
+  const [dirty, setDirty] = useState(false);
+  const [moduleSeed, setModuleSeed] = useState<{ name: string; scope: string } | null>(null);
   const [error, setError] = useState('');
-  const [collectOpen, setCollectOpen] = useState(false);
-  const [promptDirty, setPromptDirty] = useState(false);
-  const leaveCollection = () => {
-    if (promptDirty && !window.confirm('采集提示词尚未保存，放弃修改并返回新闻？')) return;
-    setPromptDirty(false); setCollectOpen(false);
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const scroll = useRef({ home: 0, edition: 0 });
+  const restore = useRef<'home' | 'edition' | null>(null);
+  const homeAnchor = useRef<{ id: string; top: number } | null>(null);
+  const homeGeneration = useRef(0), editionGeneration = useRef(0);
+  const editionCriteria = useRef(''), homeCriteria = useRef('');
+  const readingSession = useRef(crypto.randomUUID());
+  const selectedRef = useRef(selected); selectedRef.current = selected;
+  const viewRef = useRef({ page, editionId }); viewRef.current = { page, editionId };
+
+  useEffect(() => { const timer = setTimeout(() => setHomeQuery(homeSearch.trim()), 250); return () => clearTimeout(timer); }, [homeSearch]);
+  useEffect(() => { const timer = setTimeout(() => setEditionQuery(editionSearch.trim()), 250); return () => clearTimeout(timer); }, [editionSearch]);
+  const rememberHomeAnchor = () => {
+    const node = scroller.current;
+    if (!node || viewRef.current.editionId || selectedRef.current || viewRef.current.page !== 'read') return;
+    if (node.scrollTop < 8) { homeAnchor.current = null; return; }
+    const top = node.getBoundingClientRect().top;
+    const row = [...node.querySelectorAll<HTMLElement>('[data-edition-id]')].find(item => item.getBoundingClientRect().bottom > top);
+    homeAnchor.current = row ? { id: row.dataset.editionId!, top: row.getBoundingClientRect().top - top } : null;
   };
-  useEffect(() => {
-    if (!promptDirty) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [promptDirty]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-
-  const listScrollRef = useRef<HTMLDivElement | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const savedScroll = useRef(0);
-  const sourceViewRef = useRef<WebViewElement | null>(null);
-
-  // 返回列表时恢复滚动位置：selected 变为 null 的提交之后直设 + 短延时重试（防未及布局丢赋值）
-  useEffect(() => {
-    if (selected) return;
-    const top = savedScroll.current;
-    if (top > 0 && listScrollRef.current) {
-      listScrollRef.current.scrollTop = top;
-      const timer = setTimeout(() => {
-        if (listScrollRef.current) listScrollRef.current.scrollTop = top;
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
-
-  // 切换新闻时重置内嵌原文状态；同一新闻标记已读不会触发重新加载
-  useEffect(() => {
-    setSourceStatus(selected ? 'loading' : 'idle');
-  }, [selected?.id, selected?.url]);
-
-  // webview 事件在 DOM 元素上派发；错误只看主 frame，取消加载不算失败
-  useEffect(() => {
-    const view = sourceViewRef.current;
-    if (!selected || !view) return;
-    // Electron webview 的 shadow DOM 内部 iframe 默认只有 150px 高；显式建立高度链
-    const fixGuestViewport = () => {
-      const style = view.shadowRoot?.querySelector('style');
-      if (!style || style.dataset.todoDeskViewport === 'fixed') return;
-      style.dataset.todoDeskViewport = 'fixed';
-      style.textContent += ':host{display:block;width:100%;height:100%}:host iframe{width:100% !important;height:100% !important;flex:none !important;border:0 !important}';
-    };
-    fixGuestViewport();
-    const markLoading = () => setSourceStatus('loading');
-    const markReady = () => {
-      fixGuestViewport();
-      setSourceStatus('ready');
-    };
-    const markFailed = (event: Event) => {
-      const detail = event as Event & { errorCode?: number; isMainFrame?: boolean };
-      if (detail.isMainFrame === false || detail.errorCode === -3) return;
-      setSourceStatus('failed');
-    };
-    view.addEventListener('did-attach', fixGuestViewport);
-    view.addEventListener('did-start-loading', markLoading);
-    view.addEventListener('did-navigate', markReady);
-    view.addEventListener('dom-ready', markReady);
-    view.addEventListener('did-fail-load', markFailed);
-    return () => {
-      view.removeEventListener('did-start-loading', markLoading);
-      view.removeEventListener('did-navigate', markReady);
-      view.removeEventListener('dom-ready', markReady);
-      view.removeEventListener('did-fail-load', markFailed);
-      view.removeEventListener('did-attach', fixGuestViewport);
-    };
-  }, [selected?.id, selected?.url, sourceNonce]);
-
-  const refreshTasks = useCallback(async () => {
-    const list = await call<NewsTask[]>(() => api.news.tasks({}));
-    setTasks(list);
+  const loadConfig = useCallback(async () => {
+    const [value, profile, corrected] = await Promise.all([
+      call<NewsFeedConfig>(() => api.news.feedConfig()), call<NewsInterestState>(() => api.news.feedInterests()),
+      call<NewsFeedItem[]>(() => api.news.feedList({ history: true, corrections_only: true, limit: 500 })),
+    ]);
+    setConfig(previous => JSON.stringify(previous) === JSON.stringify(value) ? previous : value);
+    setInterests(profile); setCorrections(corrected.filter(item => !item.hidden));
   }, []);
-
-  const fetchNewsPage = useCallback(async (offset: number, append: boolean) => {
-    const list = await call<NewsRow[]>(() =>
-      api.news.list({
-        task_id: taskFilter ?? undefined,
-        search: search || undefined,
-        filter,
-        limit: PAGE_SIZE + 1,
-        offset,
-      }),
-    );
-    const more = list.length > PAGE_SIZE;
-    const page = more ? list.slice(0, PAGE_SIZE) : list;
-    setHasMore(more);
-    if (!append) {
-      setItems(page);
-      return;
-    }
-    setItems((prev) => {
-      const merged = new Map(prev.map((item) => [item.id, item]));
-      for (const item of page) merged.set(item.id, item);
-      return [...merged.values()].sort((a, b) => publishedSortValue(b) - publishedSortValue(a) || b.id - a.id);
-    });
-  }, [taskFilter, search, filter]);
-
-  const refreshList = useCallback(async () => {
-    await fetchNewsPage(0, false);
-  }, [fetchNewsPage]);
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore || selected || collectOpen) return;
-    setLoadingMore(true);
-    void fetchNewsPage(items.length, true)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoadingMore(false));
-  }, [loadingMore, hasMore, selected, collectOpen, fetchNewsPage, items.length]);
-
-  useEffect(() => { void refreshTasks().catch((e: Error) => setError(e.message)); }, [refreshTasks]);
-  useEffect(() => { void refreshList().catch((e: Error) => setError(e.message)); }, [refreshList]);
-
-  const agent = useNewsAgent(() => { void refreshTasks().catch(() => {}); void refreshList().catch(() => {}); });
-
-  // 去掉手动刷新按钮后，窗口重新聚焦时静默同步本地库；App 仍不联网抓取
+  useEffect(() => { void loadConfig().catch(error => { setError(errorText(error)); setHomeLoading(false); }); }, [loadConfig]);
+  const fetchEditions = useCallback(async () => {
+    const pages = await Promise.all(Array.from({ length: Math.ceil(homeLimit / 40) }, (_, index) => call<NewsDailyEdition[]>(() => api.news.feedDailyEditions({ filter: homeFilter, search: homeQuery || undefined, limit: 40, offset: index * 40 }))));
+    return { items: unique(pages.flat()), hasMore: pages.at(-1)?.length === 40 };
+  }, [homeFilter, homeQuery, homeLimit]);
+  const fetchEdition = useCallback(async () => {
+    if (!editionId) return null;
+    // 先收齐当前匹配成员，再维持已展示顺序；仅查前五条会被新的重点排序挤走。
+    const first = await call<NewsDailyEditionPage>(() => api.news.feedDailyEdition({ id: editionId, filter: editionFilter, search: editionQuery || undefined, limit: 100, offset: 0 }));
+    const pages = [first, ...await Promise.all(Array.from({ length: Math.max(0, Math.ceil(first.total / 100) - 1) }, (_, index) => call<NewsDailyEditionPage>(() => api.news.feedDailyEdition({ id: editionId, filter: editionFilter, search: editionQuery || undefined, limit: 100, offset: (index + 1) * 100 }))))];
+    const items = unique(pages.flatMap(value => value.items));
+    return { ...pages[0], items, has_more: items.length < pages[0].total };
+  }, [editionId, editionFilter, editionQuery]);
+  const displayEdition = useCallback((previous: NewsDailyEditionPage | null, incoming: NewsDailyEditionPage, preserve: boolean) => {
+    const ordered = preserve && previous?.edition.id === incoming.edition.id ? retainOrder(previous.items, incoming.items) : incoming.items;
+    const items = ordered.slice(0, articleLimit);
+    return { ...incoming, items, has_more: items.length < incoming.total };
+  }, [articleLimit]);
   useEffect(() => {
-    const syncOnFocus = () => {
-      void refreshList().catch(() => {});
-      void refreshTasks().catch(() => {});
-    };
-    window.addEventListener('focus', syncOnFocus);
-    return () => window.removeEventListener('focus', syncOnFocus);
-  }, [refreshList, refreshTasks]);
-
-  // 滚动接近列表底部时预加载下一页，避免等用户完全触底
+    const generation = ++homeGeneration.current;
+    const criteria = JSON.stringify([homeFilter, homeQuery]);
+    if (homeCriteria.current !== criteria) setHomeLoading(true);
+    homeCriteria.current = criteria;
+    void fetchEditions().then(value => { if (generation !== homeGeneration.current) return; setEditions(value.items); setHomeHasMore(value.hasMore); }).catch(error => { if (generation === homeGeneration.current) setError(errorText(error)); }).finally(() => { if (generation === homeGeneration.current) setHomeLoading(false); });
+  }, [fetchEditions, homeFilter, homeQuery]);
   useEffect(() => {
-    const sentinel = loadMoreRef.current;
-    const scroller = listScrollRef.current;
-    if (!sentinel || !scroller) return;
-    const observer = new IntersectionObserver(
-      (entries) => { if (entries.some((entry) => entry.isIntersecting)) loadMore(); },
-      { root: scroller, rootMargin: '160px' },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMore]);
-
-  const activeTask = useMemo(() => tasks.find((t) => t.id === taskFilter) ?? null, [tasks, taskFilter]);
-  const pendingCount = useMemo(() => tasks.filter((t) => t.status === 'pending' || t.status === 'claimed').length, [tasks]);
-
-  // ---------- 阅读详情 ----------
-  const openItem = (n: NewsRow) => {
-    savedScroll.current = listScrollRef.current?.scrollTop ?? 0;
-    setSelected(n);
-    if (!n.is_read) {
-      // 阅读即已读（真实行为，持久化；列表与 MCP 共享）
-      void call<NewsRow>(() => api.news.markRead({ id: n.id, read: true }))
-        .then((row) => {
-          setItems((prev) => prev.map((x) => (x.id === row.id ? row : x)));
-          setSelected((prev) => (prev?.id === row.id ? row : prev));
-        })
-        .catch(() => {});
+    const generation = ++editionGeneration.current;
+    if (!editionId) { editionCriteria.current = ''; setEditionLoading(false); return; }
+    const criteria = JSON.stringify([editionId, editionFilter, editionQuery]);
+    const preserve = editionCriteria.current === criteria; editionCriteria.current = criteria;
+    if (!preserve) setEditionLoading(true);
+    void fetchEdition().then(value => { if (generation === editionGeneration.current && value) setEditionPage(previous => displayEdition(previous, value, preserve)); }).catch(error => { if (generation === editionGeneration.current) setError(errorText(error)); }).finally(() => { if (generation === editionGeneration.current) setEditionLoading(false); });
+  }, [editionId, editionFilter, editionQuery, fetchEdition, displayEdition]);
+  const refresh = useCallback(async () => {
+    const hg = homeGeneration.current, eg = editionGeneration.current;
+    try {
+      const [home, current, profile, corrected] = await Promise.all([fetchEditions(), fetchEdition(), call<NewsInterestState>(() => api.news.feedInterests()), call<NewsFeedItem[]>(() => api.news.feedList({ history: true, corrections_only: true, limit: 500 }))]);
+      if (hg === homeGeneration.current) { rememberHomeAnchor(); setEditions(home.items); setHomeHasMore(home.hasMore); }
+      if (eg === editionGeneration.current && current?.edition.id === viewRef.current.editionId) setEditionPage(previous => displayEdition(previous, current, true));
+      setInterests(profile); setCorrections(corrected.filter(item => !item.hidden));
+    } catch (error) { setError(errorText(error)); }
+  }, [fetchEditions, fetchEdition, displayEdition]);
+  useEffect(() => { const timer = setInterval(() => void refresh(), 15000); const focus = () => void refresh(); window.addEventListener('focus', focus); return () => { clearInterval(timer); window.removeEventListener('focus', focus); }; }, [refresh]);
+  const agent = useNewsAgent(() => { void refresh(); });
+  useLayoutEffect(() => {
+    const node = scroller.current; if (!node || selected || page !== 'read') return;
+    if (restore.current) { node.scrollTop = scroll.current[restore.current]; restore.current = null; }
+    if (!editionId && homeAnchor.current) {
+      const anchor = homeAnchor.current;
+      const row = [...node.querySelectorAll<HTMLElement>('[data-edition-id]')].find(value => value.dataset.editionId === anchor.id);
+      if (row) node.scrollTop += row.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.top;
+      homeAnchor.current = null;
     }
+  }, [selected, page, editionId, editions, editionPage]);
+  const backFromArticle = () => { restore.current = editionId ? 'edition' : 'home'; setSelected(null); };
+  const backToHome = () => { scroll.current.edition = scroller.current?.scrollTop || 0; restore.current = 'home'; setEditionId(null); setEditionPage(null); };
+  useEffect(() => { const escape = (event: KeyboardEvent) => { if (event.key !== 'Escape') return; if (selected) backFromArticle(); else if (editionId && page === 'read') backToHome(); }; window.addEventListener('keydown', escape); return () => window.removeEventListener('keydown', escape); }, [selected, editionId, page]);
+  const updateRow = (id: number, patch: Partial<NewsFeedItem>) => {
+    setEditionPage(value => value ? { ...value, items: value.items.map(item => item.id === id ? { ...item, ...patch } : item) } : value);
+    setSelected(value => value?.id === id ? { ...value, ...patch } : value);
   };
-  const backToList = () => {
-    setSelected(null);
-    // 滚动恢复在 selected 变化的 effect 里做：那里已过 React 提交，列表确已重新可见
+  const feedback = async (item: NewsFeedItem, kind: NewsFeedbackKind, topicKey?: string, readingToken?: string) => {
+    try {
+      if (['interested', 'less_topic', 'less_source'].includes(kind) && !config?.learning.enabled) { toast('兴趣学习已关闭，可在配置中开启后记录偏好'); return; }
+      const result = await call<{ recorded: boolean; interests: NewsInterestState }>(() => api.news.feedFeedback({ news_id: item.id, kind, source: 'app', topic_key: topicKey, idempotency_key: `${readingSession.current}:${item.id}:${kind}:${topicKey?.slice(0, 35) || ''}:${['star', 'unstar', 'hide', 'undo_hide'].includes(kind) ? crypto.randomUUID() : 'once'}`, ...(readingToken ? { reading_token: readingToken, reading_seconds: 22 } : {}) }));
+      setInterests(result.interests);
+      if (kind === 'star' || kind === 'unstar') { const actual = result.recorded ? kind === 'star' : (await call<NewsFeedItem[]>(() => api.news.feedList({ history: true, filter: 'starred', search: item.title, limit: 500 }))).some(value => value.id === item.id); updateRow(item.id, { is_starred: actual }); }
+      if (kind === 'hide' || kind === 'undo_hide') { updateRow(item.id, { hidden: kind === 'hide' }); toast(kind === 'hide' ? '已隐藏；可在“已隐藏”筛选恢复' : '已恢复显示'); }
+      if (kind === 'interested') toast('已记录感兴趣，下轮推荐会参考你的反馈');
+      if (kind === 'less_topic') toast('已减少这个主题的推荐');
+      if (kind === 'less_source') toast('已减少这个来源的推荐');
+      void refresh();
+    } catch (error) { setError(errorText(error)); }
   };
-  const reloadSource = () => {
-    setSourceStatus('loading');
-    setSourceNonce((n) => n + 1);
+  const openItem = (item: NewsFeedItem) => {
+    scroll.current[editionId ? 'edition' : 'home'] = scroller.current?.scrollTop || 0; setSelected(item); void feedback(item, 'open');
+    if (!item.is_read) void call(() => api.news.markRead({ id: item.id, read: true })).then(() => { updateRow(item.id, { is_read: true }); void refresh(); }).catch(error => setError(errorText(error)));
   };
-  const toggleStar = (n: NewsRow) => {
-    void call<NewsRow>(() => api.news.markStarred({ id: n.id, starred: !n.is_starred }))
-      .then((row) => {
-        setItems((prev) => prev.map((x) => (x.id === row.id ? row : x)));
-        setSelected((prev) => (prev && prev.id === row.id ? row : prev));
-      })
-      .catch((e: Error) => setError(e.message));
+  const openEdition = (edition: NewsDailyEdition) => {
+    scroll.current.home = scroller.current?.scrollTop || 0; rememberHomeAnchor(); scroll.current.edition = 0;
+    setEditionPage(null); setEditionFilter(homeFilter); setEditionSearch(homeSearch); setEditionQuery(homeQuery); setExpandedLimit(null); setEditionId(edition.id); restore.current = 'edition';
   };
-  const toggleRead = (n: NewsRow) => {
-    void call<NewsRow>(() => api.news.markRead({ id: n.id, read: !n.is_read }))
-      .then((row) => {
-        setItems((prev) => prev.map((x) => (x.id === row.id ? row : x)));
-        setSelected((prev) => (prev && prev.id === row.id ? row : prev));
-      })
-      .catch((e: Error) => setError(e.message));
+  const openCorrection = async (item: NewsFeedItem) => {
+    try { const matches = await call<NewsDailyEdition[]>(() => api.news.feedDailyEditions({ search: item.title, limit: 20 })); if (matches[0]) { scroll.current.home = scroller.current?.scrollTop || 0; scroll.current.edition = 0; setEditionId(matches[0].id); setEditionFilter('all'); setEditionSearch(''); setEditionQuery(''); setExpandedLimit(null); } openItem(item); }
+    catch (error) { setError(errorText(error)); }
   };
+  const toggleRead = async (item: NewsFeedItem) => { try { await call(() => api.news.markRead({ id: item.id, read: !item.is_read })); updateRow(item.id, { is_read: !item.is_read }); void refresh(); } catch (error) { setError(errorText(error)); } };
+  const remove = async (item: NewsFeedItem) => {
+    if (!window.confirm(`删除新闻「${item.title.slice(0, 40)}」？正文、已读与收藏会移除，历史引用保留来源快照；同一内容不会重新收录，删除不可恢复。`)) return;
+    try { await call(() => api.news.delete({ id: item.id })); setEditionPage(value => value ? { ...value, items: value.items.filter(row => row.id !== item.id) } : value); backFromArticle(); toast('新闻已删除'); void refresh(); } catch (error) { setError(errorText(error)); }
+  };
+  const correctionRead = async (id: string) => { try { await call(() => api.news.feedDismissCorrection({ id })); setCorrections(value => value.map(item => ({ ...item, corrections: item.corrections.map(correction => correction.id === id ? { ...correction, acknowledged: true } : correction) })).filter(item => item.corrections.some(correction => !correction.acknowledged))); const item = selectedRef.current; if (item) updateRow(item.id, { corrections: item.corrections.map(correction => correction.id === id ? { ...correction, acknowledged: true } : correction) }); void refresh(); } catch (error) { setError(errorText(error)); } };
+  const navigate = (next: Page) => {
+    if (dirty && page === 'config' && next !== 'config' && !window.confirm('配置草稿尚未保存，放弃修改并离开？')) return;
+    if (page === 'read') scroll.current[editionId ? 'edition' : 'home'] = scroller.current?.scrollTop || 0;
+    if (next === 'read') restore.current = editionId ? 'edition' : 'home';
+    setDirty(false); setPage(next);
+  };
+  const explorationAction = async (action: 'follow' | 'reduce' | 'remove') => { if (!interests?.exploration) return; try { setInterests(await call<NewsInterestState>(() => api.news.feedManageTopic({ key: interests.exploration!.key, name: interests.exploration!.name, action }))); toast(action === 'follow' ? '已关注，下轮更新会搜索这个方向' : action === 'reduce' ? '已减少这个方向' : '候选已移除，可在配置中恢复'); } catch (error) { setError(errorText(error)); } };
+  const active = agent.batches.find(batch => batch.status === 'active');
+  const current = editionId ? editionPage?.edition : null;
+  const filter = editionId ? editionFilter : homeFilter, search = editionId ? editionSearch : homeSearch;
+  const rows = editionPage?.items || [];
+  const loading = editionId ? editionLoading : homeLoading;
+  const setFilter = (value: Filter) => { if (editionId) { setEditionFilter(value); setExpandedLimit(null); } else { setHomeFilter(value); setHomeLimit(40); } if (scroller.current) scroller.current.scrollTop = 0; };
+  const setSearch = (value: string) => { if (editionId) { setEditionSearch(value); setExpandedLimit(null); } else { setHomeSearch(value); setHomeLimit(40); } };
 
-  // ---------- 删除（用户手动确认，不可恢复；core 单事务 + 指纹防回流） ----------
-  const removeItem = (n: NewsRow) => {
-    const ok = window.confirm(
-      `删除新闻「${n.title.slice(0, 40)}」？\n\n删除不可恢复：正文与收藏/已读状态一并移除；引用它的自媒体选题/素材会保留各自成果与来源快照；之后同一链接或同一事件的新闻不会被再次收录，且不返还 AI 采集任务的收录名额。`,
-    );
-    if (!ok) return;
-    void call<{ deleted: boolean }>(() => api.news.delete({ id: n.id }))
-      .then((res) => {
-        if (!res.deleted) return; // 幂等：并发或重复请求已删 → 静默
-        setItems((prev) => prev.filter((x) => x.id !== n.id));
-        // 当前详情被删 → 回列表；滚动恢复沿用 selected 变化的 effect（savedScroll 仍在）
-        setSelected((prev) => (prev && prev.id === n.id ? null : prev));
-        toast('已删除该新闻（不可恢复）');
-        void refreshList().catch(() => {});
-        void refreshTasks().catch(() => {}); // 任务卡的「已收录」计数随之更新
-      })
-      .catch((e: Error) => setError(e.message));
-  };
-
-  const cancelTask = (t: NewsTask) => {
-    void call<NewsTask>(() => api.news.cancelTask({ id: t.id }))
-      .then(() => refreshTasks())
-      .catch((e: Error) => setError(e.message));
-  };
-
-  // ---------- 采集记录：展示用户关心的目标、进度与结果，执行协议细节留在帮助文档 ----------
-  const requestStatusHint = (t: NewsTask): string => {
-    if (t.status === 'pending') return '本次采集尚未完成，可直接调用已配置的 Agent 接续采集。';
-    if (t.status === 'claimed') return t.claimed_by ? `${t.claimed_by} 正在搜索并核实来源。` : 'AI 正在搜索并核实来源。';
-    if (t.status === 'cancelled') return '请求已取消；已收录的内容会保留在新闻库。';
-    return t.inserted_count > 0 ? '结果已进入新闻库，可点击下方按钮查看。' : '时间窗内没有找到合格新闻。';
-  };
-
-  const requestCard = (t: NewsTask) => (
-    <article key={t.id} className={`news3-request ${taskFilter === t.id ? 'active' : ''}`} aria-label={`采集记录：${t.title}`}>
-      <header className="news3-request-top">
-        <span className={`news3-request-status s-${t.status}`}>{STATUS_LABEL[t.status]}</span>
-        <span className="mono news3-request-count">
-          {t.status === 'completed' && t.inserted_count === 0 ? '未收录新闻' : `已收录 ${t.inserted_count} 篇`}
-          <span>上限 {t.max_items} 篇</span>
-        </span>
+  return <div className="panel news3 nf-panel">
+    {error && <div className="notice error nf-global-error" role="alert"><span>{error}</span><button className="btn slim ghost" onClick={() => setError('')}>关闭提示</button></div>}
+    {selected ? <NewsFeedReader item={selected} config={config} learningEpoch={interests?.epoch || 0} backLabel={editionId ? '返回新闻列表' : '返回每日汇总'} onBack={backFromArticle} onFeedback={(item, kind, topic) => void feedback(item, kind, topic)} onRead={(id, token) => { const item = selectedRef.current; if (item?.id === id) void feedback(item, 'read', undefined, token); }} onToggleRead={item => void toggleRead(item)} onDelete={item => void remove(item)} onCorrectionRead={id => void correctionRead(id)} /> : page !== 'read' ? <section className="news3-collect nf-config-page" aria-label={page === 'config' ? '新闻配置页' : '新闻采集进度页'}><button className="backlink news3-back" onClick={() => navigate('read')}>{editionId ? '返回新闻列表' : '返回每日汇总'}</button>{page === 'config' ? <NewsCollectionEditor moduleSeed={moduleSeed} onSeedConsumed={() => setModuleSeed(null)} onDirtyChange={setDirty} onSaved={() => void loadConfig()} /> : <NewsAgentControls agent={agent} disabled={dirty} />}</section> : <section className="news3-list" aria-label={editionId ? '模块新闻列表页' : '每日模块汇总页'}>
+      <header className="news3-list-head nf-list-head">
+        <div className="nf-titlebar nf-daily-toolbar">{editionId ? <button className="backlink news3-back" onClick={backToHome}>返回每日汇总</button> : <p className="nf-update-status" role="status">{active ? '正在整理，新闻与总结会自动更新' : agent.batches[0] ? `上轮 ${timeLabel(agent.batches[0].created_at)} · 北京时间` : '每天每模块一份重点总结'}</p>}<div className="nf-actions"><button className="btn slim" disabled={agent.busy || !!active} onClick={() => { if (!agent.status?.available) { navigate('progress'); return; } void agent.update(); }}>{active ? '正在更新' : '更新新闻'}</button><button className="btn slim" onClick={() => navigate('progress')}>采集进度</button><button className="btn slim" onClick={() => navigate('config')}>配置</button></div></div>
+        {editionId && <div className="nf-edition-heading" data-edition-revision={current?.revision}><h1>{current?.module_name || '正在读取模块…'}</h1>{current && <><time dateTime={current.date}>{current.date}</time><span>共 {current.news_count} 则新闻{current.matching_count !== current.news_count ? ` · 匹配 ${current.matching_count} 则` : ''}</span></>}</div>}
+        <div className="news3-toolbar"><div className="seg" aria-label="阅读状态">{Object.entries(labels).map(([key, value]) => <button className={`seg-item ${filter === key ? 'active' : ''}`} key={key} onClick={() => setFilter(key as Filter)}>{value}</button>)}</div><label className="news3-search"><IconSearch width={14} height={14} /><input aria-label="搜索新闻" placeholder={editionId ? '搜索本期新闻' : '搜索已保存的新闻'} value={search} onChange={event => setSearch(event.target.value)} /></label></div>
       </header>
-      <h3 className="news3-request-title">{t.title}</h3>
-      {t.instructions && <p className="news3-request-instructions">要求：{t.instructions}</p>}
-      <div className="mono news3-request-meta">
-        <span>最近 {t.window_hours} 小时</span>
-        <span>{t.created_by === 'app' ? '来自 App' : '来自 AI'}</span>
+      <div className="news3-scroll nf-feed-scroll" ref={scroller}>
+        {!editionId && corrections.length > 0 && <aside className="notice nf-correction-list"><strong>你读过的新闻有重要更正</strong>{corrections.map(item => <button key={item.id} className="nf-text-action" onClick={() => void openCorrection(item)}>{item.title}</button>)}</aside>}
+        {!editionId && interests?.events.filter(event => event.reminder_due).map(event => <aside key={event.id} className="notice nf-event-reminder"><span>「{event.name}」近期较少查看，要继续关注吗？</span><button className="btn slim" onClick={() => void call(() => api.news.feedDismissEventReminder({ id: event.id })).then(loadConfig).catch(error => setError(errorText(error)))}>继续关注</button><button className="btn slim" onClick={() => void call(() => api.news.feedUpdateEvent({ id: event.id, status: 'paused', expected_revision: event.revision })).then(loadConfig).catch(error => setError(errorText(error)))}>暂停</button></aside>)}
+        {loading ? <div className="nf-loading" role="status">正在读取已保存的内容…</div> : !editionId ? <>
+          {editions.map(edition => <article className="nf-edition-row" data-edition-id={edition.id} key={edition.id}><button className="nf-edition-open" aria-label={`打开${edition.date}${edition.module_name}每日汇总`} onClick={() => openEdition(edition)}><div className="nf-edition-meta"><time dateTime={edition.date}>{dateLabel(edition.date)}</time><span>共 {edition.news_count} 则新闻</span>{edition.unread_count > 0 && <span>{edition.unread_count} 则未读</span>}{edition.matching_count !== edition.news_count && <span>匹配 {edition.matching_count} 则</span>}<span className="nf-edition-time">更新于 {timeLabel(edition.updated_at)}</span></div><h2>{edition.module_name}</h2>{edition.summary ? <p className="nf-edition-summary">{edition.summary}</p> : <p className="nf-edition-summary nf-summary-pending">{edition.summary_status === 'stale' ? '重点内容有变化，等待重新整理总结。' : edition.news_count ? (active ? '新闻已收录，重点总结正在整理。' : '新闻已收录，重点总结待整理。') : (active ? '正在收集本期新闻。' : '本期暂未收录合格新闻。')}</p>}{edition.summary && edition.summary_status === 'stale' && <span className="nf-note">有新进展，重点总结待更新</span>}<span className="nf-edition-enter">查看本期新闻</span></button></article>)}
+          {editions.length === 0 && <div className="empty nf-module-empty">{homeQuery || homeFilter !== 'all' ? '没有符合筛选条件的每日汇总。可以调整筛选或搜索关键词。' : '更新新闻后，每天每个模块会在这里保留一条重点总结。'}</div>}
+          {homeHasMore && <button className="btn nf-expand" onClick={() => setHomeLimit(value => value + 40)}>加载更多汇总</button>}
+        </> : <>
+          {current?.module_id === 'for_you' && interests?.exploration && <aside className="nf-exploration nf-feed-exploration"><strong>发现新方向：{interests.exploration.name}</strong><p>{interests.exploration.reason}</p><div className="nf-actions"><button className="btn slim" onClick={() => void explorationAction('follow')}>关注主题</button><button className="btn slim" onClick={() => { setModuleSeed({ name: interests.exploration!.name, scope: interests.exploration!.scope || interests.exploration!.name }); navigate('config'); }}>加入模块草稿</button><button className="btn slim" onClick={() => void explorationAction('reduce')}>少推荐</button><button className="btn slim" onClick={() => void explorationAction('remove')}>移除候选</button></div></aside>}
+          {rows.map(item => <article key={item.id} className={`news3-row nf-news-row ${item.is_read ? 'read' : 'unread'}`}><div className="nf-row-content"><button className="nf-story-open" aria-label={`打开新闻：${item.title}`} onClick={() => openItem(item)}><span className="news3-row-title">{item.title}</span>{item.summary && <span className="news3-row-summary">{item.summary}</span>}</button><div className="news3-row-meta"><span className="ref-badge">{newsSource(item)}</span><time>{newsTime(item)}</time>{item.is_read && <span>已读</span>}</div>{current?.module_id === 'for_you' && <p className="nf-reason">{item.topic_keys?.length ? interests?.topics.filter(topic => item.topic_keys?.includes(topic.key)).flatMap(topic => topic.reasons.slice(0, 1)).join('；') || '探索推荐：试读一个可能感兴趣的方向' : '探索推荐：试读一个新方向'}</p>}<div className="nf-row-actions"><button className={`nf-text-action ${item.is_starred ? 'is-starred' : ''}`} aria-pressed={item.is_starred} onClick={() => void feedback(item, item.is_starred ? 'unstar' : 'star')}><IconStar width={12} height={12} />{item.is_starred ? '已收藏' : '收藏'}</button><button className="nf-text-action" onClick={() => void feedback(item, 'interested')}>感兴趣</button>{filter === 'hidden' && <button className="nf-text-action" onClick={() => void feedback(item, 'undo_hide')}>恢复显示</button>}</div></div>{(config?.modules.find(module => module.id === item.module_id)?.content.image_policy || config?.content.image_policy) !== 'none' && (config?.modules.find(module => module.id === item.module_id)?.content.image_display || config?.content.image_display) !== 'detail_only' && <button className="nf-image-open" aria-label={`查看${item.title}的详情与配图`} onClick={() => openItem(item)}><NewsFeedImage item={item} compact /></button>}</article>)}
+          {rows.length === 0 && <div className="empty nf-module-empty">{editionQuery || filter !== 'all' ? '本期没有符合筛选条件的新闻。' : '本期暂未收录合格新闻，整理结果会自动显示。'}</div>}
+          {editionPage?.has_more && <button className="btn nf-expand" onClick={() => setExpandedLimit(value => (value ?? headlineCount) + 10)}>{editionPage.total - rows.length <= 10 ? `展开其余 ${editionPage.total - rows.length} 则` : '再显示 10 则'}</button>}
+          {articleLimit > headlineCount && rows.length > headlineCount && <button className="btn nf-expand" onClick={() => setExpandedLimit(null)}>收起更多新闻</button>}
+        </>}
       </div>
-      <p className="news3-request-hint">{requestStatusHint(t)}</p>
-      <footer className="news3-request-actions">
-        {t.inserted_count > 0 && (
-          <button
-            className="btn slim"
-            onClick={() => { if (promptDirty && !window.confirm('采集提示词尚未保存，放弃修改并查看结果？')) return; setPromptDirty(false); setTaskFilter(t.id); setSelected(null); setCollectOpen(false); }}
-          >查看 {t.inserted_count} 篇</button>
-        )}
-        {t.status === 'pending' && !agent.runs.some(r => r.task_id === t.id && ['queued','running','cancelling'].includes(r.status)) && <button className="btn slim" disabled={agent.busy} onClick={() => void agent.run(t.id)}>重试采集</button>}
-        {t.status === 'pending' && (
-          <button className="btn slim ghost" onClick={() => cancelTask(t)}>取消记录</button>
-        )}
-      </footer>
-    </article>
-  );
-
-  const collectPage = (
-    <>
-      <header className="news3-collect-head">
-        <div><h2 className="news3-collect-title">AI 采集</h2><p className="news3-collect-desc">直接调用已配置的 Agent 更新新闻，或在 Agent 对话中完成采集。</p></div>
-      </header>
-      <NewsAgentControls agent={agent} disabled={promptDirty} />
-      <NewsCollectionEditor onDirtyChange={setPromptDirty} />
-      <h3>采集记录</h3>
-      <div className="news3-request-list">
-        {tasks.length === 0 && <div className="news3-request-empty"><strong>还没有采集记录</strong><span>保存要求后点击「更新今日新闻」，结果会自动进入新闻库。</span></div>}
-        {tasks.map(requestCard)}
-      </div>
-    </>
-  );
-
-  const detail = selected;
-  const detailBody = (
-    <div className="news3-detail-body">
-      {detail ? (
-        <>
-          <h2 className="news3-title">{detail.title}</h2>
-          <div className="news3-detail-meta mono">
-            <span className="ref-badge">{sourceBadge(detail)}</span>
-            {detail.brief && <span className="ref-badge">专题简报 · {detail.brief.items.length} 则</span>}
-            {detail.content_kind === 'html' && <span className="ref-badge">本地快照</span>}
-            {publishedTime(detail)}
-            <span className="spacer" />
-            <button className={`icon-btn ${detail.is_starred ? 'starred' : ''}`} title={detail.is_starred ? '取消收藏' : '收藏'} onClick={() => toggleStar(detail)}>
-              <IconStar width={14} height={14} />
-            </button>
-            <button className="btn slim ghost" onClick={() => toggleRead(detail)}>{detail.is_read ? '标为未读' : '标为已读'}</button>
-            <button className="btn slim danger ghost" title="删除这条新闻（不可恢复）" onClick={() => removeItem(detail)}>删除</button>
-          </div>
-          {/* 只展示真实入库的内容（agent 核实后的摘要），绝不伪造全文 */}
-          <div className="news3-content">{detail.summary || '（这条内容没有可用摘要，点下方原文入口查看来源页面）'}</div>
-          {detail.brief ? (
-            <article className="news3-brief" aria-label="专题简报正文">
-              <h3>本期看点</h3><p className="news3-brief-overview">{detail.brief.overview}</p>
-              <ol>{detail.brief.items.map((entry, index) => <li key={`${index}:${entry.source_url}`}>
-                <h3>{entry.title}</h3><p>{entry.summary}</p>
-                <div className="news3-brief-source">
-                  <span>{publishedTime({ ...detail, published_at: entry.published_at })}（北京时间）</span>
-                  <a href={entry.source_url} onClick={(event) => {
-                    event.preventDefault();
-                    void call(() => api.news.openUrl({ url: entry.source_url })).catch((e: Error) => setError(e.message));
-                  }}>阅读来源：{entry.source_name || sourceHost(entry.source_url)} <IconExternal width={12} height={12} /></a>
-                </div>
-              </li>)}</ol>
-            </article>
-          ) : detail.content_kind === 'html' && detail.html_rel ? (
-            <EmbeddedFrame
-              label="新闻本地快照内嵌阅读"
-              className="news-source-embed"
-              title="本地快照"
-              meta={
-                <span className={`news3-source-status s-${sourceStatus}`}>
-                  {sourceStatus === 'loading' ? '加载中…' : sourceStatus === 'ready' ? '已加载' : sourceStatus === 'failed' ? '加载失败' : ''}
-                </span>
-              }
-              actions={
-                <>
-                <button className="btn slim ghost" onClick={reloadSource} title="重新加载本地快照">
-                  <IconRefresh width={13} height={13} />重新加载
-                </button>
-                <button className="btn slim ghost" onClick={() => void call(() => api.news.openUrl({ url: detail.url }))}>
-                  <IconExternal width={13} height={13} />打开原文
-                </button>
-                </>
-              }
-            >
-              {/* X/Twitter 等来源无法内嵌网页，改用 agent 提交的本地快照（news-file:// 协议，圈定在库旁 news 目录） */}
-              <iframe
-                key={`snap:${detail.id}:${detail.html_rel}:${sourceNonce}`}
-                className="tool-iframe news3-source-view"
-                title={`本地快照 · ${detail.title.slice(0, 30)}`}
-                src={`news-file://n/${detail.html_rel}`}
-                onLoad={() => setSourceStatus('ready')}
-              />
-            </EmbeddedFrame>
-          ) : isEmbeddableSource(detail.url) ? (
-            <EmbeddedFrame
-              label="新闻原文内嵌阅读"
-              className="news-source-embed"
-              title={`原文 · ${sourceHost(detail.url)}`}
-              meta={
-                <span className={`news3-source-status s-${sourceStatus}`}>
-                  {sourceStatus === 'loading' ? '加载中…' : sourceStatus === 'ready' ? '已加载' : sourceStatus === 'failed' ? '加载失败' : ''}
-                </span>
-              }
-              actions={
-                <>
-                <button className="btn slim ghost" onClick={reloadSource} title="重新加载来源页面">
-                  <IconRefresh width={13} height={13} />重新加载
-                </button>
-                <button className="btn slim ghost" onClick={() => void call(() => api.news.openUrl({ url: detail.url }))}>
-                  <IconExternal width={13} height={13} />打开原文
-                </button>
-                </>
-              }
-            >
-              <webview
-                key={`view:${detail.id}:${detail.url}:${sourceNonce}`}
-                ref={sourceViewRef}
-                className="news3-source-view"
-                src={detail.url}
-                partition="news-source"
-                allowpopups={false}
-              />
-            </EmbeddedFrame>
-          ) : (
-            <div className="news3-source-fallback">
-              <span>这条来源不是 HTTPS 页面，不能内嵌显示。</span>
-              <button className="btn" onClick={() => void call(() => api.news.openUrl({ url: detail.url }))}>
-                <IconExternal width={13} height={13} />打开原文
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="news3-empty">从列表选择一条内容开始阅读</div>
-      )}
-    </div>
-  );
-
-  return (
-    <div className="panel news3">
-      {selected ? (
-        <section className="news3-detail" aria-label="新闻详情页">
-          <button className="backlink news3-back" onClick={backToList}>← 返回列表</button>
-          {error && <div className="notice error" onClick={() => setError('')}>{error}</div>}
-          {detailBody}
-        </section>
-      ) : collectOpen ? (
-        <section className="news3-collect" aria-label="AI 采集页">
-          <button className="backlink news3-back" onClick={leaveCollection}>← 返回新闻</button>
-          {error && <div className="notice error" onClick={() => setError('')}>{error}</div>}
-          {collectPage}
-        </section>
-      ) : (
-      <section className="news3-list" aria-label="新闻列表页">
-        <header className="news3-list-head">
-          <div className="news3-toolbar">
-            <div className="seg">
-              {([['all', '全部'], ['unread', '未读'], ['starred', '收藏']] as Array<[Filter, string]>).map(([f, label]) => (
-                <button key={f} className={`seg-item ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{label}</button>
-              ))}
-            </div>
-            <div className="news3-search">
-              <IconSearch width={13} height={13} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索库内新闻（本地查询，不联网）" aria-label="库内搜索" />
-            </div>
-            <button className="btn slim" disabled={agent.busy || agent.runs.some(r => ['queued','running','cancelling'].includes(r.status))} onClick={() => { if (!agent.status?.available) { window.dispatchEvent(new Event('dayfolio:openSettings')); return; } setCollectOpen(true); void agent.run(); }}>更新今日新闻</button>
-            <button className="btn slim primary" onClick={() => { setSelected(null); setCollectOpen(true); }}>
-              AI 采集{pendingCount ? ` · ${pendingCount}` : ''}
-            </button>
-          </div>
-          {activeTask && (
-            <div className="news3-collection-filter mono">
-              来自采集：{activeTask.title} · {activeTask.inserted_count} 篇
-              <button className="icon-btn" aria-label="清除任务过滤" onClick={() => setTaskFilter(null)}><IconX width={12} height={12} /></button>
-            </div>
-          )}
-        </header>
-        {error && <div className="notice error" onClick={() => setError('')}>{error}</div>}
-        <div className="news3-scroll" ref={listScrollRef}>
-          {items.length === 0 && <div className="empty">没有匹配的内容{filter === 'starred' ? '；收藏后会在「收藏」里出现' : ''}</div>}
-          {items.map((n) => (
-            // 行内含删除按钮，不能整体用 <button>（交互元素不可嵌套）：改为 role=button 的行容器
-            <div
-              key={n.id}
-              className={`news3-row ${n.is_read ? 'read' : 'unread'}`}
-              role="button"
-              tabIndex={0}
-              aria-label={`打开新闻：${n.title.slice(0, 30)}`}
-              onClick={() => openItem(n)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  openItem(n);
-                }
-              }}
-            >
-              <span className="news3-unread-dot" title={n.is_read ? '已读' : '未读'} />
-              <span className="news3-row-main">
-                <span className="news3-row-title">{n.title}</span>
-                {n.summary && n.summary !== n.title && <span className="news3-row-summary">{n.summary}</span>}
-                <span className="news3-row-meta mono">
-                  <span className="ref-badge">{sourceBadge(n)}</span>
-                  {n.brief && <span className="ref-badge">专题简报 · {n.brief.items.length} 则</span>}
-                  {n.content_kind === 'html' && <span className="ref-badge">快照</span>}
-                  {publishedTime(n)}
-                </span>
-              </span>
-              <span className={`news3-star ${n.is_starred ? 'on' : ''}`} title={n.is_starred ? '已收藏' : ''}><IconStar width={12} height={12} /></span>
-              <button
-                className="icon-btn subtle news3-row-del"
-                aria-label={`删除新闻「${n.title.slice(0, 20)}」`}
-                title="删除（不可恢复）"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeItem(n);
-                }}
-              >
-                <IconTrash width={13} height={13} />
-              </button>
-            </div>
-          ))}
-          <div ref={loadMoreRef} className="news3-load-more mono" aria-live="polite">
-            {loadingMore ? '正在加载更多…' : hasMore ? '继续下拉自动加载' : '已显示全部新闻'}
-          </div>
-        </div>
-      </section>
-      )}
-    </div>
-  );
+    </section>}
+  </div>;
 }

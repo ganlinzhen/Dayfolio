@@ -465,6 +465,7 @@ describe('删除新闻：事务边界、共享引用与指纹防回流', () => {
       const setup = new DatabaseSync(dbPath);
       try {
         // 共享引用：旧版话题链接 + 自媒体选题 + 自媒体素材（三者均指向同一新闻）
+        setup.prepare("INSERT INTO news_sources (id,name,enabled) VALUES ('x','测试来源',1)").run();
         setup.prepare("INSERT INTO news_topics (source_id, name, query) VALUES ('x', '话题A', 'kw')").run();
         setup.prepare('INSERT INTO news_topic_links (news_id, topic_id) VALUES (?, 1)').run(newsId);
       } finally {
@@ -624,7 +625,7 @@ describe('删除新闻：事务边界、共享引用与指纹防回流', () => {
 });
 
 describe('v10 → v11 迁移：news_deleted_fingerprints + accepted_count 回填', () => {
-  it('v10 结构副本升级：指纹表重建、accepted_count 按存量回填、存量行零丢失、完整性检查通过', () => {
+  it('v10 历史步骤正确回填计数，再升级当前版本时清理旧新闻且完整性检查通过', () => {
     const { db: down, dbPath, cleanup } = mkLegacyDb(10);
     try {
       // 真实执行到 v10 的合成库；不能把当前新库只改版本号冒充旧结构。
@@ -641,6 +642,11 @@ describe('v10 → v11 迁移：news_deleted_fingerprints + accepted_count 回填
         down.prepare(
           "INSERT INTO news (source, title, url, summary, published_date, fetched_at, dedup_key, task_id) VALUES ('agent', 'v10 存量二', 'https://example.com/v10-2', 's', '2026-10-01', '2026-10-01T00:00:00.000', 'url:example.com/v10-2', 1)",
         ).run();
+        // 单独核对历史迁移的职责；当前升级随后按产品决定清空旧新闻。
+        MIGRATIONS.find(migration => migration.version === 11)!.up(down);
+        down.exec('PRAGMA user_version=11');
+        expect(down.prepare('SELECT accepted_count FROM news_tasks WHERE id=1').get()?.accepted_count).toBe(2);
+        expect(down.prepare('SELECT COUNT(*) AS n FROM news').get()?.n).toBe(2);
       } finally {
         down.close();
       }
@@ -651,11 +657,9 @@ describe('v10 → v11 迁移：news_deleted_fingerprints + accepted_count 回填
         const ver = db.prepare('PRAGMA user_version').get() as { user_version: number };
         expect(ver.user_version).toBe(MIGRATIONS.length);
         expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='news_deleted_fingerprints'").get()).toBeTruthy();
-        expect(core.news.getTask(1).accepted_count).toBe(2); // 按存量回填
-        expect(core.news.getTask(1).inserted_count).toBe(2);
-        expect(core.news.list({ limit: 10 }).filter((n) => n.task_id === 1).length).toBe(2); // 存量零丢失
-        // v12：内容形态列补齐，历史行默认 url / 无快照，行为不变
-        expect(core.news.list({ limit: 10 }).every((n) => n.content_kind === 'url' && n.html_rel === null)).toBe(true);
+        expect(core.news.list({ limit: 10 })).toEqual([]);
+        expect(db.prepare('SELECT COUNT(*) AS n FROM news_tasks').get()?.n).toBe(0);
+        expect(db.prepare('PRAGMA table_info(news)').all().some(column => column.name === 'content_kind')).toBe(true);
         expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
         expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
       } finally {

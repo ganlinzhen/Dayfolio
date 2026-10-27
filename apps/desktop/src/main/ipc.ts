@@ -17,6 +17,7 @@ import { toolsRoot } from './tools-store';
 import { registerExtensionIpc } from './extension-ipc';
 import { registerRuntimeIpc } from './runtime-ipc';
 import { registerToolTodoIpc } from './tool-todo-ipc';
+import { registerNewsFeedIpc } from './news-feed-ipc';
 import { checkAgent, type AgentConnection } from './agent-adapters';
 import { AGENT_PROVIDERS } from '../../../../packages/core/src';
 
@@ -35,6 +36,7 @@ const handle = (channel: string, fn: (payload: unknown) => unknown) => {
 export function registerIpc(core: TodoDeskCore, newsAgent: ReturnType<typeof createNewsAgentRunner>): void {
   registerRuntimeIpc(core);
   registerToolTodoIpc(core);
+  registerNewsFeedIpc(core, newsAgent);
   registerExtensionIpc(core);
   registerAgentIpc();
   // 数据面板 / 本体管理（对象·链接·动作三类型）

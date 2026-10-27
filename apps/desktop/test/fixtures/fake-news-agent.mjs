@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // 仅用于隔离界面验收：模拟推理引擎，但使用真实 stdio MCP 与业务校验。
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 const provider = process.env.DAYFOLIO_TEST_PROVIDER || 'codex';
 if (process.argv.includes('--version')) { console.log(provider === 'codex' ? 'codex-cli 0.163.0' : provider + ' 9.0.0'); process.exit(0); }
 if (process.argv.includes('--help')) { console.log('--strict-mcp-config --bare --tools --output-format --allowed-mcp-server-names --extensions'); process.exit(0); }
 if (process.argv.includes('login') || process.argv.includes('auth')) process.exit(0);
+// 连接检查无需加载 MCP SDK，避免并行测试时不必要的启动开销。
+const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
 let command, args, env;
 if (provider === 'codex') {
   const cfg = Object.fromEntries(process.argv.flatMap((arg, i, all) => {
