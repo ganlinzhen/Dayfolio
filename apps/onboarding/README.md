@@ -27,6 +27,7 @@ apps/onboarding/
 | HTML 工具导入、横向卡片、打开、编辑模式、分类排序与分组、完整信息与图片图标编辑、弹窗内删除，以及单条与批量待办预览、确认后创建分类与分类筛选、通用持续关注及来源更新和手动/完成保护 | `../help/docs/06-toolbox.md`、`../help/docs/02-todos.md`、`../help/docs/16-calendar.md` |
 | 通用 Agent 选择、CLI 路径、模型、连接检查与保存 | `../help/docs/19-settings.md` |
 | 本地数据与文件、AI 接入 | `../help/docs/08-mcp.md` |
+| 对象类型按菜单与基础功能分组、数量、折叠及待办完成记录入口 | `../help/docs/10-data.md` |
 | 计划、课程入口与逐日学习 | `../help/docs/03-plans.md`、`../help/docs/11-course.md` |
 | 带课程的草案确认、双向关联核对与旧关联补齐 | `../help/docs/03-plans.md`、`../help/docs/09-study-loop.md` |
 | 学习会话、测评与复习 | `../help/docs/09-study-loop.md` |

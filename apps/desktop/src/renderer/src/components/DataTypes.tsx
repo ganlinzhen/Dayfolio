@@ -3,7 +3,9 @@ import { ObjectParameter } from './DataObjects';
 import ActionValuesInput from './ActionValuesInput';
 import ActionHistory from './ActionHistory';
 // 数据面板·三类类型管理：对象类型（建/加属性/删）、链接类型（建/删）、动作类型（建/启停/删/执行动作）
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { groupObjectTypes } from './data-type-groups';
+import './data-type-groups.css';
 import type { ActionService } from '../../../../../../packages/core/src/ontology/action';
 import { api, call } from '../api';
 import { toast } from './Toast';
@@ -48,6 +50,15 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
   const [addProp, setAddProp] = useState<PropDraft>(emptyProp());
   const [deleting, setDeleting] = useState<ObjectTypeDef | null>(null);
   const [confirmName, setConfirmName] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const groupId = useId();
+  const groups = groupObjectTypes(types);
+  const toggleGroup = (id: string) => setCollapsedGroups(current => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
 
   const openCreate = () => setCreating(true);
 
@@ -105,7 +116,7 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
   return (
     <div>
       <div className="toolbar">
-        <span className="sub">{detailType ? '字段定义、约束与索引。内置字段受保护，自定义字段可管理。' : '选择一种对象类型，查看表结构、关系、动作和已有对象。'}</span>
+        <span className="sub">{detailType ? '字段定义、约束与索引。内置字段受保护，自定义字段可管理。' : '按菜单功能与基础功能分组。点击组名展开或收起，选择类型查看详情。'}</span>
         <div className="spacer" />
         {detailType ? (
           <>
@@ -123,8 +134,8 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
               <th>名称</th><th>apiName</th><th>属性</th><th>已有对象</th><th>来源</th><th>详情</th>
             </>}</tr>
           </thead>
-          <tbody>
-            {detailType ? detailType.properties.map((p) => (
+          {detailType ? <tbody>
+            {detailType.properties.map((p) => (
               <tr key={p.apiName}>
                 <td className="mono">{p.apiName}{p.apiName === detailType.primaryKey && <span className="tag">主键</span>}{p.apiName === detailType.titleProperty && <span className="tag">标题</span>}</td>
                 <td>{DATA_TYPE_LABEL[p.dataType] ?? p.dataType}</td>
@@ -134,9 +145,20 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
                 <td><span className="tag">{p.origin === 'builtin' ? '内置' : '自定义'}</span></td>
                 <td>{p.origin === 'user' && <button className="btn slim danger" onClick={() => void doDropProperty(detailType.apiName, p.apiName)}>删除属性</button>}</td>
               </tr>
-            )) : types.filter(t => t.apiName !== 'checkin').map((t) => (
-              <tr key={t.apiName} onClick={() => onOpenType?.(t.apiName)}>
-                <td className="title-col"><button className="data-type-link" onClick={(e) => { e.stopPropagation(); onOpenType?.(t.apiName); }}>{t.title}</button>{t.apiName === 'todo' && types.some(type => type.apiName === 'checkin') && <button className="btn slim ghost" onClick={(e) => { e.stopPropagation(); onOpenType?.('checkin'); }}>完成记录 →</button>}{t.isVirtual && <span className="tag">虚拟</span>}</td>
+            ))}
+          </tbody> : groups.map(group => <Fragment key={group.id}>
+            <tbody className="data-type-group-heading" data-group={group.id} data-type-count={group.types.length}>
+              <tr><th colSpan={6} scope="rowgroup">
+                <button className="data-type-group-toggle" aria-expanded={!collapsedGroups.has(group.id)} aria-controls={`${groupId}-${group.id}`} onClick={() => toggleGroup(group.id)}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3 5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <span>{group.title}</span><span className="data-type-group-count">{group.types.length} 种</span><span className="data-type-group-description">{group.description}</span>
+                </button>
+              </th></tr>
+            </tbody>
+            <tbody id={`${groupId}-${group.id}`} className="data-type-group-rows" data-group={group.id} hidden={collapsedGroups.has(group.id)}>
+            {group.types.filter(t => t.apiName !== 'checkin' || !types.some(type => type.apiName === 'todo')).map((t) => (
+              <tr key={t.apiName} data-object-type={t.apiName} onClick={() => onOpenType?.(t.apiName)}>
+                <td className="title-col"><button className="data-type-link" onClick={(e) => { e.stopPropagation(); onOpenType?.(t.apiName); }}>{t.title}</button>{t.apiName === 'todo' && types.some(type => type.apiName === 'checkin') && <button className="btn slim ghost" data-object-type-link="checkin" onClick={(e) => { e.stopPropagation(); onOpenType?.('checkin'); }}>完成记录 →</button>}{t.isVirtual && <span className="tag">虚拟</span>}</td>
                 <td className="mono">{t.apiName}</td>
                 <td>{t.properties.length}</td>
                 <td>{t.isVirtual ? '虚拟对象' : counts[t.apiName] ?? '…'}</td>
@@ -144,7 +166,8 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
                 <td><button className="btn slim ghost" onClick={(e) => { e.stopPropagation(); onOpenType?.(t.apiName); }}>查看详情 →</button></td>
               </tr>
             ))}
-          </tbody>
+            </tbody>
+          </Fragment>)}
         </table>
       </div>
 

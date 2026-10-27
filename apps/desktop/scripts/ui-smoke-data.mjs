@@ -8,11 +8,12 @@
 //   3. 结束前断言冒烟对象类型在临时库中已清理、且全部写入只发生在临时库。
 // 前置：npm run build:web && (cd apps/desktop && node scripts/build.mjs)
 // 用法：node apps/desktop/scripts/ui-smoke-data.mjs
+// 候选包：TODODESK_SMOKE_APP=/绝对路径/Dayfolio.app/Contents/MacOS/Dayfolio node apps/desktop/scripts/ui-smoke-data.mjs
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 const repo = resolve(new URL('../../../', import.meta.url).pathname);
 
@@ -37,15 +38,35 @@ mkdirSync(join(work, 'home'), { recursive: true });
 const isolatedEnv = { PATH: process.env.PATH, HOME: join(work, 'home'), TODODESK_DB: dbPath };
 
 // ---------- 隔离拉起 Electron ----------
-const electronBin = join(repo, 'node_modules', '.bin', 'electron');
-if (!existsSync(electronBin)) throw new Error('未找到 electron 可执行文件');
-const app = spawn(electronBin, ['.', `--remote-debugging-port=${PORT}`], {
+const executable = process.env.TODODESK_SMOKE_APP;
+if (executable && (!isAbsolute(executable) || !executable.endsWith('.app/Contents/MacOS/Dayfolio') || !existsSync(executable))) {
+  rmSync(work, { recursive: true, force: true });
+  throw new Error('候选 App 可执行路径不合法或不存在');
+}
+// macOS 直接启动原生进程，使 app.pid 可用于精确激活本轮隔离窗口。
+const electronBin = process.platform === 'darwin'
+  ? join(repo, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')
+  : join(repo, 'node_modules', '.bin', 'electron');
+if (!executable && !existsSync(electronBin)) throw new Error('未找到 electron 可执行文件');
+const debugArgs = [`--remote-debugging-port=${PORT}`, '--remote-debugging-address=127.0.0.1'];
+console.log(`[smoke] 启动隔离${executable ? '候选 App' : '开发 Electron'}，CDP 端口 ${PORT}`);
+const app = spawn(executable || electronBin, executable ? debugArgs : ['.', ...debugArgs], {
   cwd: join(repo, 'apps/desktop'),
   stdio: ['ignore', 'pipe', 'pipe'],
   env: { ...isolatedEnv, TODODESK_USER_DATA: join(work, 'userData'), ELECTRON_DISABLE_SECURITY_WARNINGS: '1' },
 });
 let stderrTail = '';
 app.stderr.on('data', (d) => { stderrTail = (stderrTail + d).slice(-2000); });
+app.stdout.resume();
+let socket = null;
+const pending = new Map();
+const rejectPending = (reason) => {
+  for (const request of pending.values()) {
+    clearTimeout(request.timer);
+    request.reject(new Error(`${reason}：${request.method}`));
+  }
+  pending.clear();
+};
 
 // 管道消费者提前关闭时 stdout 收到 SIGPIPE 会杀死本脚本、跳过 finally、残留 Electron——忽略之
 process.on('SIGPIPE', () => {});
@@ -59,12 +80,13 @@ process.on('uncaughtException', (e) => {
 
 const waitFor = async (fn, ms, label) => {
   const t0 = Date.now();
+  let lastError;
   for (;;) {
     try {
       const v = await fn();
       if (v) return v;
-    } catch { /* 重试 */ }
-    if (Date.now() - t0 > ms) throw new Error(`等待超时：${label}\n${stderrTail}`);
+    } catch (e) { lastError = e; }
+    if (Date.now() - t0 > ms) throw new Error(`等待超时：${label}${lastError ? `\n最后一次错误：${lastError instanceof Error ? lastError.message : lastError}` : ''}\n${stderrTail}`);
     await new Promise((r) => setTimeout(r, 300));
   }
 };
@@ -75,6 +97,8 @@ let stoppedOnce = false;
 const stopAndCleanup = async (runDbCheck = false) => {
   if (stoppedOnce) return;
   stoppedOnce = true;
+  rejectPending('隔离验收正在关闭');
+  socket?.close();
   await new Promise((resolveStop) => {
     if (app.exitCode !== null || app.signalCode !== null) return resolveStop();
     const killTimer = setTimeout(() => { try { app.kill('SIGKILL'); } catch { /* 已退出 */ } }, 5000);
@@ -99,26 +123,57 @@ const stopAndCleanup = async (runDbCheck = false) => {
 };
 
 try {
+  console.log('[smoke] 等待主窗口完成导航');
   const page = await waitFor(async () => {
-    const list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
-    return list.find((t) => t.type === 'page');
+    const list = await (await fetch(`http://127.0.0.1:${PORT}/json`, { signal: AbortSignal.timeout(1500) })).json();
+    return list.find((t) => t.type === 'page' && t.url === 'dayfolio-app://app/index.html');
   }, 30000, 'CDP 页面 target');
+  console.log(`[smoke] 连接主窗口 ${page.url}`);
   const ws = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+  socket = ws;
+  await new Promise((res, rej) => {
+    const timer = setTimeout(() => rej(new Error('CDP WebSocket 连接超时')), 10000);
+    ws.onopen = () => { clearTimeout(timer); res(); };
+    ws.onerror = () => { clearTimeout(timer); rej(new Error('CDP WebSocket 连接失败')); };
+    ws.onclose = () => { clearTimeout(timer); rej(new Error('CDP WebSocket 在握手期间关闭')); };
+  });
   let msgId = 0;
-  const pending = new Map();
   ws.onmessage = (ev) => {
     const m = JSON.parse(ev.data);
-    if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+    const request = pending.get(m.id);
+    if (!request) return;
+    pending.delete(m.id);
+    clearTimeout(request.timer);
+    if (m.error) request.reject(new Error(`CDP ${request.method} 失败：${m.error.message}`));
+    else request.resolve(m);
   };
+  ws.onclose = () => rejectPending('CDP WebSocket 已关闭');
+  ws.onerror = () => rejectPending('CDP WebSocket 发生错误');
   const send = (method, params = {}) =>
-    new Promise((res) => { const id = ++msgId; pending.set(id, res); ws.send(JSON.stringify({ id, method, params })); });
+    new Promise((res, rej) => {
+      if (ws.readyState !== WebSocket.OPEN) return rej(new Error(`CDP 连接未就绪：${method}`));
+      const id = ++msgId;
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        rej(new Error(`CDP 请求超时（10 秒）：${method}`));
+      }, 10000);
+      pending.set(id, { resolve: res, reject: rej, timer, method });
+      try {
+        ws.send(JSON.stringify({ id, method, params }));
+      } catch (e) {
+        pending.delete(id);
+        clearTimeout(timer);
+        rej(e);
+      }
+    });
   const evalJs = async (expression) => {
     const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
     if (r.result?.exceptionDetails) throw new Error('页面执行失败: ' + JSON.stringify(r.result.exceptionDetails).slice(0, 400));
     return r.result?.result?.value;
   };
   await send('Page.enable');
+  await send('Runtime.enable');
+  console.log('[smoke] CDP 已就绪，等待应用导航入口');
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const assert = (cond, label) => {
     if (!cond) throw new Error('断言失败：' + label);
@@ -154,6 +209,7 @@ try {
 
   // 1. 进入数据面板
   await waitFor(() => evalJs(`!!document.querySelector('.nav-item')`), 15000, '应用启动');
+  console.log('[smoke] 应用导航已就绪，打开数据面板');
   await clickUntil(
     `[...document.querySelectorAll('.nav-item')].find(b => b.textContent.includes('数据'))?.click()`,
     () => evalJs(`!!document.querySelector('.data-view .data-home') && !document.querySelector('.data-home').hidden`),
@@ -181,6 +237,60 @@ try {
   console.log(`  对象类型 ${meta.objects.length} / 链接 ${meta.links.length} / 动作 ${meta.actions.length}`);
   assert(meta.objects.length >= 8 && meta.links.length >= 6 && meta.actions.length >= 6, '元数据完整（内置本体种子齐备）');
 
+  // 分组只调整浏览结构：每种类型均保留入口，完成记录继续收在待办行内。
+  const groups = await evalJs(`(() => [...document.querySelectorAll('.data-home .data-type-group-heading')].map(heading => {
+    const button = heading.querySelector('.data-type-group-toggle');
+    const rows = document.getElementById(button.getAttribute('aria-controls'));
+    return {
+      id: heading.dataset.group,
+      count: Number(heading.dataset.typeCount),
+      expanded: button.getAttribute('aria-expanded'),
+      controls: button.getAttribute('aria-controls'),
+      rowGroup: rows?.dataset.group,
+      hidden: rows?.hidden,
+      types: [...(rows?.querySelectorAll('tr[data-object-type]') ?? [])].map(row => row.dataset.objectType),
+      completedLinks: rows?.querySelectorAll('[data-object-type-link="checkin"]').length ?? 0,
+    };
+  }))()`);
+  assert(groups.length >= 8, '对象类型按菜单功能与基础功能分组');
+  assert(groups.every(group => group.id === group.rowGroup && group.controls && group.expanded === 'true' && !group.hidden), '分组默认展开，按钮关联对应表体');
+  assert(groups.every(group => group.count === group.types.length + group.completedLinks), '每组种数包含行内完成记录，与实际入口一致');
+  assert(groups.reduce((total, group) => total + group.count, 0) === meta.objects.length, '分组种数合计与完整元数据一致');
+  const groupedTypes = groups.flatMap(group => group.types);
+  assert(new Set(groupedTypes).size === groupedTypes.length && JSON.stringify([...groupedTypes].sort()) === JSON.stringify(meta.objects.filter(type => type.apiName !== 'checkin').map(type => type.apiName).sort()), '全部对象类型唯一归组，不遗漏、不重复');
+  assert(groups.find(group => group.id === 'todos')?.types.includes('todo') && groups.find(group => group.id === 'todos')?.completedLinks === 1, '待办组保留完成记录入口');
+  if (process.platform === 'darwin') {
+    await new Promise((res, rej) => {
+      const activate = spawn('/usr/bin/osascript', ['-l', 'JavaScript', '-e', `ObjC.import('AppKit');$.NSRunningApplication.runningApplicationWithProcessIdentifier(${app.pid}).activateWithOptions(3);`]);
+      const timer = setTimeout(() => {
+        activate.kill('SIGTERM');
+        rej(new Error('激活隔离窗口超时'));
+      }, 10000);
+      activate.once('error', (e) => { clearTimeout(timer); rej(e); });
+      activate.once('exit', (code) => {
+        clearTimeout(timer);
+        code === 0 ? res() : rej(new Error('无法激活本轮隔离窗口'));
+      });
+    });
+  }
+  await send('Page.bringToFront');
+  await waitFor(() => evalJs('document.hasFocus()'), 10000, '隔离窗口获取键盘焦点');
+  await evalJs(`(() => {
+    const home = document.querySelector('.data-home');
+    const title = document.getElementById('data-types-title');
+    home.scrollTop += title.getBoundingClientRect().top - home.getBoundingClientRect().top;
+  })()`);
+  await capture('对象类型分组');
+  const collapsedGroup = groups.find(group => group.types.length > 0 && !group.types.includes('todo'));
+  assert(!!collapsedGroup, '存在可独立折叠的功能组');
+  await evalJs(`document.querySelector('.data-type-group-heading[data-group="${collapsedGroup.id}"] .data-type-group-toggle').focus()`);
+  assert(await evalJs(`document.activeElement === document.querySelector('.data-type-group-heading[data-group="${collapsedGroup.id}"] .data-type-group-toggle')`), '分组按钮可获取键盘焦点');
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', unmodifiedText: '\r', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 36 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 36 });
+  await waitFor(() => evalJs(`document.getElementById('${collapsedGroup.controls}')?.hidden && document.querySelector('.data-type-group-heading[data-group="${collapsedGroup.id}"] .data-type-group-toggle')?.getAttribute('aria-expanded') === 'false'`), 10000, '键盘折叠功能组');
+  assert(await evalJs(`document.getElementById('${collapsedGroup.controls}').getClientRects().length === 0`), '折叠后组内对象行不占据布局');
+  await capture('对象类型分组折叠');
+
   // 4. 类型详情、关系与动作归属，以及返回时保留首页滚动位置。
   await evalJs(`document.querySelector('.data-home').scrollTop = 160`);
   const scrollBefore = await evalJs(`document.querySelector('.data-home').scrollTop`);
@@ -199,6 +309,9 @@ try {
   assert(await evalJs(`document.querySelector('.data-type-content .data-subrow')?.textContent.includes('执行规则')`), '可展开查看动作定义');
   await evalJs(`document.querySelector('.data-head button').click()`);
   assert(await evalJs(`document.querySelector('.data-home').scrollTop`) === scrollBefore, '返回首页保留滚动位置');
+  assert(await evalJs(`document.getElementById('${collapsedGroup.controls}')?.hidden && document.querySelector('.data-type-group-heading[data-group="${collapsedGroup.id}"] .data-type-group-toggle')?.getAttribute('aria-expanded') === 'false'`), '返回首页保留功能组折叠状态');
+  await evalJs(`document.querySelector('.data-type-group-heading[data-group="${collapsedGroup.id}"] .data-type-group-toggle').click()`);
+  await waitFor(() => evalJs(`!document.getElementById('${collapsedGroup.controls}')?.hidden`), 10000, '恢复功能组展开');
 
   // 5. 实例表格与分页搜索使用真实隔离数据。
   for (let i = 0; i < 21; i++) {
@@ -310,6 +423,7 @@ try {
 
   await evalJs(`document.querySelector('.data-head button').click(); [...document.querySelectorAll('.data-head button')].find(b => b.textContent === '刷新数据').click()`);
   await waitFor(() => evalJs(`document.querySelector('.data-home').textContent.includes('smoke_note')`), 10000, '自定义类型刷新');
+  assert(await evalJs(`document.querySelector('.data-home tr[data-object-type="smoke_note"]')?.closest('tbody')?.dataset.group === 'custom'`), '新建类型自动显示在自定义组');
   await openType('smoke_note');
   await setTab('objects');
   await waitFor(() => evalJs(`[...document.querySelectorAll('.data-main button')].some(b => b.textContent === '新增对象')`), 10000, '基础新增动作入口');
@@ -339,7 +453,7 @@ try {
   await evalJs(`document.querySelector('.modal-foot button.primary').click()`);
   await waitFor(() => evalJs(`!document.querySelector('.modal') && document.querySelector('.data-type-content').textContent.includes('smoke_ui_compound')`), 10000, '保存界面组合动作');
   await evalJs(`[...document.querySelectorAll('.data-type-content .data-table tbody tr')].find(row => row.textContent.includes('smoke_ui_compound')).querySelectorAll('button')[2].click()`);
-  await waitFor(() => evalJs(`document.querySelector('.modal h3')?.textContent.includes('界面组合动作')`), 10000, '执行组合动作对话框');
+  await waitFor(() => evalJs(`document.querySelector('.modal-heading h2')?.textContent.includes('界面组合动作')`), 10000, '执行组合动作对话框');
   await evalJs(`document.querySelector('.modal-foot button.primary').click()`);
   await waitFor(() => evalJs(`document.querySelector('.data-result')?.textContent.includes('executionId')`), 10000, '组合动作完成并返回执行标识');
   await evalJs(`document.querySelector('.modal-foot button.primary').click()`);
@@ -361,8 +475,37 @@ try {
   await sleep(200);
   assert(await evalJs(`document.querySelector('.data-type-detail').getBoundingClientRect().right <= innerWidth && document.querySelector('.data-type-content').clientHeight > 150`), '窄窗口详情保持可用宽度和表格高度');
   await capture('窄窗口详情');
-  await send('Emulation.clearDeviceMetricsOverride');
   await evalJs(`document.querySelector('.data-head button').click()`);
+  await waitFor(() => evalJs(`!document.querySelector('.data-home')?.hidden`), 10000, '窄窗口返回对象类型首页');
+  assert(await evalJs('document.documentElement.scrollWidth <= innerWidth'), '窄窗口首页不产生整页横向溢出');
+  const narrowGroup = await evalJs(`(() => {
+    const heading = document.querySelector('.data-home .data-type-group-heading');
+    const button = heading.querySelector('.data-type-group-toggle');
+    const home = document.querySelector('.data-home');
+    home.scrollTop += heading.getBoundingClientRect().top - home.getBoundingClientRect().top;
+    heading.closest('.data-table-wrap').scrollLeft = 0;
+    const label = button.querySelector('span').getBoundingClientRect();
+    const rect = button.getBoundingClientRect();
+    return {
+      id: heading.dataset.group,
+      controls: button.getAttribute('aria-controls'),
+      expanded: button.getAttribute('aria-expanded') === 'true',
+      visible: rect.left >= 0 && rect.top >= 0 && rect.bottom <= innerHeight && label.right <= innerWidth,
+      x: (label.left + label.right) / 2,
+      y: (label.top + label.bottom) / 2,
+    };
+  })()`);
+  assert(narrowGroup.visible, '窄窗口分组名称及点击区域保持可见');
+  const clickNarrowGroup = async () => {
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: narrowGroup.x, y: narrowGroup.y, button: 'left', clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: narrowGroup.x, y: narrowGroup.y, button: 'left', clickCount: 1 });
+  };
+  await clickNarrowGroup();
+  await waitFor(() => evalJs(`document.getElementById('${narrowGroup.controls}')?.hidden === ${narrowGroup.expanded}`), 10000, '窄窗口点击切换分组');
+  await clickNarrowGroup();
+  await waitFor(() => evalJs(`document.getElementById('${narrowGroup.controls}')?.hidden === ${!narrowGroup.expanded}`), 10000, '窄窗口恢复分组原状态');
+  await capture('窄窗口对象类型分组');
+  await send('Emulation.clearDeviceMetricsOverride');
   await capture('对象类型列表');
   await openType('course');
   assert(await evalJs(`document.querySelector('.data-type-meta')?.textContent.includes('courses')`), '现有课程对象可从统一数据面板浏览');
