@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconPlus, IconRefresh, IconSearch, IconX } from './icons';
 import { useEffect, useState } from 'react';
 import { api, call } from '../api';
 import type { QueryService } from '../../../../../../packages/core/src/ontology/query';
@@ -91,10 +93,10 @@ export default function DataQueryBar({ def, onApply }: { def: ObjectTypeDef; onA
           {!['is_null', 'not_null'].includes(filter.op) && (p?.dataType === 'boolean' && filter.op !== 'in'
             ? <select className="form-select" aria-label={`筛选值 ${index + 1}`} value={filter.value} onChange={e => updateFilter(index, { value: e.target.value })}><option value="">选择值</option><option value="true">是</option><option value="false">否</option></select>
             : <input className="form-input" aria-label={`筛选值 ${index + 1}`} value={filter.value} placeholder={filter.op === 'in' ? '多个值用逗号分隔' : p?.dataType === 'date' ? p.dateSemantics === 'date' ? 'YYYY-MM-DD' : 'ISO 时间戳' : '输入值'} onChange={e => updateFilter(index, { value: e.target.value })}/>)}
-          <button type="button" className="btn slim ghost" aria-label={`移除条件 ${index + 1}`} onClick={() => setFilters(rows => rows.filter((_, i) => i !== index))}>移除</button>
+          <ActionButton icon={IconX} type="button" className="btn slim ghost" aria-label={`移除条件 ${index + 1}`} onClick={() => setFilters(rows => rows.filter((_, i) => i !== index))}>移除</ActionButton>
         </div>;
       })}
-      <div className="data-query-row"><button type="button" className="btn slim" disabled={!contract || filters.length >= 20} onClick={() => setFilters(rows => [...rows, { property: '', op: 'is_null', value: '' }])}>添加条件</button>
+      <div className="data-query-row"><ActionButton icon={IconPlus} type="button" className="btn slim" disabled={!contract || filters.length >= 20} onClick={() => setFilters(rows => [...rows, { property: '', op: 'is_null', value: '' }])}>添加条件</ActionButton>
         <label className="data-query-field">关联<select className="form-select" aria-label="关系筛选" value={relation} onChange={e => setRelation(e.target.value)}><option value="">不限制</option>{relatedOptions.map(option => <option key={option.value} value={option.value}>{option.title}</option>)}</select></label>
         {relation && <select className="form-select" aria-label="关联存在性" value={exists} onChange={e => setExists(e.target.value)}><option value="true">有匹配对象</option><option value="false">无匹配对象</option></select>}
       </div>
@@ -109,7 +111,7 @@ export default function DataQueryBar({ def, onApply }: { def: ObjectTypeDef; onA
         </>}
       </div>
       {error && <p className="notice error" role="alert">{error}</p>}
-      <div className="data-query-row"><button className="btn primary slim" disabled={!contract}>应用查询</button><button type="button" className="btn slim ghost" onClick={() => { setFilters([]); setSort(''); setMode('rows'); setGroups(['', '']); setMetric('count'); setMetricProperty(''); setRelation(''); setError(''); setApplied(false); onApply({}); }}>重置查询</button></div>
+      <div className="data-query-row"><ActionButton icon={IconSearch} className="btn primary slim" disabled={!contract}>应用查询</ActionButton><ActionButton icon={IconRefresh} type="button" className="btn slim ghost" onClick={() => { setFilters([]); setSort(''); setMode('rows'); setGroups(['', '']); setMetric('count'); setMetricProperty(''); setRelation(''); setError(''); setApplied(false); onApply({}); }}>重置查询</ActionButton></div>
     </form>
   </details>;
 }

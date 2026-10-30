@@ -55,9 +55,9 @@ Node 要求 22.13+ 的 22.x 或 24.x。若 shell 报 `node: command not found`�
 
 **新闻**
 - `get_news_feed_config` / `update_news_feed_config` / `preview_news_feed` — 读取、保存和预览结构化模块配置；先读 revision，保存带 expected_revision。默认国内、国际、AI、时事关注，俄乌与美伊共用时事模块。首页每天每模块一条 AI 重点综合总结，同日更新累计去重条数；点击模块列表再进单条详情，每轮最多 10 则，同日累计可更多。
-- `start_news_feed_update` → `claim_news_task` → `get_news_task_context` → 搜索并打开原始来源核实 → `submit_news_items` → `complete_news_task` → `advance_news_feed_update` — 在当前对话连续完成模块采集并回读；活动批次复用，先覆盖再补足，不因重试重置预算。
-- `list_news_daily_editions` / `get_news_daily_edition` — 读取首页每日模块及完整累计列表，筛选按内部新闻状态匹配。`save_news_daily_summary` 根据实际重点新闻保存综合总结、依据 IDs 和当前 revision，不拼接标题冒充总结。
-- `list_news_feed` / `list_news` — 只查本地单条新闻，不联网；按模块、未读、收藏、关键词或历史筛选。`list_news_feed_batches` 查看整轮与模块进度，`stop_news_feed_update` / `continue_news_feed_update` 停止或接续同一批次。
+- `start_news_feed_update` → `claim_news_task` → `get_news_task_context` → 搜索并打开原始来源核实 → `submit_news_items` → `complete_news_task` → `advance_news_feed_update` — 在当前对话连续完成模块采集并回读；活动批次复用，首轮结束不自动补采，不因重试重置预算。App 后台批次另使用 RSS/Atom 候选并由一个受限 Agent 会话处理。
+- `list_news_daily_editions` / `get_news_daily_edition` — 读取首页每日模块及完整累计列表，筛选按内部新闻状态匹配。`save_news_daily_summary` 根据最重要的 2–3 条实际新闻（不足按实际），每条一句短句写清事实，合成约 60–90 字、最多 100 字的总结，保存同日同模块依据 IDs 和当前 revision，不拼接标题冒充总结。
+- `list_news_feed` / `list_news` — 只查本地单条新闻，不联网；按模块、未读、收藏、关键词或历史筛选。`list_news_feed_batches` 查看整轮与模块进度，`stop_news_feed_update` / `continue_news_feed_update` 停止或接续同一批次；已完成批次也可按用户明确要求继续补采。
 - `get_news_interests` / `record_news_feedback` / `manage_news_topic` / `manage_news_source` — 查看真实推荐依据、按用户明确意图记录反馈和管理主题/来源。学习默认关闭；助手回读不伪造阅读。探索每轮一个具体细分主题、1–2 则已核实试读，随新闻提交带真实依据的 `candidate_topic`。取消关注、少推荐与移除候选分开：降频或候选冷却保留已有订阅，不自动取消关注。
 - `update_news_event` 管理时事暂停、期限、结束与明确恢复；`reset_news_learning` 按用户要求清空学习，保留明确关注/结束记录，不自动回放旧收藏。`report_news_correction` / `dismiss_news_correction` 记录有来源的重要更正和已查看状态，不强标未读。
 - `mark_news_read` / `mark_news_starred` / `mark_all_news_read` 与 App 共用状态；`delete_news_item` 仅在用户确认后删除指定单条。临时单主题任务可用 `create_news_task`，默认每日更新使用模块批次。

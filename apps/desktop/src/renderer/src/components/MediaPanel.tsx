@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconCalendar, IconCheck, IconChevronLeft, IconChevronUp, IconDownload, IconLink, IconPencil, IconSave, IconSend, IconUndo, IconUnlink } from './icons';
 // 自媒体面板：概览 / 选题 / 内容 / 素材 / 日历 / 复盘 六视图工作流。
 // 红线：不登录、不自动发布外部平台——「排期」只是本地计划，「已发布」由用户人工回填；
 // 平台版本必须经人工审核（本面板的 通过/拒绝 按钮是用户动作，MCP 侧不提供审核通过）。
@@ -204,8 +206,8 @@ function OverviewView({ openContent }: { openContent: (id: number) => void }) {
             <span className="tag">{p.platform}</span>
             <span className="sub mono">{new Date(p.updated_at).toLocaleString('zh-CN', { hour12: false })}</span>
             <span className="spacer" />
-            <button className="btn slim primary" onClick={() => review(p.id, 'approve')}>通过</button>
-            <button className="btn slim danger" onClick={() => review(p.id, 'reject')}>拒绝</button>
+            <ActionButton icon={IconCheck} className="btn slim primary" onClick={() => review(p.id, 'approve')}>通过</ActionButton>
+            <ActionButton icon={IconX} className="btn slim danger" onClick={() => review(p.id, 'reject')}>拒绝</ActionButton>
           </div>
         ))}
       </section>
@@ -320,14 +322,14 @@ function TopicsView({ go }: { go: (v: View) => void }) {
       <div className="group media-composer">
         <input className="inline-input" placeholder="选题标题" value={title} onChange={(e) => setTitle(e.target.value)} />
         <input className="inline-input" placeholder="角度 / 立意（可选）" value={angle} onChange={(e) => setAngle(e.target.value)} />
-        <button className="btn slim ghost" onClick={openPicker}>从新闻选择来源</button>
+        <ActionButton icon={IconSearch} className="btn slim ghost" onClick={openPicker}>从新闻选择来源</ActionButton>
         {pickedNews && (
           <span className="tag">
             {pickedNews.title.slice(0, 18)}…
-            <button className="tag-x" onClick={() => setPickedNews(null)} aria-label="清除来源"><IconX width={10} height={10} /></button>
+            <ActionButton icon={IconX} className="tag-x" onClick={() => setPickedNews(null)} aria-label="清除来源">清除</ActionButton>
           </span>
         )}
-        <button className="btn primary" onClick={add}><IconPlus /> 加入点子池</button>
+        <ActionButton icon={IconPlus} className="btn primary" onClick={add}>加入点子池</ActionButton>
       </div>
       {pickerOpen && (
         <div className="group media-news-picker">
@@ -345,7 +347,7 @@ function TopicsView({ go }: { go: (v: View) => void }) {
               {n.title}
             </button>
           ))}
-          <button className="btn slim ghost" onClick={() => setPickerOpen(false)}>收起</button>
+          <ActionButton icon={IconChevronUp} className="btn slim ghost" onClick={() => setPickerOpen(false)}>收起</ActionButton>
         </div>
       )}
 
@@ -374,16 +376,16 @@ function TopicsView({ go }: { go: (v: View) => void }) {
           <div className="media-topic-side">
             <StatusBadge s={t.status} />
             {t.content_count > 0 && <span className="tag">{t.content_count} 内容</span>}
-            {t.status === 'idea' && <button className="btn slim" onClick={() => act(t.id, { status: 'selected' })}>选用</button>}
-            {t.status === 'dropped' && <button className="btn slim ghost" onClick={() => act(t.id, { status: 'idea' })}>恢复</button>}
+            {t.status === 'idea' && <ActionButton icon={IconCheck} className="btn slim" onClick={() => act(t.id, { status: 'selected' })}>选用</ActionButton>}
+            {t.status === 'dropped' && <ActionButton icon={IconUndo} className="btn slim ghost" onClick={() => act(t.id, { status: 'idea' })}>恢复</ActionButton>}
             {t.status !== 'dropped' && t.content_count === 0 && (
               <>
-                <button className="btn slim ghost" onClick={() => act(t.id, { status: 'dropped' })}>放弃</button>
-                <button className="btn slim primary" onClick={() => createContent(t)}>建内容</button>
+                <ActionButton icon={IconX} className="btn slim ghost" onClick={() => act(t.id, { status: 'dropped' })}>放弃</ActionButton>
+                <ActionButton icon={IconPlus} className="btn slim primary" onClick={() => createContent(t)}>建内容</ActionButton>
               </>
             )}
             {t.content_count === 0 && (
-              <button className="icon-btn subtle" onClick={() => del(t.id)} aria-label="删除选题"><IconTrash /></button>
+              <ActionButton icon={IconTrash} className="icon-btn" onClick={() => del(t.id)} aria-label="删除选题">删除</ActionButton>
             )}
           </div>
         </div>
@@ -430,7 +432,7 @@ function ContentsView({ initialOpenId = null }: { initialOpenId?: number | null 
     <>
       <div className="group media-composer">
         <input className="inline-input" placeholder="新内容标题（母稿）" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-        <button className="btn primary" onClick={add}><IconPlus /> 建母稿</button>
+        <ActionButton icon={IconPlus} className="btn primary" onClick={add}>建母稿</ActionButton>
       </div>
       <div className="toolbar">
         <div className="searchbox">
@@ -608,7 +610,7 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
 
   return (
     <>
-      <button className="backlink" onClick={back}>← 返回内容列表</button>
+      <ActionButton icon={IconChevronLeft} className="backlink" onClick={back}>返回内容列表</ActionButton>
       <header className="panel-head">
         <h1>{c.title}</h1>
         <div className="head-meta mono">
@@ -622,10 +624,10 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
         <div className="group-label mono">母稿（平台版本的上游）</div>
         <textarea className="media-editor" value={master} onChange={(e) => setMaster(e.target.value)} rows={8} aria-label="母稿正文" />
         <div className="media-actions">
-          <button className="btn slim" onClick={saveMaster}>保存母稿</button>
-          <button className="btn slim" onClick={toggleStatus}>
+          <ActionButton icon={IconSave} className="btn slim" onClick={saveMaster}>保存母稿</ActionButton>
+          <ActionButton icon={c.status === 'master_done' ? IconUndo : IconCheck} className="btn slim" onClick={toggleStatus}>
             {c.status === 'master_done' ? '撤销定稿' : '标记定稿'}
-          </button>
+          </ActionButton>
         </div>
       </section>
 
@@ -639,12 +641,12 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
               {v.review_note && <span className="sub">审核备注：{v.review_note}</span>}
               <span className="spacer" />
               {(v.status === 'draft' || v.status === 'rejected') && (
-                <button className="btn slim" onClick={() => doReview(v.id, 'submit')}>提交审核</button>
+                <ActionButton icon={IconSend} className="btn slim" onClick={() => doReview(v.id, 'submit')}>提交审核</ActionButton>
               )}
               {v.status === 'in_review' && (
                 <>
-                  <button className="btn slim primary" onClick={() => doReview(v.id, 'approve')}>通过</button>
-                  <button className="btn slim danger" onClick={() => doReview(v.id, 'reject')}>拒绝</button>
+                  <ActionButton icon={IconCheck} className="btn slim primary" onClick={() => doReview(v.id, 'approve')}>通过</ActionButton>
+                  <ActionButton icon={IconX} className="btn slim danger" onClick={() => doReview(v.id, 'reject')}>拒绝</ActionButton>
                 </>
               )}
               {v.status === 'approved' && (
@@ -656,12 +658,12 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
                     onChange={(e) => setSchedDate(e.target.value)}
                     aria-label={`${v.platform} 排期日期`}
                   />
-                  <button className="btn slim" onClick={() => schedule(v.id)}>排期</button>
-                  <button className="btn slim ghost" onClick={() => doReview(v.id, 'revoke')}>撤回重编</button>
+                  <ActionButton icon={IconCalendar} className="btn slim" onClick={() => schedule(v.id)}>排期</ActionButton>
+                  <ActionButton icon={IconUndo} className="btn slim ghost" onClick={() => doReview(v.id, 'revoke')}>撤回重编</ActionButton>
                 </>
               )}
               {v.status !== 'approved' && v.id !== editVer && (
-                <button
+                <ActionButton icon={IconPencil}
                   className="btn slim ghost"
                   onClick={() => {
                     setEditVer(v.id);
@@ -669,15 +671,15 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
                   }}
                 >
                   编辑
-                </button>
+                </ActionButton>
               )}
             </div>
             {v.id === editVer ? (
               <div className="media-version-edit">
                 <textarea className="media-editor" value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={6} aria-label="版本正文" />
                 <div className="media-actions">
-                  <button className="btn slim primary" onClick={() => saveEdit(v.id)}>保存</button>
-                  <button className="btn slim ghost" onClick={() => setEditVer(null)}>取消</button>
+                  <ActionButton icon={IconSave} className="btn slim primary" onClick={() => saveEdit(v.id)}>保存</ActionButton>
+                  <ActionButton icon={IconX} className="btn slim ghost" onClick={() => setEditVer(null)}>取消</ActionButton>
                 </div>
               </div>
             ) : (
@@ -691,7 +693,7 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
               <option key={p} value={p}>{p}</option>
             ))}
           </select>
-          <button className="btn slim" onClick={addVersion}><IconPlus /> 加平台版本</button>
+          <ActionButton icon={IconPlus} className="btn slim" onClick={addVersion}>加平台版本</ActionButton>
           <span className="sub">先在下方写正文，或创建后编辑</span>
         </div>
         <textarea className="media-editor" value={body} onChange={(e) => setBody(e.target.value)} rows={4} placeholder="新版本正文…" aria-label="新版本正文" />
@@ -705,7 +707,7 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
             <span className="tag">{KIND_LABEL[m.kind] ?? m.kind}</span>
             <span className="sub mono">{m.source_desc.split('\n')[0] || m.content.slice(0, 30)}</span>
             <span className="spacer" />
-            <button className="icon-btn subtle" onClick={() => detach(m.id)} aria-label={`卸下素材 ${m.title}`}><IconX /></button>
+            <ActionButton icon={IconUnlink} className="icon-btn" onClick={() => detach(m.id)} aria-label={`卸下素材 ${m.title}`}>卸下</ActionButton>
           </div>
         ))}
         <div className="media-composer">
@@ -722,7 +724,7 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
                 <option key={m.id} value={m.id}>{m.title}</option>
               ))}
           </select>
-          <button className="btn slim" onClick={attach} disabled={!attachId}>挂载</button>
+          <ActionButton icon={IconLink} className="btn slim" onClick={attach} disabled={!attachId}>挂载</ActionButton>
         </div>
       </section>
 
@@ -745,8 +747,8 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
                   onChange={(ev) => setPubUrl({ ...pubUrl, [e.id]: ev.target.value })}
                   aria-label="作品链接"
                 />
-                <button className="btn slim primary" onClick={() => publish(e.id)}>我已手动发布</button>
-                <button className="btn slim ghost" onClick={() => cancelCal(e.id)}>取消</button>
+                <ActionButton icon={IconCheck} className="btn slim primary" onClick={() => publish(e.id)}>我已手动发布</ActionButton>
+                <ActionButton icon={IconX} className="btn slim ghost" onClick={() => cancelCal(e.id)}>取消</ActionButton>
               </>
             )}
           </div>
@@ -757,13 +759,13 @@ function ContentDetailview({ id, back }: { id: number; back: () => void }) {
         <div className="group-label mono">复盘笔记</div>
         <textarea className="media-editor" value={retro} onChange={(e) => setRetro(e.target.value)} rows={3} placeholder="发布后的经验：什么标题/封面/时间有效…" aria-label="复盘笔记" />
         <div className="media-actions">
-          <button className="btn slim" onClick={saveRetro}>保存复盘</button>
+          <ActionButton icon={IconSave} className="btn slim" onClick={saveRetro}>保存复盘</ActionButton>
         </div>
       </section>
 
       <div className="media-actions media-footer">
-        <button className="btn" onClick={exportPkg}>导出素材包（选 vault 外目录）</button>
-        <button className="btn danger ghost" onClick={remove}>删除内容</button>
+        <ActionButton icon={IconDownload} className="btn" onClick={exportPkg}>导出素材包（选 vault 外目录）</ActionButton>
+        <ActionButton icon={IconTrash} className="btn danger ghost" onClick={remove}>删除内容</ActionButton>
       </div>
     </>
   );
@@ -819,7 +821,7 @@ function MaterialsView() {
             <option key={k} value={k}>{l}</option>
           ))}
         </select>
-        <button className="btn primary" onClick={add}><IconPlus /> 入库</button>
+        <ActionButton icon={IconPlus} className="btn primary" onClick={add}>入库</ActionButton>
       </div>
       <textarea className="media-editor" value={content} onChange={(e) => setContent(e.target.value)} rows={3} placeholder="素材内容 / 链接 / 图片说明（图片文件不入库，导出素材包时按说明列出）" aria-label="素材内容" />
       <div className="toolbar">
@@ -839,7 +841,7 @@ function MaterialsView() {
           <div className="media-topic-side">
             <span className="tag">{KIND_LABEL[m.kind] ?? m.kind}</span>
             {m.tags.map((t) => <span key={t} className="tag">{t}</span>)}
-            <button className="icon-btn subtle" onClick={() => del(m.id)} aria-label="删除素材"><IconTrash /></button>
+            <ActionButton icon={IconTrash} className="icon-btn" onClick={() => del(m.id)} aria-label="删除素材">删除</ActionButton>
           </div>
         </div>
       ))}
@@ -928,8 +930,8 @@ function CalendarView() {
                   onChange={(ev) => setPubUrl({ ...pubUrl, [e.id]: ev.target.value })}
                   aria-label="作品链接"
                 />
-                <button className="btn slim primary" onClick={() => publish(e.id)}>我已手动发布</button>
-                <button className="btn slim ghost" onClick={() => cancel(e.id)}>取消</button>
+                <ActionButton icon={IconCheck} className="btn slim primary" onClick={() => publish(e.id)}>我已手动发布</ActionButton>
+                <ActionButton icon={IconX} className="btn slim ghost" onClick={() => cancel(e.id)}>取消</ActionButton>
               </>
             )}
             {e.status === 'published' && <span className="sub">到「复盘」录指标</span>}
@@ -1054,7 +1056,7 @@ function RetroView() {
                 onChange={(e) => setForm({ ...form, [r.id]: { ...(form[r.id] ?? { views: '', likes: '', comments: '' }), comments: e.target.value } })}
                 aria-label="评论数"
               />
-              <button className="btn slim" onClick={() => save(r)}>保存</button>
+              <ActionButton icon={IconSave} className="btn slim" onClick={() => save(r)}>保存</ActionButton>
             </div>
           </div>
         ))}

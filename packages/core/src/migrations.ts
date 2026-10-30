@@ -764,6 +764,17 @@ MIGRATIONS.push({ version: 30, name: 'news_modular_feed', up: db => {
 MIGRATIONS.push({ version: 31, name: 'news_legacy_reset', up: cleanupLegacyNews });
 MIGRATIONS.push({ version: 32, name: 'news_daily_editions', up: migrateNewsDailyEditions });
 
+MIGRATIONS.push({ version: 33, name: 'news_run_tasks', up: db => {
+  db.exec(`CREATE TABLE news_agent_run_tasks (
+    run_id TEXT NOT NULL REFERENCES news_agent_runs(id),
+    task_id INTEGER NOT NULL REFERENCES news_tasks(id),
+    PRIMARY KEY(run_id, task_id)
+  );
+  CREATE INDEX news_agent_run_tasks_task ON news_agent_run_tasks(task_id);
+  INSERT INTO news_agent_run_tasks(run_id, task_id)
+    SELECT id, task_id FROM news_agent_runs;`);
+}});
+
 export function runMigrations(db: DbAdapter): number {
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
   const current = Number(row?.user_version ?? 0);

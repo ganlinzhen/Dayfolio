@@ -180,7 +180,7 @@ describe('MCP 端到端主流程', () => {
         PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(dbDir, 'home'),
         TODODESK_DB: join(dbDir, 'e2e.db'), DAYFOLIO_NEWS_RUN_ID: run.id, DAYFOLIO_NEWS_RUN_TOKEN: owner,
       } }));
-      expect((await scoped.listTools()).tools.map(t => t.name).sort()).toEqual(['complete_news_task','get_news_task','report_news_correction','submit_news_daily_summary','submit_news_items']);
+      expect((await scoped.listTools()).tools.map(t => t.name).sort()).toEqual(['complete_batch_task','complete_news_task','get_news_batch','get_news_task','report_news_correction','submit_batch_news','submit_news_daily_summary','submit_news_items','summarize_batch_news']);
       const blockedBusiness = await scoped.callTool({ name: 'add_todo', arguments: { title: '后台不得创建待办' } }).then(result => result.isError === true, () => true);
       expect(blockedBusiness).toBe(true);
       expect(arg(await scoped.callTool({ name: 'get_news_task', arguments: {} })).data.task.id).toBe(run.task_id);
@@ -226,7 +226,8 @@ describe('MCP 端到端主流程', () => {
       };
       const one = await collect(first.next_task_id, '甲');
       await call('complete_news_task', { task_id: first.next_task_id, claim_token: one.claim.claim_token });
-      const phaseTwo = (await call('advance_news_feed_update', { batch_id: first.id })).data;
+      expect((await call('advance_news_feed_update', { batch_id: first.id })).data.status).toBe('completed');
+      const phaseTwo = (await call('continue_news_feed_update', { batch_id: first.id })).data;
       const two = await collect(phaseTwo.next_task_id, '乙');
       const context = (await call('get_news_task_context', { task_id: phaseTwo.next_task_id })).data;
       const edition = context.daily_edition.edition;
@@ -275,7 +276,7 @@ describe('MCP 端到端主流程', () => {
     const call = async (name: string, input: Record<string, unknown> = {}) => arg(await scoped.callTool({ name, arguments: input }));
     try {
       await scoped.connect(new StdioClientTransport({ command: process.execPath, args: [SERVER], env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: join(dbDir, 'home'), TODODESK_DB: path, TODODESK_USER_DATA: join(dbDir, 'daily-user-data'), DAYFOLIO_NEWS_RUN_ID: run.id, DAYFOLIO_NEWS_RUN_TOKEN: owner } }));
-      expect((await scoped.listTools()).tools.map(tool => tool.name).sort()).toEqual(['complete_news_task','get_news_task','report_news_correction','submit_news_daily_summary','submit_news_items']);
+      expect((await scoped.listTools()).tools.map(tool => tool.name).sort()).toEqual(['complete_batch_task','complete_news_task','get_news_batch','get_news_task','report_news_correction','submit_batch_news','submit_news_daily_summary','submit_news_items','summarize_batch_news']);
       const shown = (await call('get_news_task')).data.context.daily_edition;
       expect(shown.news.some((item: any) => item.id === priorDomestic)).toBe(true);
       const submitted = await call('submit_news_items', { items: [{ title: '受限每日新增重点', summary: '当天补充的新进展已独立核实。', source_url: 'https://example.com/daily-scoped/new', published_at: new Date(Date.now() - 60000).toISOString() }] });

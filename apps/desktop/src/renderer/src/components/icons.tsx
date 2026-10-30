@@ -373,3 +373,36 @@ export const IconMegaphone = (p: P) => (
 
 /** 设置：齿轮。 */
 export const IconSettings = (p: P) => <svg {...base(p)}><path d="m9 3-.7 2.2-2 .9-2.1-.5-2 3.4 1.5 1.7v2.6L2.2 15l2 3.4 2.1-.5 2 .9L9 21h4l.7-2.2 2-.9 2.1.5 2-3.4-1.5-1.7v-2.6L19.8 9l-2-3.4-2.1.5-2-.9L13 3z"/><circle cx="11" cy="12" r="3"/></svg>;
+
+/** 保存 */
+export const IconSave = (p: P) => <svg {...base(p)}><path d="M5 3.5h12l3.5 3.5v12A1.5 1.5 0 0 1 19 20.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5z"/><path d="M7 3.5v6h9v-6M7 20.5v-7h10v7"/></svg>;
+/** 复制 */
+export const IconCopy = (p: P) => <svg {...base(p)}><rect x="8" y="8" width="12.5" height="12.5" rx="2"/><path d="M16 8V5.5A2 2 0 0 0 14 3.5H5.5a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2H8"/></svg>;
+/** 下载 */
+export const IconDownload = (p: P) => <svg {...base(p)}><path d="M12 4v11.5M7 10.5l5 5 5-5M4.5 17v1.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V17"/></svg>;
+/** 文件夹 */
+export const IconFolder = (p: P) => <svg {...base(p)}><path d="M3.5 7A2 2 0 0 1 5.5 5h5l2 2H19a1.5 1.5 0 0 1 1.5 1.5v9.5A2 2 0 0 1 18.5 20h-13a2 2 0 0 1-2-2z"/></svg>;
+/** 显示 */
+export const IconEye = (p: P) => <svg {...base(p)}><path d="M3 12s3.2-6 9-6 9 6 9 6-3.2 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/></svg>;
+/** 隐藏 */
+export const IconEyeOff = (p: P) => <svg {...base(p)}><path d="M3 3l18 18M10.5 6.2A9.5 9.5 0 0 1 12 6c5.8 0 9 6 9 6a14.5 14.5 0 0 1-3.1 3.8M6.2 6.7A14.6 14.6 0 0 0 3 12s3.2 6 9 6c1.3 0 2.5-.3 3.5-.8M10.2 10.2a2.5 2.5 0 0 0 3.6 3.6"/></svg>;
+/** 撤销 */
+export const IconUndo = (p: P) => <svg {...base(p)}><path d="M8.5 7L4 11.5 8.5 16M4 11.5h9a6 6 0 0 1 6 6V19"/></svg>;
+/** 暂停 */
+export const IconPause = (p: P) => <svg {...base(p)}><path d="M8 5v14M16 5v14"/></svg>;
+/** 停止 */
+export const IconStop = (p: P) => <svg {...base(p)}><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>;
+/** 开始或继续 */
+export const IconPlay = (p: P) => <svg {...base(p)}><path d="M7.5 4.5v15l12-7.5z"/></svg>;
+/** 发送 */
+export const IconSend = (p: P) => <svg {...base(p)}><path d="M21 3 10 14M21 3l-6.5 18-4.5-7L3 9.5z"/></svg>;
+/** 归档 */
+export const IconArchive = (p: P) => <svg {...base(p)}><rect x="3.5" y="4" width="17" height="4.5" rx="1"/><path d="M5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V8.5M9.5 12h5"/></svg>;
+/** 解除关联 */
+export const IconUnlink = (p: P) => <svg {...base(p)}><path d="M9.5 14.5l5-5M7.5 17.5l-1 1a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0M16.5 6.5l1-1a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 0M3.5 3.5l2 2M20.5 20.5l-2-2"/></svg>;
+/** 感兴趣 */
+export const IconHeart = (p: P) => <svg {...base(p)}><path d="M20.5 8.5c0 4-4.6 7.4-8.5 11-3.9-3.6-8.5-7-8.5-11a4.5 4.5 0 0 1 8.5-2 4.5 4.5 0 0 1 8.5 2z"/></svg>;
+/** 筛选 */
+export const IconFilter = (p: P) => <svg {...base(p)}><path d="M3.5 5h17l-6.5 7.5v5l-4 2v-7z"/></svg>;
+/** 智能处理 */
+export const IconSparkles = (p: P) => <svg {...base(p)}><path d="M12 3.5 13.7 9l5.5 1.7-5.5 1.7-1.7 5.5-1.7-5.5-5.5-1.7L10.3 9zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>;

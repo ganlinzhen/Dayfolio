@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconArchive, IconCalendar, IconCheck, IconChevronRight, IconChevronUp, IconDownload, IconEye, IconRefresh, IconTrash, IconUndo, IconX } from './icons';
 // 学习计划面板：列表 + 详情（每日卡片概要，Codex 风格）。
 // 课程并入本面板（无独立侧栏入口）：首页用「计划 / 课程」切换，默认展示计划；
 // 详情可进入关联课程总览，每日摘要卡直达当天完整讲义/自测，
@@ -394,6 +396,7 @@ export default function PlanPanel() {
     await refresh();
     toast('计划已归档，条目与打卡记录保留', {
       label: '撤销',
+      icon: IconUndo,
       run: () => {
         void call(() => api.plans.update({ id, status: 'active' })).then(() => refresh());
       },
@@ -593,9 +596,9 @@ export default function PlanPanel() {
         </>;
         return (
           <div className="panel plan-item-detail">
-            <button className="backlink" onClick={exitItem}>
-              <IconChevronLeft width={14} height={14} /> 返回计划详情
-            </button>
+            <ActionButton icon={IconChevronLeft} className="backlink" onClick={exitItem}>
+               返回计划详情
+            </ActionButton>
             <header className="plan-learning-overview">
               <h1 className="plan-item-detail-content">{itemTitle}</h1>
               {itemGoal && <p className="plan-learning-goal">目标：{itemGoal}</p>}
@@ -608,7 +611,7 @@ export default function PlanPanel() {
               <LearningSignals progress={progress} />
             </header>
 
-            {learningError && <div className="notice error" role="alert">{learningError}<button className="btn slim" onClick={() => void reloadLearning(detail.id)}>重试同步</button></div>}
+            {learningError && <div className="notice error" role="alert">{learningError}<ActionButton icon={IconRefresh} className="btn slim" onClick={() => void reloadLearning(detail.id)}>重试同步</ActionButton></div>}
             {loadingLearning && <p className="sub" role="status">正在同步学习进度…</p>}
             {boundCourse && lesson ? <PlanLessonContent
               key={`${boundCourse.id}-${lesson.day}-${lesson.revision}`}
@@ -650,10 +653,10 @@ export default function PlanPanel() {
               <h2>本项学习状态</h2>
               <p className="sub">核对课件、评测与笔记后，由你决定是否完成本项安排。标记完成会同步关联待办与打卡。</p>
               <div className="row-gap plan-item-detail-actions">
-                {item.status !== 'done' && <button className="btn primary" disabled={statusBusy} onClick={() => void setItemStatus(item, 'done')}>标记完成</button>}
-                {item.status === 'done' && <button className="btn" disabled={statusBusy} onClick={() => void setItemStatus(item, 'pending')}>撤销完成</button>}
-                {item.status === 'pending' && <button className="btn ghost" disabled={statusBusy} onClick={() => void setItemStatus(item, 'skipped')}>跳过</button>}
-                {item.status === 'skipped' && <button className="btn ghost" disabled={statusBusy} onClick={() => void setItemStatus(item, 'pending')}>恢复待办</button>}
+                {item.status !== 'done' && <ActionButton icon={IconCheck} className="btn primary" disabled={statusBusy} onClick={() => void setItemStatus(item, 'done')}>标记完成</ActionButton>}
+                {item.status === 'done' && <ActionButton icon={IconUndo} className="btn" disabled={statusBusy} onClick={() => void setItemStatus(item, 'pending')}>撤销完成</ActionButton>}
+                {item.status === 'pending' && <ActionButton icon={IconChevronRight} className="btn ghost" disabled={statusBusy} onClick={() => void setItemStatus(item, 'skipped')}>跳过</ActionButton>}
+                {item.status === 'skipped' && <ActionButton icon={IconUndo} className="btn ghost" disabled={statusBusy} onClick={() => void setItemStatus(item, 'pending')}>恢复待办</ActionButton>}
               </div>
             </section>
           </div>
@@ -662,9 +665,9 @@ export default function PlanPanel() {
     }
     return (
       <div className="panel plan-detail" role="region" aria-label="学习">
-        <button className="backlink" onClick={() => { restoreKeyRef.current = 'list'; setDetail(null); }}>
-          <IconChevronLeft width={14} height={14} /> 全部计划
-        </button>
+        <ActionButton icon={IconChevronLeft} className="backlink" onClick={() => { restoreKeyRef.current = 'list'; setDetail(null); }}>
+           全部计划
+        </ActionButton>
         <header className="plan-detail-overview">
           <div className="panel-head">
             <h1>{detail.title}</h1>
@@ -677,16 +680,16 @@ export default function PlanPanel() {
           </div>
           <div className="plan-detail-progress">
             <span>安排完成 <b>{detail.done_items}/{detail.total_items}</b></span>
-            <div className="progress" role="progressbar" aria-label="安排完成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(detail.progress * 100)}><div style={{ width: `${Math.round(detail.progress * 100)}%` }} /></div>
+            <div className="progress" role="progressbar" aria-label="安排完成进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(detail.progress * 100)}><div style={{ transform: `scaleX(${Math.round(detail.progress * 100) / 100})` }} /></div>
             <span className="mono">{Math.round(detail.progress * 100)}%</span>
           </div>
           <LearningTotals progress={planProgress} />
         </header>
-        {learningError && <div className="notice error" role="alert">{learningError}<button className="btn slim" onClick={() => void reloadLearning(detail.id)}>重试同步</button></div>}
+        {learningError && <div className="notice error" role="alert">{learningError}<ActionButton icon={IconRefresh} className="btn slim" onClick={() => void reloadLearning(detail.id)}>重试同步</ActionButton></div>}
         {boundCourse && (
           <div className="plan-course-bar">
             <div><span className="plan-course-label">关联课程</span><span className="plan-course-name">{boundCourse.title}</span><span className="plan-course-count">{boundLessons.length > 0 ? `已生成 ${boundLessons.length} 天` : '讲义尚未生成'}</span></div>
-            <button className="btn slim" onClick={() => enterCourse(boundCourse.id, null)}>进入课程总览 →</button>
+            <ActionButton icon={IconBook} className="btn slim" onClick={() => enterCourse(boundCourse.id, null)}>进入课程总览 →</ActionButton>
           </div>
         )}
         <AiStudyAction compact disabled={loadingLearning || !!learningError} context={{ plan: detail, course: boundCourse }} />
@@ -795,7 +798,7 @@ export default function PlanPanel() {
             {suggestions && <span className="group-count">{suggestions.length} 条建议</span>}
           </div>
           {suggestions === null ? (
-            <button className="btn slim" onClick={() => void loadSuggestions(detail.id)}>查看调整建议（仅预览）</button>
+            <ActionButton icon={IconEye} className="btn slim" onClick={() => void loadSuggestions(detail.id)}>查看调整建议（仅预览）</ActionButton>
           ) : suggestions.length === 0 ? (
             <p className="sub">暂无建议：没有漏做的未完成条目，也没有掌握薄弱且缺复习的知识点。</p>
           ) : (
@@ -821,10 +824,10 @@ export default function PlanPanel() {
                 </label>
               ))}
               <div className="row-gap">
-                <button className="btn primary" disabled={picked.size === 0} onClick={() => void applyPicked(detail.id)}>
+                <ActionButton icon={IconCheck} className="btn primary" disabled={picked.size === 0} onClick={() => void applyPicked(detail.id)}>
                   应用选中（{picked.size}）
-                </button>
-                <button className="btn ghost" onClick={() => setSuggestions(null)}>取消（不做任何变更）</button>
+                </ActionButton>
+                <ActionButton icon={IconX} className="btn ghost" onClick={() => setSuggestions(null)}>取消（不做任何变更）</ActionButton>
               </div>
             </>
           )}
@@ -837,7 +840,7 @@ export default function PlanPanel() {
             {cards && <span className="group-count">{cards.length} 张待审</span>}
           </div>
           {cards === null ? (
-            <button className="btn slim" onClick={() => void loadCards(detail.id)}>预览待审卡片（不落盘）</button>
+            <ActionButton icon={IconEye} className="btn slim" onClick={() => void loadCards(detail.id)}>预览待审卡片（不落盘）</ActionButton>
           ) : cards.length === 0 ? (
             <p className="sub">还没有学习会话，卡片由真实会话生成。</p>
           ) : (
@@ -849,8 +852,8 @@ export default function PlanPanel() {
                 </details>
               ))}
               <div className="row-gap">
-                <button className="btn primary" onClick={() => void exportCards(detail.id)}>导出到文件夹…</button>
-                <button className="btn ghost" onClick={() => setCards(null)}>收起</button>
+                <ActionButton icon={IconDownload} className="btn primary" onClick={() => void exportCards(detail.id)}>导出到文件夹…</ActionButton>
+                <ActionButton icon={IconChevronUp} className="btn ghost" onClick={() => setCards(null)}>收起</ActionButton>
               </div>
               {exportResult && (
                 <div className={`notice ${exportResult.protected > 0 ? 'warn' : ''}`}>
@@ -865,8 +868,8 @@ export default function PlanPanel() {
         </section>
 
         <div className="row-gap">
-          <button className="btn" onClick={() => void archive(detail.id)}>归档</button>
-          <button className="btn danger" onClick={() => void remove(detail.id)}>删除</button>
+          <ActionButton icon={IconArchive} className="btn" onClick={() => void archive(detail.id)}>归档</ActionButton>
+          <ActionButton icon={IconTrash} className="btn danger" onClick={() => void remove(detail.id)}>删除</ActionButton>
         </div>
       </div>
     );
@@ -889,9 +892,9 @@ export default function PlanPanel() {
           ) : `${courses.length} 门课程`}
         </div>
         {onboardingCourse && (
-          <button type="button" className="btn slim onboarding-course-entry" onClick={() => enterCourse(onboardingCourse.id, null)}>
+          <ActionButton icon={IconBook} type="button" className="btn slim onboarding-course-entry" onClick={() => enterCourse(onboardingCourse.id, null)}>
             上手课程
-          </button>
+          </ActionButton>
         )}
       </header>
       {homeTab === 'plans' ? <>
@@ -945,8 +948,8 @@ export default function PlanPanel() {
                       <input type="number" min={10} max={600} step={10} value={schedMinutes}
                         onChange={(e) => { setSchedMinutes(Number(e.target.value)); setSchedPreview(null); }} />
                     </label>
-                    <button className="btn slim" disabled={schedBusy || !schedStart} onClick={() => void previewSchedule(d)}>预览排期</button>
-                    <button className="btn slim ghost" onClick={closeSchedule}>收起</button>
+                    <ActionButton icon={IconEye} className="btn slim" disabled={schedBusy || !schedStart} onClick={() => void previewSchedule(d)}>预览排期</ActionButton>
+                    <ActionButton icon={IconChevronUp} className="btn slim ghost" onClick={closeSchedule}>收起</ActionButton>
                   </div>
                   {schedPreview && schedPreview.draft_id === d.id && (
                     <div className="sched-preview">
@@ -986,16 +989,16 @@ export default function PlanPanel() {
                         ))}
                       </details>
                       <div className="row-gap">
-                        <button className="btn primary" disabled={schedBusy} onClick={() => void applySchedule(d)}>确认排期</button>
-                        <button className="btn ghost" onClick={() => setSchedPreview(null)}>取消预览</button>
+                        <ActionButton icon={IconCheck} className="btn primary" disabled={schedBusy} onClick={() => void applySchedule(d)}>确认排期</ActionButton>
+                        <ActionButton icon={IconX} className="btn ghost" onClick={() => setSchedPreview(null)}>取消预览</ActionButton>
                       </div>
                     </div>
                   )}
                 </div>
               ) : (
                 <div className="row-gap">
-                  <button className="btn slim" onClick={() => openSchedule(d)}>排期…</button>
-                  <button className="btn slim ghost" onClick={() => void cancelDraft(d)}>取消草案</button>
+                  <ActionButton icon={IconCalendar} className="btn slim" onClick={() => openSchedule(d)}>排期…</ActionButton>
+                  <ActionButton icon={IconX} className="btn slim ghost" onClick={() => void cancelDraft(d)}>取消草案</ActionButton>
                 </div>
               )}
             </>
@@ -1018,8 +1021,8 @@ export default function PlanPanel() {
                 ))}
               </details>
               <div className="row-gap">
-                <button className="btn primary" onClick={() => void confirmDraft(d)}>确认生成计划</button>
-                <button className="btn ghost" onClick={() => void cancelDraft(d)}>取消草案</button>
+                <ActionButton icon={IconCheck} className="btn primary" onClick={() => void confirmDraft(d)}>确认生成计划</ActionButton>
+                <ActionButton icon={IconX} className="btn ghost" onClick={() => void cancelDraft(d)}>取消草案</ActionButton>
               </div>
             </>
           )}
@@ -1057,7 +1060,7 @@ export default function PlanPanel() {
           </div>
           <div className="learning-plan-completion">
             <span>安排已完成 {p.done_items}/{p.total_items}</span>
-            <div className="progress" role="progressbar" aria-label={`${p.title}完成进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.progress * 100)}><div style={{ width: `${Math.round(p.progress * 100)}%` }} /></div>
+            <div className="progress" role="progressbar" aria-label={`${p.title}完成进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.progress * 100)}><div style={{ transform: `scaleX(${Math.round(p.progress * 100) / 100})` }} /></div>
             <span>{Math.round(p.progress * 100)}%</span>
           </div>
           <div className="learning-plan-footer">

@@ -7,7 +7,7 @@ function configure(core: TodoDeskCore) {
   config.learning.exploration_enabled=false;core.newsFeed.updateConfig({config,expected_revision:config.revision});
 }
 function collect(core: TodoDeskCore, base: number, count: number) {
-  let batch=core.newsFeed.startUpdate(), added=0;const ids:number[]=[];
+  let batch=core.newsFeed.startUpdate(), added=0, continued=false;const ids:number[]=[];
   while(batch.status==='active') {
     const claim=core.news.claimTask(batch.next_task_id!),ctx=core.newsFeed.getTaskContext(claim.task.id)!;
     const size=Math.min(count-added,ctx.remaining);
@@ -16,6 +16,7 @@ function collect(core: TodoDeskCore, base: number, count: number) {
       ids.push(...news.map(item=>item.id));added+=news.length;
     }
     core.news.completeTask(claim.task.id,claim.claim_token,'已保存实际核实结果');batch=core.newsFeed.advance(batch.id)!;
+    if(batch.status==='completed' && added<count && !continued) {continued=true;batch=core.newsFeed.continueUpdate({batch_id:batch.id});}
   }
   return {batch,ids};
 }
@@ -73,7 +74,7 @@ describe('每日模块记录',()=>{
       collect(core,600,1);const stale=core.newsFeed.listDailyEditions()[0];
       expect(stale.summary_status).toBe('stale');expect(stale.summary).toBe(input.summary);expect(stale.news_count).toBe(3);
       const batch=core.newsFeed.startUpdate(),ctx=core.newsFeed.getTaskContext(batch.next_task_id!)!;
-      expect(ctx.instructions).toContain('submit_news_daily_summary');expect(ctx.daily_edition?.edition.id).toBe(edition.id);
+      expect(ctx.instructions).toContain('submit_news_daily_summary');expect(ctx.instructions).toContain('最重要2~3条新闻');expect(ctx.instructions).toContain('最多100字');expect(ctx.daily_edition?.edition.id).toBe(edition.id);
       expect(ctx.daily_edition?.news.map(item=>item.id)).toEqual(expect.arrayContaining(first.ids));
     }finally{cleanup();}
   });

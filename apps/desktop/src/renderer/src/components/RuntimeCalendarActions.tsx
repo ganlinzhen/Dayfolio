@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconRefresh, IconToolbox } from './icons';
 // 操作项来自当前激活包的有限声明，不接受任意组件、IPC 或脚本。
 import { useState } from 'react';
 import { api, call } from '../api';
@@ -41,9 +43,9 @@ export default function RuntimeCalendarActions() {
     (extension.manifest.contributions?.calendarActions ?? []).map(action => {
       const providerId = providerIdFor(extension.id, action.providerLocalId);
       return action.kind === 'open_tool'
-        ? <button className="btn slim" key={extension.id + ':' + action.localId} onClick={() => openRuntimeTool(extension.id)}>{action.title}</button>
+        ? <ActionButton icon={IconToolbox} className="btn slim" key={extension.id + ':' + action.localId} onClick={() => openRuntimeTool(extension.id)}>{action.title}</ActionButton>
         : <span className="runtime-refresh-action" key={extension.id + ':' + action.localId}>
-          <button className="btn slim" disabled={busy.includes(providerId)} onClick={() => void request(providerId)}>{busy.includes(providerId) ? '正在提交…' : action.title}</button>
+          <ActionButton icon={IconRefresh} className="btn slim" disabled={busy.includes(providerId)} onClick={() => void request(providerId)}>{busy.includes(providerId) ? '正在提交…' : action.title}</ActionButton>
           <span className="sub" role="status">{statusText(statuses[providerId])}</span>
         </span>;
     }))}{error && <span className="notice error" role="alert">{error}</span>}</>;

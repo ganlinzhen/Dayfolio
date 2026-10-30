@@ -1,8 +1,11 @@
+import ActionButton from './ActionButton';
 // 全局操作反馈 toast：模块级极简 store + Host 组件（App 挂载一次）
 // 支持「撤销」类动作；提示自动消失，不打断输入
 import { useSyncExternalStore } from 'react';
+import type { ComponentType, ReactElement, SVGProps } from 'react';
 
 export interface ToastAction {
+  icon: ComponentType<SVGProps<SVGSVGElement>> | ReactElement;
   label: string;
   run: () => void;
 }
@@ -51,7 +54,7 @@ export function ToastHost() {
         <div key={t.id} className="toast">
           <span className="toast-text">{t.text}</span>
           {t.action && (
-            <button
+            <ActionButton icon={t.action.icon}
               className="toast-action"
               onClick={() => {
                 t.action?.run();
@@ -59,7 +62,7 @@ export function ToastHost() {
               }}
             >
               {t.action.label}
-            </button>
+            </ActionButton>
           )}
           <button className="toast-close" aria-label="关闭提示" onClick={() => dismissToast(t.id)}>
             ×

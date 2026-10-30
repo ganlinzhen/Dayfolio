@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconCheck, IconDownload } from './icons';
 // MCP 和技能目录由实际工具注册及能力包清单生成。
 import { useEffect, useMemo, useState } from 'react';
 import { MCP_SECTIONS as SECTIONS, AGENT_SKILLS } from '../generated/agentCatalog';
@@ -78,8 +80,8 @@ export default function McpPanel() {
       <div className="mcp-section">
         <div className="mcp-section-label"><span>AI 能力包</span><span className="mcp-section-hint">随包 {kit?.bundledVersion ?? '待检查'} · 已导出 {kit?.exportedVersion ?? '暂无'}</span></div>
         <div className="toolbar">
-          <button className="btn" disabled={busy} onClick={() => void exportKit()}>{busy ? '正在导出…' : '导出 / 更新能力包'}</button>
-          <button className="btn" disabled={busy} onClick={() => void refresh()}>检查接入包</button>
+          <ActionButton icon={IconDownload} className="btn" disabled={busy} onClick={() => void exportKit()}>{busy ? '正在导出…' : '导出 / 更新能力包'}</ActionButton>
+          <ActionButton icon={IconCheck} className="btn" disabled={busy} onClick={() => void refresh()}>检查接入包</ActionButton>
         </div>
         {kit?.exportedPath && <p className="sub">导出位置：{kit.exportedPath}</p>}
         {kit && <p className="sub">PATH 中的 Node：{kit.clientNode ?? '未找到'}。这里检查文件和运行环境；客户端是否已加载需在客户端核对。</p>}

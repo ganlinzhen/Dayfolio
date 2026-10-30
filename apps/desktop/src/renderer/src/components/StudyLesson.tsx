@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconEye, IconEyeOff, IconRefresh, IconSend } from './icons';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, call } from '../api';
 import EmbeddedFrame from './EmbeddedFrame';
@@ -67,8 +69,8 @@ export function LessonQuiz({ courseId, lesson, onSaved }: { courseId: number; le
       {showAnswers && <div className="course-quiz-expl">解析：{q.explanation}</div>}
     </fieldset>)}
     <div className="row-gap">
-      <button className="btn primary" disabled={busy || Object.keys(answers).length === 0} onClick={() => void submit()}>{busy ? '正在提交…' : '提交答案'}</button>
-      {submitted && <button className="btn ghost" onClick={() => setShowAnswers(v => !v)}>{showAnswers ? '隐藏解析' : '显示解析'}</button>}
+      <ActionButton icon={IconSend} className="btn primary" disabled={busy || Object.keys(answers).length === 0} onClick={() => void submit()}>{busy ? '正在提交…' : '提交答案'}</ActionButton>
+      {submitted && <ActionButton icon={showAnswers ? IconEyeOff : IconEye} className="btn ghost" onClick={() => setShowAnswers(v => !v)}>{showAnswers ? '隐藏解析' : '显示解析'}</ActionButton>}
     </div>
     {error && <p className="notice error" role="alert">{error}</p>}
   </div>;
@@ -112,10 +114,10 @@ export function PlanLessonContent({ courseId, day, onChanged, children }: {
   return <>
     <section id="learning-materials" className="group learning-detail-section">
       <h2>课件</h2>
-      {error ? <div className="notice error" role="alert">{error}<button className="btn slim" onClick={() => setRetry(v => v + 1)}>重试加载</button></div>
+      {error ? <div className="notice error" role="alert">{error}<ActionButton icon={IconRefresh} className="btn slim" onClick={() => setRetry(v => v + 1)}>重试加载</ActionButton></div>
         : reading ? <LessonMaterial readingLayout lesson={reading.lesson} html={reading.html} onRead={() => void markRead()} />
           : <p className="sub" role="status">正在加载课件…</p>}
-      {readError && <div className="notice error" role="alert">{readError}<button className="btn slim" onClick={() => void markRead()}>重试保存已读</button></div>}
+      {readError && <div className="notice error" role="alert">{readError}<ActionButton icon={IconRefresh} className="btn slim" onClick={() => void markRead()}>重试保存已读</ActionButton></div>}
     </section>
     <section id="learning-assessments" className="group learning-detail-section">
       <h2>评测</h2>

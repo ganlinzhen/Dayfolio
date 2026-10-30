@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconCheck, IconFolder, IconSave, IconSettings, IconX } from './icons';
 import Modal from './Modal';
 // HTML 工具箱：浏览与编辑分离，整理操作仅在编辑模式展示。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -154,10 +156,10 @@ export default function ToolsPanel() {
           title={openTool.title}
           meta="HTML 工具"
           leading={
-            <button className="tool-crumb-back" onClick={() => setOpenId(null)}>
-              <IconChevronLeft width={13} height={13} />
+            <ActionButton icon={IconChevronLeft} className="tool-crumb-back" onClick={() => setOpenId(null)}>
+
               工具箱
-            </button>
+            </ActionButton>
           }
         >
           <HtmlToolFrame toolId={openTool.id} title={openTool.title} entryFile={openTool.entry_file} />
@@ -172,11 +174,11 @@ export default function ToolsPanel() {
         <div className="head-meta mono">{tools.length} 个工具</div>
         <span className="spacer" />
         {editing ? <>
-          <button className="btn slim" disabled={busy} onClick={() => setCatModalOpen(true)}>管理分类</button>
-          <button className="btn primary" disabled={busy} onClick={() => setEditing(false)}>完成编辑</button>
+          <ActionButton icon={IconSettings} className="btn slim" disabled={busy} onClick={() => setCatModalOpen(true)}>管理分类</ActionButton>
+          <ActionButton icon={IconCheck} className="btn primary" disabled={busy} onClick={() => setEditing(false)}>完成编辑</ActionButton>
         </> : <>
-          <button className="btn slim" onClick={() => setEditing(true)}><IconPencil width={13} height={13} />编辑</button>
-          <button className="btn primary" onClick={() => setFormOpen(true)}><IconUpload width={13} height={13} />导入</button>
+          <ActionButton icon={IconPencil} className="btn slim" onClick={() => setEditing(true)}>编辑</ActionButton>
+          <ActionButton icon={IconUpload} className="btn primary" onClick={() => setFormOpen(true)}>导入</ActionButton>
         </>}
       </header>
 
@@ -212,8 +214,8 @@ export default function ToolsPanel() {
                       <option value="">未分类</option>
                       {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                    <button className="icon-btn" title={`上移${t.title}`} aria-label={`上移${t.title}`} disabled={busy || index === 0} onClick={() => void moveTool(t, items[index - 1])}><IconChevronUp width={14} height={14} /></button>
-                    <button className="icon-btn" title={`下移${t.title}`} aria-label={`下移${t.title}`} disabled={busy || index === items.length - 1} onClick={() => void moveTool(t, items[index + 1])}><IconChevronDown width={14} height={14} /></button>
+                    <ActionButton icon={IconChevronUp} className="icon-btn" title={`上移${t.title}`} aria-label={`上移${t.title}`} disabled={busy || index === 0} onClick={() => void moveTool(t, items[index - 1])}>上移</ActionButton>
+                    <ActionButton icon={IconChevronDown} className="icon-btn" title={`下移${t.title}`} aria-label={`下移${t.title}`} disabled={busy || index === items.length - 1} onClick={() => void moveTool(t, items[index + 1])}>下移</ActionButton>
                   </div>}
                 </div>
               ))}
@@ -293,26 +295,28 @@ function CategoryModal({ cats, onClose, onChanged }: {
     setRows(next);
   });
 
-  return <Modal title="管理分类" description="分类顺序即分组顺序，操作完成后即时保存" onClose={onClose} busy={busy} footer={<button className="btn primary" disabled={busy} onClick={onClose}>完成</button>}>
+  return <Modal title="管理分类" description="分类顺序即分组顺序，操作完成后即时保存" onClose={onClose} busy={busy} footer={<ActionButton icon={IconCheck} className="btn primary" disabled={busy} onClick={onClose}>完成</ActionButton>}>
     {error && <div className="notice error" role="alert">{error}</div>}
     <fieldset className="tool-editor-fields" disabled={busy}>
       {rows.length === 0 && <p className="tool-field-hint">还没有分类，先添加一个。</p>}
       {rows.map((c, i) => <div className="cat-row" key={c.id}>
         {renaming === c.id ? <>
           <input className="inline-input" aria-label="分类新名称" autoFocus value={renameText} maxLength={24} onChange={e => setRenameText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void rename(); } }} />
-          <button className="btn slim" onClick={() => void rename()}>保存名称</button>
-          <button className="btn ghost slim" onClick={() => setRenaming(null)}>取消改名</button>
+          <ActionButton icon={IconSave} className="btn slim" onClick={() => void rename()}>保存名称</ActionButton>
+          <ActionButton icon={IconX} className="btn ghost slim" onClick={() => setRenaming(null)}>取消改名</ActionButton>
         </> : <>
           <span className="cat-name">{c.name}</span>
-          <button className="icon-btn" title={`上移分类${c.name}`} aria-label={`上移分类${c.name}`} disabled={i === 0} onClick={() => void move(i, -1)}><IconChevronUp width={14} height={14} /></button>
-          <button className="icon-btn" title={`下移分类${c.name}`} aria-label={`下移分类${c.name}`} disabled={i === rows.length - 1} onClick={() => void move(i, 1)}><IconChevronDown width={14} height={14} /></button>
-          <button className="icon-btn" title={`重命名${c.name}`} aria-label={`重命名${c.name}`} onClick={() => { setRenaming(c.id); setRenameText(c.name); }}><IconPencil width={14} height={14} /></button>
-          <button className="icon-btn danger" title={`删除分类${c.name}`} aria-label={`删除分类${c.name}`} onClick={() => remove(c)}><IconTrash width={14} height={14} /></button>
+          <div className="cat-row-actions">
+          <ActionButton icon={IconChevronUp} className="icon-btn" title={`上移分类${c.name}`} aria-label={`上移分类${c.name}`} disabled={i === 0} onClick={() => void move(i, -1)}>上移</ActionButton>
+          <ActionButton icon={IconChevronDown} className="icon-btn" title={`下移分类${c.name}`} aria-label={`下移分类${c.name}`} disabled={i === rows.length - 1} onClick={() => void move(i, 1)}>下移</ActionButton>
+          <ActionButton icon={IconPencil} className="icon-btn" title={`重命名${c.name}`} aria-label={`重命名${c.name}`} onClick={() => { setRenaming(c.id); setRenameText(c.name); }}>重命名</ActionButton>
+          <ActionButton icon={IconTrash} className="icon-btn danger" title={`删除分类${c.name}`} aria-label={`删除分类${c.name}`} onClick={() => remove(c)}>删除</ActionButton>
+          </div>
         </>}
       </div>)}
       <div className="cat-add">
         <input className="inline-input" aria-label="新分类名称" placeholder="新分类名称…" value={newName} maxLength={24} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && newName.trim()) { e.preventDefault(); void add(); } }} />
-        <button className="btn slim" disabled={!newName.trim()} onClick={() => void add()}><IconPlus width={12} height={12} />添加</button>
+        <ActionButton icon={IconPlus} className="btn slim" disabled={!newName.trim()} onClick={() => void add()}>添加</ActionButton>
       </div>
     </fieldset>
   </Modal>;
@@ -417,9 +421,9 @@ function ToolFormModal({ cats, tool, onClose, onSaved, onDeleted }: {
 
   return (
     <Modal title={tool ? '编辑工具' : '导入 HTML'} description={tool ? '修改工具信息，保存后生效' : '选择本地 HTML 页面与配套资源'} onClose={onClose} busy={busy} footer={<>
-      {tool && <button className="btn danger tool-editor-delete" disabled={busy || loading} onClick={() => void remove()}><IconTrash width={13} height={13} />删除工具</button>}
-      <button className="btn" disabled={busy} onClick={onClose}>取消</button>
-      <button className="btn primary" disabled={busy || loading} onClick={() => void submit()}>{busy ? '处理中…' : tool ? '保存修改' : '导入'}</button>
+      {tool && <ActionButton icon={IconTrash} className="btn danger tool-editor-delete" disabled={busy || loading} onClick={() => void remove()}>删除工具</ActionButton>}
+      <ActionButton icon={IconX} className="btn" disabled={busy} onClick={onClose}>取消</ActionButton>
+      <ActionButton icon={tool ? IconSave : IconUpload} className="btn primary" disabled={busy || loading} onClick={() => void submit()}>{busy ? '处理中…' : tool ? '保存修改' : '导入'}</ActionButton>
     </>}>
       {error && <div className="notice error" role="alert">{error}</div>}
       <fieldset className="tool-editor-fields" disabled={busy || loading}>
@@ -440,7 +444,7 @@ function ToolFormModal({ cats, tool, onClose, onSaved, onDeleted }: {
             {TOOL_ICONS.map(({ key, label, Icon }) => <button key={key} type="button" title={label} aria-label={label} aria-pressed={icon === key} className={`icon-cell ${icon === key ? 'active' : ''}`} onClick={() => setIcon(key)}><Icon width={17} height={17} /></button>)}
           </div> : <div className="tool-image-picker">
             <input ref={imageInput} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onChange={e => { void pickImage(e.target.files?.[0]); e.target.value = ''; }} />
-            <button className="btn slim" type="button" onClick={() => imageInput.current?.click()}><IconUpload width={13} height={13} />{isImageIcon(icon) ? '更换图片' : '选择图片'}</button>
+            <ActionButton icon={IconUpload} className="btn slim" type="button" onClick={() => imageInput.current?.click()}>{isImageIcon(icon) ? '更换图片' : '选择图片'}</ActionButton>
             <span className="tool-field-hint">本地图片，最大 2 MB</span>
           </div>}
         </div>
@@ -464,9 +468,9 @@ function ToolFormModal({ cats, tool, onClose, onSaved, onDeleted }: {
           <input ref={fileInput} className="tool-html-files" type="file" multiple hidden onChange={e => { void pickFiles(e.target.files); e.target.value = ''; }} />
           <input ref={folderInput} type="file" multiple hidden {...{ webkitdirectory: '' }} onChange={e => { void pickFiles(e.target.files); e.target.value = ''; }} />
           <div className="tool-file-actions">
-            <button className="btn slim" type="button" onClick={() => fileInput.current?.click()}><IconUpload width={13} height={13} />{tool ? '替换文件' : '选择文件'}</button>
-            <button className="btn slim" type="button" onClick={() => folderInput.current?.click()}>选择文件夹</button>
-            {!!tool && files.length > 0 && <button className="btn ghost slim" type="button" onClick={() => { setFiles([]); setEntryFile(tool.entry_file); }}>保留原文件</button>}
+            <ActionButton icon={IconUpload} className="btn slim" type="button" onClick={() => fileInput.current?.click()}>{tool ? '替换文件' : '选择文件'}</ActionButton>
+            <ActionButton icon={IconFolder} className="btn slim" type="button" onClick={() => folderInput.current?.click()}>选择文件夹</ActionButton>
+            {!!tool && files.length > 0 && <ActionButton icon={IconCheck} className="btn ghost slim" type="button" onClick={() => { setFiles([]); setEntryFile(tool.entry_file); }}>保留原文件</ActionButton>}
           </div>
           <p className="tool-field-hint">{tool ? files.length ? '保存时将整体替换原文件，请包含 HTML、CSS、JS、图片和来源清单等全部资源。' : '未选择替换文件时，保留现有页面和全部配套资源。' : '可选择多个文件；含子目录的工具请选择整个文件夹。'}</p>
           {loading && <p role="status">正在读取文件清单…</p>}

@@ -20,7 +20,7 @@ describe('模块新闻共用服务', () => {
       expect(core.newsFeed.preview().modules[0].instructions).toContain('不因个人点击兴趣缩小');
     } finally { cleanup(); }
   });
-  it('先覆盖各模块再补足，接续、删除、重复点击都不返还模块预算', () => {
+  it('首轮覆盖各模块后完成，显式补采、删除和接续不返还模块预算', () => {
     const { core, cleanup } = mkCore(); try {
       const c = only(core.newsFeed.getConfig(), ['domestic', 'ai']); c.modules.forEach(m => { m.headline_count = 2; m.max_items = 3; });
       core.newsFeed.updateConfig({ config: c, expected_revision: 0 });
@@ -31,7 +31,8 @@ describe('模块新闻共用服务', () => {
       core.news.completeTask(first, claim.claim_token, '重点已完成');
       b = core.newsFeed.advance(b.id)!; expect(b.modules.find(m => m.task_id === b.next_task_id)?.module_id).toBe('ai');
       const second = core.news.claimTask(b.next_task_id!); core.news.completeTask(second.task.id, second.claim_token, '本轮没有新增');
-      b = core.newsFeed.advance(b.id)!; const third = core.news.claimTask(b.next_task_id!); expect(third.task.max_items).toBe(1);
+      b = core.newsFeed.advance(b.id)!; expect(b.status).toBe('completed'); expect(b.next_task_id).toBeNull();
+      b = core.newsFeed.continueUpdate({ batch_id: b.id }); const third = core.news.claimTask(b.next_task_id!); expect(third.task.max_items).toBe(1);
       core.news.deleteItem(submitted.items[0].id);
       expect(core.newsFeed.getTaskContext(third.task.id)?.remaining).toBe(1);
       expect(() => core.news.submitItems(third.task.id, third.claim_token, [item(3), item(4)])).toThrow('额度');
@@ -39,6 +40,26 @@ describe('模块新闻共用服务', () => {
       const t = core.news.getTask(continued.next_task_id!); expect(t.max_items).toBe(1);
       expect(core.newsFeed.getTaskContext(t.id)?.accepted_ids).toHaveLength(2);
       expect(() => core.news.submitItems(third.task.id, third.claim_token, [item(3)])).toThrow();
+    } finally { cleanup(); }
+  });
+  it('批量准备每个有效模块一次，停止和撤回后不能使用旧任务', () => {
+    const { core, cleanup } = mkCore(); try {
+      const c = only(core.newsFeed.getConfig(), ['domestic', 'ai', 'events']);
+      core.newsFeed.updateConfig({ config: c, expected_revision: 0 });
+      const started = core.newsFeed.startUpdate();
+      const b = core.newsFeed.prepareBatchTasks(started.id);
+      const ids = b.modules.map(m => m.task_id!); expect(ids).toHaveLength(3); expect(new Set(ids).size).toBe(3);
+      expect(core.newsFeed.prepareBatchTasks(b.id).modules.map(m => m.task_id)).toEqual(ids);
+      const held = ids.map(id => core.news.claimTask(id));
+      expect(held.map(x => core.newsFeed.getTaskContext(x.task.id)?.module_id)).toEqual(['domestic', 'ai', 'events']);
+      const event = core.newsFeed.getInterests().events[0];
+      core.newsFeed.updateEvent({ id: event.id, status: 'paused', expected_revision: event.revision });
+      expect(() => core.newsFeed.getTaskContext(ids[2])).toThrow();
+      core.news.completeTask(ids[0], held[0].claim_token, '无新增');
+      expect(core.newsFeed.advance(b.id)?.next_task_id).toBe(ids[1]);
+      core.newsFeed.stopUpdate(b.id);
+      expect(() => core.newsFeed.getTaskContext(ids[1])).toThrow('失效');
+      expect(() => core.newsFeed.prepareBatchTasks(b.id)).toThrow('失效');
     } finally { cleanup(); }
   });
   it('图片与字段验证保持整批原子，独立新闻扩展可读且旧任务不可伪造模块', () => {
@@ -124,12 +145,12 @@ describe('模块新闻共用服务', () => {
       core.newsFeed.updateConfig({ config: c, expected_revision: 0 });
       let b = core.newsFeed.startUpdate(); let claim = core.news.claimTask(b.next_task_id!);
       const old = core.news.submitItems(claim.task.id, claim.claim_token, [item(1)]).items[0]; core.news.completeTask(claim.task.id, claim.claim_token);
-      b = core.newsFeed.advance(b.id)!; claim = core.news.claimTask(b.next_task_id!); core.news.completeTask(claim.task.id, claim.claim_token, '无其他新消息');
+      b = core.newsFeed.advance(b.id)!; expect(b.status).toBe('completed'); b = core.newsFeed.continueUpdate({ batch_id: b.id }); claim = core.news.claimTask(b.next_task_id!); core.news.completeTask(claim.task.id, claim.claim_token, '无其他新消息');
       expect(core.newsFeed.advance(b.id)?.status).toBe('completed');
       b = core.newsFeed.startUpdate(); claim = core.news.claimTask(b.next_task_id!);
       expect(core.newsFeed.getTaskContext(claim.task.id)?.accepted_ids).toEqual([]);
       const fresh = core.news.submitItems(claim.task.id, claim.claim_token, [item(2)]).items[0]; core.news.completeTask(claim.task.id, claim.claim_token);
-      b = core.newsFeed.advance(b.id)!; claim = core.news.claimTask(b.next_task_id!); core.news.completeTask(claim.task.id, claim.claim_token, '增量核实完毕');
+      b = core.newsFeed.advance(b.id)!; expect(b.status).toBe('completed'); b = core.newsFeed.continueUpdate({ batch_id: b.id }); claim = core.news.claimTask(b.next_task_id!); core.news.completeTask(claim.task.id, claim.claim_token, '增量核实完毕');
       b = core.newsFeed.advance(b.id)!; expect(b.status).toBe('completed'); expect(b.modules[0].accepted_count).toBe(2);
       const members = core.db.prepare('SELECT news_id FROM news_feed_members WHERE batch_id=? ORDER BY news_id').all(b.id).map(r => Number(r.news_id));
       expect(members).toEqual([old.id, fresh.id]); expect(core.news.list()).toHaveLength(2);
@@ -226,6 +247,7 @@ describe('模块新闻共用服务', () => {
       const p1 = core.news.claimTask(b.next_task_id!), candidate = { key: '端侧推理调优', name: '端侧推理调优', scope: '开源小模型的本地推理性能与量化工具', reason: '探索推荐：来自你配置的开源模型方向', basis_news_ids: [] as number[], basis_module_id: 'ai' };
       const accepted = core.news.submitItems(p1.task.id, p1.claim_token, [item(1, { candidate_topic: candidate }), item(2), item(3), item(4), item(5)]);
       core.news.completeTask(p1.task.id, p1.claim_token); b = core.newsFeed.advance(b.id)!;
+      expect(b.status).toBe('completed'); b = core.newsFeed.continueUpdate({ batch_id: b.id });
       while (core.newsFeed.getTaskContext(b.next_task_id!)?.module_id !== 'for_you') { const other = core.news.claimTask(b.next_task_id!); core.news.completeTask(other.task.id, other.claim_token); b = core.newsFeed.advance(b.id)!; }
       expect(b.modules.find(m => m.task_id === b.next_task_id)?.phase).toBe(2);
       const p2 = core.news.claimTask(b.next_task_id!); expect(p2.task.max_items).toBe(5);
@@ -285,9 +307,12 @@ describe('模块新闻共用服务', () => {
       vi.useFakeTimers(); vi.setSystemTime(end + 10 * 60_000);
       expect(() => core.news.submitItems(task.task.id, task.claim_token, [item(1, { published_at: new Date(end + 1).toISOString() })])).toThrow('固定时间窗');
       expect(core.news.submitItems(task.task.id, task.claim_token, [item(1, { published_at: new Date(end - 55 * 60_000).toISOString() })]).inserted).toBe(1);
-      core.news.completeTask(task.task.id, task.claim_token); const next = core.newsFeed.advance(b.id)!;
+      core.news.completeTask(task.task.id, task.claim_token); expect(core.newsFeed.advance(b.id)?.status).toBe('completed');
+      const next = core.newsFeed.continueUpdate({ batch_id: b.id });
       expect(core.newsFeed.getTaskContext(next.next_task_id!)?.instructions).toContain('摘要深度：deep');
       expect(core.newsFeed.preview().modules[0].instructions).toContain('摘要深度：deep');
+      expect(core.newsFeed.preview().modules[0].instructions).toContain('关键未证实信息或分歧应在摘要中明确说明');
+      expect(core.newsFeed.preview().modules[0].instructions).not.toContain('uncertainty 说明');
     } finally { vi.useRealTimers(); cleanup(); }
   });
   it('模块改名、顺序和折叠数量立即应用，不替换排队任务也不撤回运行令牌', () => {

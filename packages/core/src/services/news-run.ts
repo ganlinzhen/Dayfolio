@@ -24,7 +24,7 @@ export function createNewsRunService(db: DbAdapter, news: NewsService) {
   const get = (id: string): NewsRun => { const r = row(id); if (!r) throw new Error('新闻执行记录不存在'); return publicRow(r); };
   const list = (taskId?: number): NewsRun[] => (taskId == null
     ? db.prepare("SELECT * FROM news_agent_runs ORDER BY CASE WHEN status IN ('queued','running','cancelling') THEN 0 ELSE 1 END, rowid DESC LIMIT 50").all()
-    : db.prepare('SELECT * FROM news_agent_runs WHERE task_id=? ORDER BY rowid DESC LIMIT 50').all(taskId)).map(publicRow);
+    : db.prepare('SELECT r.* FROM news_agent_runs r WHERE EXISTS (SELECT 1 FROM news_agent_run_tasks t WHERE t.run_id=r.id AND t.task_id=?) ORDER BY r.rowid DESC LIMIT 50').all(taskId)).map(publicRow);
   const enqueue = (taskId?: number): NewsRun => inTx(db, () => {
     const active = db.prepare(`SELECT * FROM news_agent_runs WHERE status IN ('queued','running','cancelling') ${taskId == null ? '' : 'AND task_id=?'} ORDER BY rowid LIMIT 1`);
     const existing = taskId == null ? active.get() : active.get(taskId);
@@ -34,6 +34,7 @@ export function createNewsRunService(db: DbAdapter, news: NewsService) {
     if (list().filter(r => ACTIVE.includes(r.status)).length >= 10) throw new Error('后台新闻队列已满，请等待现有任务完成');
     const id = randomUUID();
     db.prepare("INSERT INTO news_agent_runs(id,task_id,status,progress,created_at) VALUES(?,?,'queued','等待后台执行',?)").run(id, task.id, new Date().toISOString());
+    db.prepare('INSERT INTO news_agent_run_tasks(run_id,task_id) VALUES(?,?)').run(id, task.id);
     return get(id);
   });
   const cancel = (id: string): NewsRun => inTx(db, () => {
@@ -62,21 +63,51 @@ export function createNewsRunService(db: DbAdapter, news: NewsService) {
     if (!r || r.owner_token !== owner || !['running', 'cancelling'].includes(String(r.status))) throw new Error('执行已结束或执行器身份不匹配');
     return r;
   };
+  // 仅由宿主和受限 MCP 使用；不能由模型任意扩张批次权限。
+  const getBatchTaskIds = (id: string, owner: string): number[] => {
+    assertOwner(id, owner);
+    return db.prepare('SELECT task_id FROM news_agent_run_tasks WHERE run_id=? ORDER BY rowid').all(id).map(r => Number(r.task_id));
+  };
+  const attachBatchTasks = (id: string, owner: string, taskIds: number[]): number[] => inTx(db, () => {
+    const run = assertOwner(id, owner);
+    if (run.status !== 'running') throw new Error('执行正在停止，不能认领新任务');
+    if (!Array.isArray(taskIds) || taskIds.length > 100 || taskIds.some(taskId => !Number.isSafeInteger(taskId) || taskId <= 0)) throw new Error('批次任务身份无效');
+    const root = db.prepare('SELECT batch_id FROM news_feed_tasks WHERE task_id=?').get(Number(run.task_id));
+    if (!root) throw new Error('独立新闻任务不能扩展为批次');
+    for (const taskId of new Set(taskIds)) {
+      const feed = db.prepare('SELECT batch_id FROM news_feed_tasks WHERE task_id=?').get(taskId);
+      if (!feed || feed.batch_id !== root.batch_id) throw new Error('只能认领同一新闻批次内的任务');
+      const task = db.prepare('SELECT status,claimed_by,claim_token,claim_expires_at FROM news_tasks WHERE id=?').get(taskId);
+      const linked = db.prepare('SELECT 1 FROM news_agent_run_tasks WHERE run_id=? AND task_id=?').get(id, taskId);
+      if (linked) {
+        if (task?.status === 'completed' || (task?.status === 'claimed' && task.claimed_by === `dayfolio-run:${id}` && task.claim_token && String(task.claim_expires_at ?? '') > new Date().toISOString())) continue;
+        throw new Error('已关联任务的认领已失效');
+      }
+      const otherRun = db.prepare("SELECT 1 FROM news_agent_run_tasks t JOIN news_agent_runs r ON r.id=t.run_id WHERE t.task_id=? AND r.id<>? AND r.status IN ('queued','running','cancelling')").get(taskId, id);
+      if (otherRun || task?.status !== 'pending') throw new Error('新闻任务已被其他执行占用或不再待处理');
+      news.claimTask(taskId, `dayfolio-run:${id}`);
+      db.prepare('INSERT INTO news_agent_run_tasks(run_id,task_id) VALUES(?,?)').run(id, taskId);
+    }
+    return getBatchTaskIds(id, owner);
+  });
   const progress = (id: string, owner: string, message: string, threadId?: string) => {
     assertOwner(id, owner);
     db.prepare('UPDATE news_agent_runs SET progress=?,thread_id=COALESCE(?,thread_id) WHERE id=?').run(message.slice(0, 300), threadId ?? null, id);
     return get(id);
   };
   const finish = (id: string, owner: string, status: 'succeeded' | 'failed' | 'cancelled' | 'interrupted', error?: string): NewsRun => inTx(db, () => {
-    const r = assertOwner(id, owner), task = news.getTask(Number(r.task_id));
+    assertOwner(id, owner);
+    const tasks = getBatchTaskIds(id, owner).map(taskId => news.getTask(taskId));
     // 以业务库为准：进程退出码或最后一句回复都不能替代真实完成。
-    if (status === 'succeeded' && task.status !== 'completed') { status = 'failed'; error = 'Agent 已退出，但新闻任务尚未完成；可重试接续已入库结果'; }
-    const claim = db.prepare('SELECT claim_token,claimed_by FROM news_tasks WHERE id=?').get(task.id);
-    if (task.status === 'claimed' && claim?.claimed_by === `dayfolio-run:${id}` && claim.claim_token) {
-      try { news.releaseTask(task.id, String(claim.claim_token), error?.slice(0, 300) || '后台执行已停止'); }
-      catch { status = 'failed'; error = '执行已停止，但释放认领动作不可用；请恢复该动作或等待认领到期后重试'; }
+    if (status === 'succeeded' && tasks.some(task => task.status !== 'completed')) { status = 'failed'; error = 'Agent 已退出，但新闻任务尚未完成；可重试接续已入库结果'; }
+    for (const task of tasks) {
+      const claim = db.prepare('SELECT claim_token,claimed_by FROM news_tasks WHERE id=?').get(task.id);
+      if (task.status === 'claimed' && claim?.claimed_by === `dayfolio-run:${id}` && claim.claim_token) {
+        try { news.releaseTask(task.id, String(claim.claim_token), error?.slice(0, 300) || '后台执行已停止'); }
+        catch { status = 'failed'; error = '执行已停止，但释放认领动作不可用；请恢复该动作或等待认领到期后重试'; }
+      }
     }
-    const message = status === 'succeeded' ? `采集完成，当前收录 ${task.inserted_count} 条` : status === 'cancelled' ? '已停止，已收录内容保留' : status === 'interrupted' ? '上次执行中断，可重试' : '采集失败，可重试';
+    const message = status === 'succeeded' ? `采集完成，当前收录 ${tasks.reduce((sum, task) => sum + task.inserted_count, 0)} 条` : status === 'cancelled' ? '已停止，已收录内容保留' : status === 'interrupted' ? '上次执行中断，可重试' : '采集失败，可重试';
     db.prepare('UPDATE news_agent_runs SET status=?,progress=?,error=?,finished_at=?,owner_token=NULL WHERE id=?').run(status, message, error?.slice(0, 1000) ?? null, new Date().toISOString(), id);
     return get(id);
   });
@@ -86,6 +117,6 @@ export function createNewsRunService(db: DbAdapter, news: NewsService) {
     catch (e) { if (!(e instanceof Error && 'code' in e && e.code === 'ESRCH')) throw e; }
     return finish(id, String(r.owner_token), 'interrupted', '原执行器已退出');
   };
-  return { get, list, enqueue, cancel, claimNext, progress, finish, recover };
+  return { get, list, enqueue, cancel, claimNext, getBatchTaskIds, attachBatchTasks, progress, finish, recover };
 }
 export type NewsRunService = ReturnType<typeof createNewsRunService>;

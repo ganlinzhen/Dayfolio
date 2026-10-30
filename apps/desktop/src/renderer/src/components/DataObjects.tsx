@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconChevronDown, IconChevronLeft, IconChevronRight, IconLink, IconPlay, IconPlus, IconSave, IconUnlink, IconX } from './icons';
 // 对象类型详情内的实例浏览：搜索与分页、实例属性、关联跳转和运行动作。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, call } from '../api';
@@ -102,7 +104,7 @@ export default function DataObjects({ types, actions, objectType, initialObjectI
         {def && (
           <>
             <div className="toolbar">
-              {detail && <button className="btn slim ghost" onClick={() => setDetail(null)}>← 返回对象列表</button>}
+              {detail && <ActionButton icon={IconChevronLeft} className="btn slim ghost" onClick={() => setDetail(null)}>返回对象列表</ActionButton>}
               {!detail && <div className="searchbox">
                 <input
                   aria-label={`搜索 ${def.title}`}
@@ -118,17 +120,17 @@ export default function DataObjects({ types, actions, objectType, initialObjectI
                 {aggregate ? `${aggregate.objectCount} 个对象 · ${page.total} 组` : `共 ${page.total} 条`} · 第 {Math.floor(offset / PAGE_SIZE) + 1} 页
               </span>
               <div className="spacer" />
-              {!detail && createAction && <button className="btn primary slim" disabled={createAction.status !== 'active'} onClick={() => setCreating(true)}>新增对象</button>}
-              {!detail && <><button className="btn slim ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+              {!detail && createAction && <ActionButton icon={IconPlus} className="btn primary slim" disabled={createAction.status !== 'active'} onClick={() => setCreating(true)}>新增对象</ActionButton>}
+              {!detail && <><ActionButton icon={IconChevronLeft} className="btn slim ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
                 上一页
-              </button>
-              <button
+              </ActionButton>
+              <ActionButton icon={IconChevronRight}
                 className="btn slim ghost"
                 disabled={offset + PAGE_SIZE >= page.total}
                 onClick={() => setOffset(offset + PAGE_SIZE)}
               >
                 下一页
-              </button></>}
+              </ActionButton></>}
             </div>
             {!detail && <DataQueryBar key={selected} def={def} onApply={options => { setOffset(0); setQueryOptions(options); }}/>}
             {!detail && creating && createAction && <CreateObjectForm action={createAction} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); void refresh(); onChanged(); }}/>}
@@ -333,9 +335,9 @@ function ObjectDetail({
                 </div>
               ))}
               {previewError && <p className="notice error" role="alert">{previewError}</p>}
-              <button className="btn primary slim" disabled={!chosen || busy || previewBusy || (needsPreview && !preconditions) || chosen.status!=='active' || chosen.needsReview || chosen.allowedChannels?.includes('app-human')} onClick={() => void run()}>
+              <ActionButton icon={IconPlay} className="btn primary slim" disabled={!chosen || busy || previewBusy || (needsPreview && !preconditions) || chosen.status!=='active' || chosen.needsReview || chosen.allowedChannels?.includes('app-human')} onClick={() => void run()}>
                 执行
-              </button>
+              </ActionButton>
             </div>
           )}
         </section>
@@ -354,7 +356,7 @@ function CreateObjectForm({ action, onClose, onSaved }: { action: ActionTypeDef;
     event.preventDefault(); setBusy(true); setError('');
     if (request.current.values !== values) request.current = { values, key: crypto.randomUUID() };
     void call(() => api.data.invokeAction({ apiName: action.apiName, params: { values: JSON.parse(values) }, options: { idempotencyKey: request.current.key } })).then(onSaved).catch(e => setError((e as Error).message)).finally(() => setBusy(false));
-  }}><h3>{action.title}</h3><ActionValuesInput parameter={parameter} value={values} onChange={setValues}/>{error && <p className="notice error" role="alert">{error}</p>}<div className="data-query-row"><button className="btn primary slim" disabled={busy}>保存对象</button><button type="button" className="btn slim ghost" disabled={busy} onClick={onClose}>取消新增</button></div></form>;
+  }}><h3>{action.title}</h3><ActionValuesInput parameter={parameter} value={values} onChange={setValues}/>{error && <p className="notice error" role="alert">{error}</p>}<div className="data-query-row"><ActionButton icon={IconSave} className="btn primary slim" disabled={busy}>保存对象</ActionButton><ActionButton icon={IconX} type="button" className="btn slim ghost" disabled={busy} onClick={onClose}>取消新增</ActionButton></div></form>;
 }
 
 function RelationRows({group,apiName,id,onJump,onChanged}:{group:RelationGroup;apiName:string;id:string|number;onJump:(type:string,id:unknown)=>void;onChanged:()=>void}) {
@@ -370,7 +372,7 @@ function RelationRows({group,apiName,id,onJump,onChanged}:{group:RelationGroup;a
     await call(()=>create?api.data.createLink({...args,properties:JSON.parse(properties)}):api.data.deleteLink(args));
     onChanged();toast(create?'关联已建立':'关联已解除');
   }catch(e){toast((e as Error).message);}finally{setBusy(false);}};
-  return <div className="data-link-group"><h4>{group.title} · {group.total}</h4>{group.constraintState==='needs_repair'&&<p className="notice">历史关联需要修复，当前只读。</p>}{items.map((l,i)=><div key={`${String(l.targetId)}-${i}`}><button className="data-link-row" disabled={l.targetExists===false} onClick={()=>onJump(l.targetType,l.targetId)}>{l.targetTitle??String(l.targetId)} ({l.targetType}){l.targetExists===false?'（历史目标已删除）':''}</button>{group.writable&&<button className="btn slim ghost" disabled={busy} onClick={()=>void change(false,typeof l.targetId==='number'?l.targetId:String(l.targetId))}>解除关联</button>}</div>)}{more&&<button className="btn slim" disabled={busy} onClick={()=>void load()}>加载更多</button>}{group.writable&&<div><ObjectParameter type={group.targetType} value={target} onChange={setTarget}/><input className="form-input" aria-label="关系附加属性" placeholder="关系附加属性（JSON，可留 {}）" value={properties} onChange={e=>setProperties(e.target.value)}/><button className="btn slim" disabled={busy||!target} onClick={()=>void change(true,group.targetKeyType==='integer'?Number(target):target)}>建立关联</button></div>}</div>;
+  return <div className="data-link-group"><h4>{group.title} · {group.total}</h4>{group.constraintState==='needs_repair'&&<p className="notice">历史关联需要修复，当前只读。</p>}{items.map((l,i)=><div key={`${String(l.targetId)}-${i}`}><button className="data-link-row" disabled={l.targetExists===false} onClick={()=>onJump(l.targetType,l.targetId)}>{l.targetTitle??String(l.targetId)} ({l.targetType}){l.targetExists===false?'（历史目标已删除）':''}</button>{group.writable&&<ActionButton icon={IconUnlink} className="btn slim ghost" disabled={busy} onClick={()=>void change(false,typeof l.targetId==='number'?l.targetId:String(l.targetId))}>解除关联</ActionButton>}</div>)}{more&&<ActionButton icon={IconChevronDown} className="btn slim" disabled={busy} onClick={()=>void load()}>加载更多</ActionButton>}{group.writable&&<div><ObjectParameter type={group.targetType} value={target} onChange={setTarget}/><input className="form-input" aria-label="关系附加属性" placeholder="关系附加属性（JSON，可留 {}）" value={properties} onChange={e=>setProperties(e.target.value)}/><ActionButton icon={IconLink} className="btn slim" disabled={busy||!target} onClick={()=>void change(true,group.targetKeyType==='integer'?Number(target):target)}>建立关联</ActionButton></div>}</div>;
 
 }
 
@@ -393,5 +395,5 @@ function ExtensionFields({def,row,action,onChanged}:{def:ObjectTypeDef;row:Recor
     const signature=JSON.stringify(patch);if(request.current.signature!==signature)request.current={signature,key:crypto.randomUUID()};
     await call(()=>api.data.updateObject({apiName:def.apiName,id:typeof row[def.primaryKey]==='number'?Number(row[def.primaryKey]):String(row[def.primaryKey]),values:patch,options:{idempotencyKey:request.current.key,expectedDefinitionRevision:preview?.definitionRevision,expectedObjects:preview?.targets}}));setValues({});onChanged();toast('扩展字段已更新');
   }catch(e){toast((e as Error).message);}finally{setBusy(false);}};
-  return <div><h3>用户扩展字段</h3>{props.map(p=><label className="data-param" key={p.apiName}>{p.apiName}<input className="form-input" value={values[p.apiName]??String(row[p.apiName]??'')} onChange={e=>setValues({...values,[p.apiName]:e.target.value})}/></label>)}{error&&<p className="notice error" role="alert">{error}</p>}<button className="btn slim" disabled={busy||!Object.keys(values).length||!preview||action?.status!=='active'} onClick={()=>void save()}>保存扩展字段</button>{action?.status==='disabled'&&<p className="sub">对应基础编辑动作已停用。</p>}</div>;
+  return <div><h3>用户扩展字段</h3>{props.map(p=><label className="data-param" key={p.apiName}>{p.apiName}<input className="form-input" value={values[p.apiName]??String(row[p.apiName]??'')} onChange={e=>setValues({...values,[p.apiName]:e.target.value})}/></label>)}{error&&<p className="notice error" role="alert">{error}</p>}<ActionButton icon={IconSave} className="btn slim" disabled={busy||!Object.keys(values).length||!preview||action?.status!=='active'} onClick={()=>void save()}>保存扩展字段</ActionButton>{action?.status==='disabled'&&<p className="sub">对应基础编辑动作已停用。</p>}</div>;
 }

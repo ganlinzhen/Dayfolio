@@ -562,7 +562,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   overflow: hidden;
   margin-top: 11px;
 }
-.progress > div { height: 100%; background: var(--accent); transition: width 0.25s var(--ease-out); }
+.progress > div { width: 100%; height: 100%; background: var(--accent); transform-origin: left center; transition: transform 0.25s var(--ease-out); }
 
 .plan-item {
   display: flex;
@@ -1215,8 +1215,8 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .tool-edit-notice strong { color: var(--text); font-weight: 600; }
 .tool-card.is-editing { outline: 1px solid var(--line-strong); }
 .tool-edit-pencil { flex-shrink: 0; margin-left: auto; color: var(--text-2); }
-.tool-card-organize { display: flex; align-items: center; gap: 4px; padding: 0 10px 10px; }
-.tool-card-organize .form-select { flex: 1; min-width: 0; width: 0; padding: 5px 7px; font-size: 12px; }
+.tool-card-organize { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 10px 10px; }
+.tool-card-organize .form-select { flex: 1 0 100%; min-width: 0; width: 100%; padding: 5px 7px; font-size: 12px; }
 .tool-card-organize .icon-btn { flex-shrink: 0; }
 .tool-empty-group { font-size: 12px; color: var(--text-2); margin: 8px 0 0; }
 .tool-editor-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -1388,6 +1388,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 /* 分类管理行 */
 .cat-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 7px 4px;
@@ -1395,7 +1396,8 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 }
 .cat-row:first-of-type { border-top: none; }
 .cat-order { width: 22px; flex-shrink: 0; }
-.cat-name { flex: 1; font-size: 13.5px; padding: 2px 4px; }
+.cat-name { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; padding: 2px 4px; }
+.cat-row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 100%; margin-left: auto; }
 .icon-btn:disabled { opacity: 0.3; cursor: default; }
 .icon-btn:disabled:hover { background: transparent; color: var(--text-3); }
 .icon-btn.danger:hover { color: var(--danger); }
@@ -2299,7 +2301,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .todo-title[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* 运行时日历分类与固定业务详情 */
-.cal-more-button { width: var(--button-height); min-width: var(--button-height); justify-content: center; padding: 0; }
+.cal-more-button { width: auto; min-width: var(--button-height); justify-content: center; padding: 0 10px; }
 .cal-toolbar .cal-more-button svg { margin: 0; }
 .cal-actions-menu { position: fixed; z-index: 60; width: 176px; padding: 4px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); }
 .cal-actions-menu button { width: 100%; padding: 8px 10px; text-align: left; color: var(--text); background: transparent; border: 0; border-radius: 5px; font: inherit; font-size: 13px; cursor: pointer; }
@@ -2457,3 +2459,11 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .cal-month-date { border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; }
 .cal-month-item { width: 100%; border: 0; padding: 1px 0; text-align: left; background: transparent; color: inherit; cursor: pointer; }
 .cal-month-item:hover { background: var(--sel); }
+
+/* 操作按钮统一使用图标和文字，保留各业务按钮既有样式。 */
+.action-button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.action-button > svg { width: 14px; height: 14px; flex: none; }
+.action-button-label { min-width: 0; white-space: normal; }
+.action-button.icon-btn { width: auto; }
+
+.cal-actions-menu button.action-button { display: flex; justify-content: flex-start; }

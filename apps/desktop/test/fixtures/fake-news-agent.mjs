@@ -25,10 +25,23 @@ await client.connect(new StdioClientTransport({ command, args, env: { ...process
 const call = async (name, args = {}) => {
   const result = await client.callTool({ name, arguments: args });
   if (result.isError) throw new Error(result.content[0].text);
-  return JSON.parse(result.content[0].text).data;
+  const payload = JSON.parse(result.content[0].text);
+  if (!payload.ok) throw new Error(JSON.stringify(payload.error));
+  return payload.data;
 };
 console.log(JSON.stringify(provider === 'codex' ? {type:'thread.started',thread_id:'fixture-thread'} : {type:provider === 'claude' ? 'system' : 'init',session_id:'fixture-thread'}));
-await call('get_news_task');
+const initial = await call('get_news_task');
+if (process.env.DAYFOLIO_NEWS_FIXTURE_MODE === 'batch' || (initial.context?.batch_id && (process.env.DAYFOLIO_NEWS_FIXTURE_MODE || 'success') === 'success')) {
+  const tasks = await call('get_news_batch');
+  for (const { task_id, context } of tasks) {
+    if (context.module_id === 'events') continue;
+    await call('submit_batch_news', { task_id, items: [{ title: `批次隔离新闻 ${task_id}`, summary: '仅用于验证批次独立任务和受限写入。', source_url: `https://example.com/batch-${task_id}`, published_at: new Date(Date.now() - 60000).toISOString() }] });
+  }
+  for (const { task_id } of tasks) await call('complete_batch_task', { task_id, note: '隔离批次验证' });
+  await client.close();
+  console.log(JSON.stringify(provider === 'codex' ? {type:'turn.completed'} : provider === 'claude' ? {type:'result',is_error:false} : {type:'result',status:'success'}));
+  process.exit(0);
+}
 await new Promise(resolve => setTimeout(resolve, 800));
 await call('submit_news_items', { items: [{ title: '后台采集界面验证新闻', summary: '此内容仅用于临时数据库，验证按钮触发、真实 MCP 入库和界面自动刷新。', source_url: 'https://example.com/ui-news-agent', published_at: new Date(Date.now() - 60000).toISOString() }] });
 console.log(JSON.stringify({ type: 'item.completed', item: { type: 'mcp_tool_call', tool: 'submit_news_items' } }));

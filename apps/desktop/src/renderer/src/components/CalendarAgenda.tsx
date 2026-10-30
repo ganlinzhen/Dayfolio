@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconRefresh } from './icons';
 // 今日、本周、本月明细独立查询完整区间，保留统一分类、完成状态与业务详情入口。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
@@ -73,7 +75,7 @@ export default function CalendarAgenda({ today, selected, mode, zone, revision, 
     </div>
     <div id="cal-agenda-content" role="tabpanel" aria-labelledby={`cal-agenda-tab-${mode}`} tabIndex={0}>
       {busy && <p className="sub cal-empty" role="status">正在读取事项…</p>}
-      {error && <div className="notice error" role="alert">{error}<button className="btn slim" onClick={() => void refresh()}>重试</button></div>}
+      {error && <div className="notice error" role="alert">{error}<ActionButton icon={IconRefresh} className="btn slim" onClick={() => void refresh()}>重试</ActionButton></div>}
       {!busy && !error && !slices.length && <p className="sub cal-empty">{mode === 'day' ? '这一天' : title}没有已显示的安排。可在更多菜单的「管理分类」中调整显示，或新建日程。</p>}
       {groups.map(group => <div className="cal-agenda-group" key={group.day}>
         {mode !== 'day' && <h4 className="cal-agenda-date">{dayTitle(group.day)} <span className="mono">周{WEEK[dayOfWeek(group.day)]} · {group.day}</span>{group.day === today && <span className="cal-badge today-badge">今天</span>}</h4>}

@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconCopy, IconSave } from './icons';
 import { useEffect, useRef, useState } from 'react';
 import { api, call } from '../api';
 import { toast } from './Toast';
@@ -40,7 +42,7 @@ export function AiStudyAction({ context, disabled = false, compact = false }: { 
   };
   return <section id="learning-ai" className={`ai-study-action ${compact ? 'is-compact' : ''}`} aria-label="AI 检验学习成果">
     <div><h2>AI 检验学习成果</h2><p>让 AI 围绕{context.item ? '这一项安排' : '整个学习计划'}逐题提问，帮你发现理解中的遗漏。</p></div>
-    <button className="btn primary" disabled={busy || disabled} onClick={() => void copy()}>{busy ? '正在复制…' : copied ? '再次复制提示词' : '复制提示词，去 AI 聊天'}</button>
+    <ActionButton icon={IconCopy} className="btn primary" disabled={busy || disabled} onClick={() => void copy()}>{busy ? '正在复制…' : copied ? '再次复制提示词' : '复制提示词，去 AI 聊天'}</ActionButton>
     {!compact && <p className="ai-study-hint">复制后粘贴到已连接 Dayfolio 的 AI 客户端；AI 读取课件和笔记后会主动提问。</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
     <details className="ai-prompt-preview"><summary>{compact ? '使用说明与提示词' : '查看提示词'}</summary>{compact && <p className="ai-study-hint">复制后粘贴到已连接 Dayfolio 的 AI 客户端，AI 读取课件和笔记后会逐题提问。复制不会自动开始对话或增加进度。</p>}<textarea aria-label="AI 学习检验提示词" readOnly value={prompt} rows={12} onFocus={e => e.target.select()} /></details>
@@ -74,7 +76,7 @@ export function StudyNoteEditor({ planId, item, onSaved }: {
   return <div className="study-note-editor">
     <label htmlFor={`note-${item.id}`}>用自己的话写下理解、例子或还没想通的问题</label>
     <textarea id={`note-${item.id}`} value={text} disabled={busy} onChange={e => setText(e.target.value)} placeholder="我学到了什么？能举一个例子吗？" rows={5} />
-    <div className="study-note-footer"><button className="btn" disabled={busy || !text.trim()} onClick={() => void save()}>{busy ? '正在保存…' : '保存学习笔记'}</button></div>
+    <div className="study-note-footer"><ActionButton icon={IconSave} className="btn" disabled={busy || !text.trim()} onClick={() => void save()}>{busy ? '正在保存…' : '保存学习笔记'}</ActionButton></div>
     {error && <p className="notice error" role="alert">{error}</p>}
   </div>;
 }
