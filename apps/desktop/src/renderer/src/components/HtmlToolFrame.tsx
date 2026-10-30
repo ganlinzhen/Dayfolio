@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconHeart, IconPlus, IconUnlink, IconX } from './icons';
 import { useEffect, useRef, useState } from 'react';
 import type { ToolTodoDraft, ToolTodoService,ToolFollowingService } from '../../../../../../packages/core/src';
 import { api, call } from '../api';
@@ -124,7 +126,7 @@ export default function HtmlToolFrame({ toolId, title, entryFile }: { toolId: nu
 
   return <>
     <iframe ref={frame} className="tool-iframe" title={title} sandbox="allow-scripts allow-same-origin" src={`tool-file://t/${toolId}/${encodeURI(entryFile)}`} />
-    {pendingFollow&&<Modal title={pendingFollow.action==='follow'?'持续关注':'取消持续关注'} description={`来自「${pendingFollow.preview.toolTitle}」`} onClose={close} busy={busy} className="tool-follow-modal" footer={<><button className="btn" disabled={busy} onClick={close}>取消</button><button className="btn primary" disabled={busy} onClick={()=>void confirmFollow()}>{busy?'正在保存…':pendingFollow.action==='follow'?'确认持续关注':'取消关注并保留待办'}</button></>}>
+    {pendingFollow&&<Modal title={pendingFollow.action==='follow'?'持续关注':'取消持续关注'} description={`来自「${pendingFollow.preview.toolTitle}」`} onClose={close} busy={busy} className="tool-follow-modal" footer={<><ActionButton icon={IconX} className="btn" disabled={busy} onClick={close}>取消</ActionButton><ActionButton icon={pendingFollow.action === 'follow' ? IconHeart : IconUnlink} className="btn primary" disabled={busy} onClick={()=>void confirmFollow()}>{busy?'正在保存…':pendingFollow.action==='follow'?'确认持续关注':'取消关注并保留待办'}</ActionButton></>}>
       <h3>{pendingFollow.preview.title}</h3>
       <p>{pendingFollow.action==='follow'?(pendingFollow.preview.scope.kind==='group'?'关注此分组的未来事项。首次加入当前已知事项；后续资料更新时，新增事项会自动加入，改期同步到尚未手动接管的待办。':'关注此事项，后续资料更新时自动同步标题和排期。'):'停止此范围的后续自动同步，已有待办及完成记录全部保留。其他仍有效的分组规则继续生效；取消单项会阻止分组重新启用该事项。'}</p>
       <p className="sub">手动修改标题或时间后转为个人安排；备注、标签和优先级保留。已完成记录不改动，已删除记录不自动恢复。资料需要由页面或助手更新，这项能力不会自行联网采集。</p>
@@ -134,8 +136,8 @@ export default function HtmlToolFrame({ toolId, title, entryFile }: { toolId: nu
       {error&&<p className="notice error" role="alert">{error}</p>}
     </Modal>}
     {pending && <Modal title="添加到待办" description={`来自「${pending.preview.toolTitle}」`} onClose={close} busy={busy} className="tool-todo-modal" footer={<>
-      <button className="btn" onClick={close} disabled={busy}>取消</button>
-      <button className="btn primary" onClick={() => void confirm()} disabled={busy || !selected.length}>{busy ? '正在添加…' : `添加 ${selected.length} 条待办`}</button>
+      <ActionButton icon={IconX} className="btn" onClick={close} disabled={busy}>取消</ActionButton>
+      <ActionButton icon={IconPlus} className="btn primary" onClick={() => void confirm()} disabled={busy || !selected.length}>{busy ? '正在添加…' : `添加 ${selected.length} 条待办`}</ActionButton>
     </>}>
       <p className="sub">选择要添加的事项，时间按 {pending.preview.timezone} 显示。本次添加保存当前内容，后续资料变化不会自动修改待办。</p>
       <p className="tool-todo-category">待办分类：<strong>{pending.preview.category.title}</strong><span className="sub">{pending.preview.category.exists ? ' · 已有分类' : ' · 确认添加后创建'}{!pending.preview.category.visible ? ' · 当前在日历中隐藏' : ''}</span></p>

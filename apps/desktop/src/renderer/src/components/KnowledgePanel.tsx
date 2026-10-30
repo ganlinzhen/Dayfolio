@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconFolder, IconLink, IconUnlink } from './icons';
 // 知识库面板：Obsidian vault 只读联动（注册 → 扫描 → 搜索/浏览 → 阅读 → 概念关联）。
 // 布局为「列表页 ↔ 阅读页」两级导航（同课程讲义模式）：列表全宽展示，点开整页进入阅读，
 // 返回按钮回列表并高亮刚才读过的那篇；阅读页内点链接/被引用直接切换目标卡片。
@@ -8,7 +10,7 @@ import { api, call } from '../api';
 import EmptyState from './EmptyState';
 import EmbeddedFrame from './EmbeddedFrame';
 import { toast } from './Toast';
-import { IconChevronLeft, IconRefresh, IconSearch, IconX } from './icons';
+import { IconChevronLeft, IconRefresh, IconSearch } from './icons';
 
 interface VaultInfo {
   id: number;
@@ -212,7 +214,7 @@ export default function KnowledgePanel() {
         <EmptyState
           title="尚未注册知识库"
           hint="注册一个 Obsidian vault 目录（如 ~/Desktop/knowledge-base）。Dayfolio 只做只读索引：浏览、搜索、阅读卡片与关联学习概念；绝不写入或修改 vault 内任何文件，也不会触发 Git 提交。"
-          action={<button className="btn primary" onClick={register}>注册知识库目录</button>}
+          action={<ActionButton icon={IconFolder} className="btn primary" onClick={register}>注册知识库目录</ActionButton>}
         />
       </div>
     );
@@ -224,9 +226,9 @@ export default function KnowledgePanel() {
   if (selected) {
     return (
       <div className="panel work-panel" role="region" aria-label="知识库">
-        <button className="backlink" onClick={backToList}>
-          <IconChevronLeft width={14} height={14} /> 返回笔记列表
-        </button>
+        <ActionButton icon={IconChevronLeft} className="backlink" onClick={backToList}>
+           返回笔记列表
+        </ActionButton>
         {!openDetail && <EmptyState title="正在加载…" hint="正在从磁盘读取笔记原文。" />}
         {openDetail && (
           <>
@@ -239,7 +241,7 @@ export default function KnowledgePanel() {
                 {openDetail.note.status ? ` · ${STATUS_LABEL[openDetail.note.status] ?? openDetail.note.status}` : ''}
               </div>
               <div className="kb-detail-actions">
-                <button
+                <ActionButton icon={IconFolder}
                   className="btn slim ghost"
                   onClick={() =>
                     vaultId &&
@@ -250,7 +252,7 @@ export default function KnowledgePanel() {
                   }
                 >
                   在 Finder 中显示
-                </button>
+                </ActionButton>
               </div>
             </header>
 
@@ -258,9 +260,9 @@ export default function KnowledgePanel() {
               <div className="notice warn">
                 文件在上次扫描后已被修改（索引过期）。阅读内容是最新的；重新扫描可刷新索引与搜索。
                 <div className="kb-stale-actions">
-                  <button className="btn slim" onClick={() => activeVault && doScan(activeVault.id)} disabled={busy}>
-                    <IconRefresh /> 立即重新扫描
-                  </button>
+                  <ActionButton icon={IconRefresh} className="btn slim" onClick={() => activeVault && doScan(activeVault.id)} disabled={busy}>
+                     立即重新扫描
+                  </ActionButton>
                 </div>
               </div>
             )}
@@ -274,9 +276,7 @@ export default function KnowledgePanel() {
                 {openDetail.concept_links.map((c) => (
                   <span key={c.id} className="tag">
                     {c.knowledge_key}
-                    <button className="tag-x" onClick={() => removeConcept(c.id)} aria-label={`解除关联 ${c.knowledge_key}`}>
-                      <IconX width={10} height={10} />
-                    </button>
+                    <ActionButton icon={IconUnlink} className="tag-x" onClick={() => removeConcept(c.id)} aria-label={`解除关联 ${c.knowledge_key}`}>解除关联</ActionButton>
                   </span>
                 ))}
                 {openDetail.concept_links.length === 0 && <span className="sub">未关联。关联后可在学习计划/课程中引用这张卡。</span>}
@@ -289,7 +289,7 @@ export default function KnowledgePanel() {
                   placeholder="如 ts/generics，回车关联"
                   onKeyDown={(e) => e.key === 'Enter' && addConcept()}
                 />
-                <button className="btn slim" onClick={addConcept}>关联</button>
+                <ActionButton icon={IconLink} className="btn slim" onClick={addConcept}>关联</ActionButton>
               </div>
             </section>
 
@@ -372,16 +372,16 @@ export default function KnowledgePanel() {
         <span className="head-meta">{notes.length} 篇笔记</span>
         <span className="spacer" />
         <span className="kb-scan-time">上次扫描 {fmtTime(activeVault?.last_scan_at ?? null)}</span>
-        <button className="btn" onClick={() => activeVault && doScan(activeVault.id)} disabled={busy || !activeVault}>
-          <IconRefresh /> 重新扫描
-        </button>
+        <ActionButton icon={IconRefresh} className="btn" onClick={() => activeVault && doScan(activeVault.id)} disabled={busy || !activeVault}>
+           重新扫描
+        </ActionButton>
         <details className="kb-settings">
           <summary className="btn ghost">管理知识库</summary>
           <div className="kb-settings-body">
             <div className="kb-root mono" title={activeVault?.root_path}>{activeVault?.root_path}</div>
             <div className="row-gap">
-              <button className="btn slim" onClick={register}>注册新库</button>
-              <button className="btn slim danger" onClick={removeVault} disabled={!activeVault}>移除当前库</button>
+              <ActionButton icon={IconFolder} className="btn slim" onClick={register}>注册新库</ActionButton>
+              <ActionButton icon={IconUnlink} className="btn slim danger" onClick={removeVault} disabled={!activeVault}>移除当前库</ActionButton>
             </div>
           </div>
         </details>

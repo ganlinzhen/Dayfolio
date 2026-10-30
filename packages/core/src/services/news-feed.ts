@@ -159,15 +159,15 @@ export function createNewsFeedService(db: DbAdapter, news: NewsService) {
     const m = c.modules.find(m => m.id === moduleId), interests = getInterests(), personal = moduleId === 'for_you';
     if (!m && !personal) throw new Error('新闻模块不存在');
     const content = { ...c.content, ...m?.content }, e = m?.kind === 'events' ? liveEvents() : [];
-    const lines = [`请用中文整理「${m?.name ?? '猜你喜欢'}」的独立新闻。每则先打开原始来源核实，不用搜索摘要、传闻或旧闻凑数。`,
+    const lines = [`请用中文整理「${m?.name ?? '猜你喜欢'}」的独立新闻。可信来源的 RSS 条目有充分事实与真实时间时可依据条目整理；摘要不足、时间冲突或重大争议须核实原文。不要用搜索摘要、传闻或旧闻凑数。`,
       `检索范围：${m?.scope ?? '根据以下明确关注与新行为，少量探索相邻方向'}。排除：${m?.exclusions || '无额外排除'}。`,
       `本轮第 ${phase} 阶段，最多收录 ${target ?? m?.headline_count ?? 2} 则；模块身份 module_id=${moduleId}。`,
       phase === 1 ? '首轮按公共重要性、影响范围和必要背景选出重点，不能只取时间最新的消息。' : '补充阶段先核实实质新进展，再补充相关消息；不重复前轮重点。',
       `固定时间窗：${new Date(Date.parse(end) - (m?.window_hours ?? 24) * HOUR).toISOString()} 至 ${end}。提交真实 published_at，不能用整理时间替代。`,
-      `摘要深度：${content.summary_depth}。summary 应直接讲清主体、发生什么、关键事实与意义，让读者不用打开原文也能理解。${content.show_background ? 'background 提供必要背景。' : ''}${content.show_impact ? 'impact 区分已发生影响和可能影响。' : ''}${content.show_uncertainty ? 'uncertainty 说明未核实或存在分歧的部分。' : ''}`,
-      content.image_policy === 'none' ? '本模块不要提交图片。' : '提取来源页面公开原图，提交 image_url、image_source_url 和准确图注 image_caption；无可靠原图则省略，不用生成图代替新闻事实。',
+      `摘要深度：${content.summary_depth}。summary 应直接讲清主体、发生什么、关键事实与意义，让读者不用打开原文也能理解；影响理解的关键未证实信息或分歧应在摘要中明确说明，并与已证实事实区分。${content.show_background ? 'background 提供必要背景。' : ''}${content.show_impact ? 'impact 区分已发生影响和可能影响。' : ''}`,
+      content.image_policy === 'none' ? '本模块不要提交图片。' : '有可靠来源原图时提交 image_url、image_source_url 和准确图注 image_caption；无需单独找图，无可靠原图则省略。',
       '每则独立提交，不打包为 brief。附 source_url、source_name、topic_keys，时事需 event_id。同一事件的转载不重复收录；实质进展说明新增事实。已有新闻不要重复提交；缺口和联网故障分别如实说明。',
-      '完成本模块前，重新调用 get_news_task，读取 daily_edition 的当天累计新闻、原重点总结和最新 revision。用已核实的重点3~5条新闻写一段120~300字的综合事实总结（不足3条时按实际数量），说明主要进展和关联意义，不拼接标题、不虚构事实、不写用户画像。调用 submit_news_daily_summary 保存总结、news_ids依据和 expected_revision；同日后续更新应把新增重要事实融入原总结，而不是另建日报。没有已收录新闻则不生成总结。',
+      '完成本模块前，重新调用 get_news_task，读取 daily_edition 的当天累计新闻、原重点总结和最新 revision。选择已核实的最重要2~3条新闻（不足2条时按实际数量），每条用一句短句交代主体和主要进展，合成一段约60~90字、最多100字的事实总结。省略重复的日期和模块名称、冗长背景及抽象意义，不拼接标题、不虚构事实、不写用户画像。调用 submit_news_daily_summary，使用当前公开的同日同模块新闻 ID 作为 news_ids 依据并携带 expected_revision；同日后续更新应把新增重要事实融入总结，而不是另建日报。没有已收录新闻则不生成总结。',
       `优先来源：${m?.source_preferences?.join('、') || '官方发布与可信一手报道'}；排除来源：${m?.source_exclusions?.join('、') || '无额外排除'}。${m?.extra_instructions || ''}`];
     if (m?.kind === 'public') lines.push('保留公共重要性与地区覆盖，不因个人点击兴趣缩小选题。');
     if (m?.kind === 'events') lines.push(`只允许有效事件：${e.map(v => `${v.name}（event_id=${v.id}，${v.scope}）`).join('；') || '无活跃事件，本模块不检索'}。暂停、结束、到期的事件不能恢复跟踪。`);
@@ -219,7 +219,7 @@ export function createNewsFeedService(db: DbAdapter, news: NewsService) {
     if (Date.now() >= Date.parse(b.deadline_at)) { b.status = 'budget_exhausted'; b.finished_at = nowIso(); saveBatch(b); return b; }
     // 执行失败会释放任务回 pending；先覆盖其他模块，避免在原地无限重排。
     for (const m of b.modules) if (m.task_id != null && m.status === 'pending') {
-      const run = db.prepare('SELECT status,error FROM news_agent_runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(m.task_id);
+      const run = db.prepare('SELECT status,error FROM news_agent_runs WHERE task_id=? OR id IN (SELECT run_id FROM news_agent_run_tasks WHERE task_id=?) ORDER BY rowid DESC LIMIT 1').get(m.task_id, m.task_id);
       if (run && ['failed', 'cancelled', 'interrupted'].includes(String(run.status))) {
         db.prepare("UPDATE news_tasks SET status='cancelled',updated_at=? WHERE id=? AND status='pending'").run(nowIso(), m.task_id);
         m.status = 'cancelled'; m.note = String(run.error ?? '本阶段执行未完成，已保留结果');
@@ -229,8 +229,27 @@ export function createNewsFeedService(db: DbAdapter, news: NewsService) {
     if (open) { b.next_task_id = open.task_id; saveBatch(b); return b; }
     const c = getConfig(), waiting = b.modules.find(m => m.status === 'waiting');
     if (waiting) makeTask(b, c, waiting, waiting.phase);
-    else { const rest = b.modules.find(m => m.phase === 1 && m.accepted_count < m.target && m.status !== 'skipped'); if (rest) makeTask(b, c, rest, 2); else { b.status = 'completed'; b.finished_at = nowIso(); } }
+    else { b.status = 'completed'; b.finished_at = nowIso(); }
     b.next_task_id = b.modules.find(m => ['pending', 'claimed'].includes(m.status))?.task_id ?? null; saveBatch(b); return b;
+  });
+  // 批量执行器一次准备所有首轮任务；每项仍通过原任务独立认领和校验。
+  const prepareBatchTasks = (batchId: string): NewsFeedBatch => inTx(db, () => {
+    const b = hydrate(getBatch(batchId));
+    if (b.status !== 'active') throw new Error('新闻批次已停止或失效');
+    if (Date.now() >= Date.parse(b.deadline_at)) {
+      b.status = 'budget_exhausted'; b.finished_at = nowIso(); b.next_task_id = null; saveBatch(b); return b;
+    }
+    const c = getConfig();
+    for (const m of b.modules) {
+      if (m.status !== 'waiting' || m.task_id != null) continue;
+      if (m.module_id !== 'for_you' && !c.modules.some(v => v.id === m.module_id && v.enabled)) {
+        m.status = 'skipped'; m.note = '相关关注范围已撤回'; continue;
+      }
+      makeTask(b, c, m, m.phase);
+    }
+    b.next_task_id = b.modules.find(m => m.task_id != null && ['pending', 'claimed'].includes(m.status))?.task_id ?? null;
+    if (b.next_task_id == null) { b.status = 'completed'; b.finished_at = nowIso(); }
+    saveBatch(b); return b;
   });
   const startUpdate = (input: { trigger?: 'manual' | 'scheduled'; slot_key?: string } = {}): NewsFeedBatch => inTx(db, () => {
     const active = listBatches({ limit: 100 }).find(b => b.status === 'active'); if (active) return advance(active.id)!;
@@ -248,14 +267,18 @@ export function createNewsFeedService(db: DbAdapter, news: NewsService) {
   });
   const continueUpdate = (input: { batch_id: string }): NewsFeedBatch => inTx(db, () => {
     const b = hydrate(getBatch(input.batch_id));
-    if (!['stopped', 'budget_exhausted'].includes(b.status)) throw new Error('只有已停止或预算用尽的批次可以继续');
+    if (!['stopped', 'budget_exhausted', 'completed'].includes(b.status)) throw new Error('只有已完成、已停止或预算用尽的批次可以继续');
     if (b.learning_epoch !== epoch()) throw new Error('兴趣已变化，请创建新一轮更新');
     if (listBatches({ limit: 100 }).some(x => x.status === 'active')) throw new Error('已有其他批次正在更新');
+    const supplement = b.status === 'completed';
     b.status = 'active'; b.finished_at = null; b.deadline_at = new Date(Date.now() + getConfig().budget_minutes * 60_000).toISOString();
     for (const m of b.modules) {
       const current = getConfig().modules.find(v => v.id === m.module_id);
       if (m.module_id !== 'for_you' && !current?.enabled) { m.task_id = null; m.status = 'skipped'; continue; }
       if (current) { m.name = current.name; m.target = Math.min(m.target, current.max_items); }
+      if (supplement && m.phase === 1 && m.status === 'completed' && m.accepted_count < m.target) {
+        m.task_id = null; m.status = 'waiting'; m.phase = 2; continue;
+      }
       if (m.task_id != null && ['pending', 'claimed', 'cancelled'].includes(m.status)) {
       db.prepare("UPDATE news_tasks SET status='cancelled',claim_token=NULL,claim_expires_at=NULL,updated_at=? WHERE id=? AND status IN ('pending','claimed')").run(nowIso(), m.task_id);
       if (m.accepted_count < m.target) { m.task_id = null; m.status = 'waiting'; }
@@ -514,6 +537,6 @@ export function createNewsFeedService(db: DbAdapter, news: NewsService) {
     const limit = Math.max(1, Math.min(opts.limit ?? (opts.history ? 100 : 10), 1000)), offset = Math.max(0, opts.offset ?? 0);
     return rows.slice(offset, offset + limit).map(r => ({ ...mapNews(r), hidden: opts.filter === 'hidden', corrections: correctionRows(Number(r.id)), ...(selected.has(Number(r.id)) ? { selection_kind: selected.get(Number(r.id)) === 1 ? 'headline' as const : 'supplement' as const } : {}) }));
   };
-  return { getConfig, updateConfig, preview, startUpdate, advance, stopUpdate, continueUpdate, listBatches, getTaskContext, list, listDailyEditions:daily.listDailyEditions,getDailyEdition:daily.getDailyEdition,saveDailyEditionSummary:daily.saveDailyEditionSummary, recordFeedback, getInterests, manageTopic, manageSource, resetLearning, updateEvent, dismissEventReminder, importStarred, submitCorrection, dismissCorrection, beforeSubmit, afterSubmit, beforeComplete, assertContext };
+  return { getConfig, updateConfig, preview, startUpdate, advance, prepareBatchTasks, stopUpdate, continueUpdate, listBatches, getTaskContext, list, listDailyEditions:daily.listDailyEditions,getDailyEdition:daily.getDailyEdition,saveDailyEditionSummary:daily.saveDailyEditionSummary, recordFeedback, getInterests, manageTopic, manageSource, resetLearning, updateEvent, dismissEventReminder, importStarred, submitCorrection, dismissCorrection, beforeSubmit, afterSubmit, beforeComplete, assertContext };
 }
 export type NewsFeedService = ReturnType<typeof createNewsFeedService>;

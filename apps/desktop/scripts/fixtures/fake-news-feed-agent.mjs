@@ -13,8 +13,11 @@ await client.connect(new StdioClientTransport({ command: config[prefix + 'comman
 const call = async (name, args = {}) => { const result = await client.callTool({ name, arguments: args }); if (result.isError) throw new Error(result.content[0].text); return JSON.parse(result.content[0].text).data; };
 console.log(JSON.stringify({ type: 'thread.started', thread_id: 'news-feed-fixture' }));
 try {
-  const { task, context } = await call('get_news_task');
-  if (!context?.module_id) throw new Error('隔离fixture只允许模块任务');
+  const tasks = await call('get_news_batch');
+  if (!tasks.length) throw new Error('隔离 fixture 只允许模块批次');
+  for (const { task_id, context } of tasks) {
+  const task = context.task;
+  if (!context?.module_id) throw new Error('隔离 fixture 只允许模块任务');
   const candidate = context.module_id === 'for_you' && !context.candidate_topic ? {
     key: '便携端侧编程工具', name: '便携端侧编程工具', scope: '在个人笔记本离线运行的开源编程与模型量化工具',
     reason: context.interest_evidence?.length ? '根据你明确收藏的开源工具报道探索相邻方向' : '探索推荐：从已配置的 AI 模块试读具体方向，尚无长期兴趣证据',
@@ -34,15 +37,18 @@ try {
     ...(candidate ? { candidate_topic: candidate } : {}),
   }));
   await new Promise(resolve => setTimeout(resolve, 450));
-  if (items.length) await call('submit_news_items', { items });
-  console.log(JSON.stringify({ type: 'item.completed', item: { type: 'mcp_tool_call', tool: 'submit_news_items' } }));
-  const latest = await call('get_news_task');
-  const daily = latest.context?.daily_edition;
+  if (items.length) await call('submit_batch_news', { task_id, items });
+  console.log(JSON.stringify({ type: 'item.completed', item: { type: 'mcp_tool_call', tool: 'submit_batch_news' } }));
+  }
+  const latest = await call('get_news_batch');
+  for (const { task_id, context } of latest) {
+  const daily = context?.daily_edition;
   if (!daily) throw new Error('日报任务缺少当天模块上下文');
-  if (daily.news.length) await call('submit_news_daily_summary', {
+  if (daily.news.length) await call('summarize_batch_news', { task_id,
     summary: `本期${daily.edition.module_name}重点：相关机构发布了新一阶段行动与结果，已收录报道分别交代关键进展、理解背景和需要继续观察的影响。本次更新将新增事实纳入当天总结，保留独立新闻及其原始来源。此段是隔离验收的综合总结，不代表真实新闻。`,
     news_ids: daily.news.slice(0, 5).map(item => item.id), expected_revision: daily.edition.revision,
   });
-  await call('complete_news_task', { note: `隔离验收：实际提交 ${items.length} 则，未访问真实新闻网站` });
+  }
+  for (const { task_id } of tasks) await call('complete_batch_task', { task_id, note: '隔离验收：未访问真实新闻网站' });
   console.log(JSON.stringify({ type: 'turn.completed' }));
 } finally { await client.close(); }

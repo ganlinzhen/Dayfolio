@@ -1,3 +1,4 @@
+import ActionButton from './ActionButton';
 import { useEffect, useState, type ReactNode } from 'react';
 import { IconCollapse, IconExpand } from './icons';
 
@@ -55,14 +56,14 @@ export default function EmbeddedFrame({
         <div className="embed-frame-actions">
           {actions}
           {allowFullscreen && (
-            <button
+            <ActionButton icon={fullscreen ? IconCollapse : IconExpand}
               className="btn slim ghost embed-fullscreen-button"
               onClick={() => setFullscreen((value) => !value)}
               title={fullscreen ? '退出全屏（Esc）' : '全屏显示'}
             >
-              {fullscreen ? <IconCollapse width={13} height={13} /> : <IconExpand width={13} height={13} />}
+
               {fullscreen ? '退出全屏' : '全屏'}
-            </button>
+            </ActionButton>
           )}
         </div>
       </header>

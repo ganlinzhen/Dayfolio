@@ -71,7 +71,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
   server.tool('stop_news_feed_update', '停止一轮模块更新并保留已收录新闻。什么场景调用我：用户要求停止整轮更新；不要用于把检索失败伪装成完成。', {
     batch_id: z.string().min(1),
   }, async ({ batch_id }) => wrap(() => core.newsFeed.stopUpdate(batch_id))());
-  server.tool('continue_news_feed_update', '继续已停止或预算用尽的同一模块批次，保留固定时间窗和累计收录配额。什么场景调用我：用户明确继续补采；配置或兴趣代次变化时须新建一轮，不能用继续绕过撤回权限。', {
+  server.tool('continue_news_feed_update', '继续已完成、已停止或预算用尽的同一模块批次，保留固定时间窗和累计收录配额。什么场景调用我：用户明确继续补采；配置或兴趣代次变化时须新建一轮，不能用继续绕过撤回权限。', {
     batch_id: z.string().min(1),
   }, async (input) => wrap(() => core.newsFeed.continueUpdate(input))());
   server.tool('list_news_feed_batches', '查看模块更新批次、各模块实际数量、缺口与执行状态。什么场景调用我：用户询问早午晚更新进度、预算耗尽或失败原因；只读。', {
@@ -92,7 +92,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
     id: z.string().min(1), filter: z.enum(['all', 'unread', 'starred', 'hidden']).optional(), search: z.string().max(500).optional(),
     limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),
   }, async (input) => wrap(() => core.newsFeed.getDailyEdition(input))());
-  server.tool('save_news_daily_summary', '保存 AI 对某日模块重点几则新闻的综合总结及依据。什么场景调用我：完成该模块采集后更新首页总结，或为已采集的每日模块补写总结；先读取模块，结合实际新闻事实整理，不拼接标题冒充总结；携带 revision 和已读到的依据 news_ids。', {
+  server.tool('save_news_daily_summary', '保存 AI 对某日模块重点新闻的综合总结及依据。什么场景调用我：完成该模块采集后更新首页总结，或为已采集的每日模块补写总结；先读取模块，从实际新闻中选择最重要的2~3条（不足按实际），每条一句简短事实，合成约60~90字、最多100字的一段总结。省略重复日期、模块名、冗长背景与抽象意义，不拼接标题冒充总结；携带最新 revision 和已读到的同日同模块依据 news_ids。', {
     edition_id: z.string().min(1), summary: z.string().min(1).max(2000), news_ids: z.array(z.number().int().positive()).min(1).max(30), expected_revision: z.number().int().min(0),
   }, async (input) => wrap(() => core.newsFeed.saveDailyEditionSummary(input))());
   server.tool('record_news_feedback', '记录用户明确表达的新闻反馈：感兴趣、减少主题/来源、隐藏/撤销或收藏。什么场景调用我：用户在对话中明确反馈；source 必须为 explicit，禁止把助手查询、回读、批量已读或删除伪造为用户阅读。重复请求复用 idempotency_key；学习关闭时不会新增推断证据。', {
@@ -139,7 +139,7 @@ export function registerTools(server: ToolRegistrar, { core }: McpContext): void
     run_id: z.string().min(1),
   }, async ({ run_id }) => wrap(() => core.newsRuns.cancel(run_id))());
 
-  // ---------- 每日新闻（agent-only：任务 → 认领 → 提交；本地不抓取任何 RSS/X） ----------
+  // ---------- 单主题新闻（agent-only：任务 → 认领 → 提交） ----------
 
   server.tool(
     'list_news',

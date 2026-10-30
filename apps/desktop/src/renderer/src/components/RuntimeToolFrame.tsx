@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconChevronLeft } from './icons';
 // 每个真实 iframe 独享 MessagePort；会话令牌只在受信父页面闭包中保存。
 import { useEffect, useRef, useState } from 'react';
 import { api, call } from '../api';
@@ -64,7 +66,7 @@ export default function RuntimeToolFrame({ extensionId, onClose }: { extensionId
     window.addEventListener('message', hello);
     return () => { stopped = true; release(); window.removeEventListener('message', hello); };
   }, [extensionId, identity]);
-  return <div className="tool-frame"><EmbeddedFrame label="运行时工具" title={extension?.title ?? '运行时工具'} meta="HTML 页面" className="tool-embed" allowFullscreen={false} leading={<button className="tool-crumb-back" onClick={onClose}>返回</button>}>
+  return <div className="tool-frame"><EmbeddedFrame label="运行时工具" title={extension?.title ?? '运行时工具'} meta="HTML 页面" className="tool-embed" allowFullscreen={false} leading={<ActionButton icon={IconChevronLeft} className="tool-crumb-back" onClick={onClose}>返回</ActionButton>}>
     {error && <div className="notice error" role="alert">{error}</div>}
     {extension && <iframe ref={iframe} key={identity} className="tool-iframe" title={extension.title} sandbox="allow-scripts allow-same-origin" src={extension.origin + '/' + extension.digest + '/' + extension.entry} />}
   </EmbeddedFrame></div>;

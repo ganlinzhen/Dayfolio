@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconStop, IconUndo, IconX } from './icons';
 import { useEffect,useState } from 'react';
 import type { ToolFollowingService } from '../../../../../../packages/core/src';
 import { api,call } from '../api';
@@ -15,8 +17,8 @@ export default function ToolFollowingDetails({todoId,onChanged}:{todoId:number;o
     <strong>{info.toolTitle} · {!info.following?'已停止关注':info.mode==='completed'?'已完成，保护记录':info.mode==='manual'?'个人安排，暂停覆盖':'持续关注中'}</strong>
     <p>最新来源：{info.source.title}</p><p>{time} · {info.sourceStatus==='cancelled'?'来源已取消':info.sourceStatus==='finished'?'来源已结束':info.sourceStatus==='postponed'?'来源已改期':'来源已排期'}</p>
     {info.pendingSourceRevision!==null&&<p className="sub">来源有更新；手动修改与已完成内容保持保护。</p>}
-    {info.following&&<div className="cal-form-row"><button className="btn slim" disabled={busy} onClick={()=>void execute(()=>call(()=>api.toolFollowing.stopTodo({todoId})))}>停止关注并保留待办</button>{info.mode!=='completed'&&(info.mode==='manual'||info.pendingSourceRevision!==null)&&<button className="btn slim" disabled={busy} onClick={()=>setConfirm(true)}>恢复跟随…</button>}</div>}
-    {confirm&&<div className="notice">将用上面的最新来源替换个人标题和排期，保留备注、标签及优先级。未保存的编辑不会提交。<div className="cal-form-row"><button className="btn slim" disabled={busy} onClick={()=>setConfirm(false)}>取消恢复</button><button className="btn slim" disabled={busy} onClick={()=>void execute(()=>call(()=>api.toolFollowing.resume({todoId,expectedSourceRevision:info.sourceRevision,expectedTodoRevision:info.todoRevision})))}>确认恢复跟随</button></div></div>}
+    {info.following&&<div className="cal-form-row"><ActionButton icon={IconStop} className="btn slim" disabled={busy} onClick={()=>void execute(()=>call(()=>api.toolFollowing.stopTodo({todoId})))}>停止关注并保留待办</ActionButton>{info.mode!=='completed'&&(info.mode==='manual'||info.pendingSourceRevision!==null)&&<ActionButton icon={IconUndo} className="btn slim" disabled={busy} onClick={()=>setConfirm(true)}>恢复跟随…</ActionButton>}</div>}
+    {confirm&&<div className="notice">将用上面的最新来源替换个人标题和排期，保留备注、标签及优先级。未保存的编辑不会提交。<div className="cal-form-row"><ActionButton icon={IconX} className="btn slim" disabled={busy} onClick={()=>setConfirm(false)}>取消恢复</ActionButton><ActionButton icon={IconUndo} className="btn slim" disabled={busy} onClick={()=>void execute(()=>call(()=>api.toolFollowing.resume({todoId,expectedSourceRevision:info.sourceRevision,expectedTodoRevision:info.todoRevision})))}>确认恢复跟随</ActionButton></div></div>}
     {error&&<p className="notice error" role="alert">{error}</p>}
   </div>;
 }

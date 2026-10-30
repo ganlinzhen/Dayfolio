@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconCheck, IconCopy, IconFolder, IconRefresh, IconSave, IconUndo } from './icons';
 import { useEffect, useState } from 'react';
 import type { AgentProvider, AgentSettings } from '../../../../../../packages/core/src';
 import type { AgentStatus } from '../../../main/agent-adapters';
@@ -51,7 +53,7 @@ export default function SettingsPanel({ onDirtyChange }: { onDirtyChange: (dirty
     <nav className="settings-menu" aria-label="设置菜单"><button className="active" aria-current="page">配置 Agent</button></nav>
     <section className="agent-settings" aria-labelledby="agent-settings-title">
       <header className="settings-section-head"><h2 id="agent-settings-title">后台 Agent</h2><p>使用本机已安装并登录的 Agent 更新新闻。</p></header>
-      {error && <div className="notice error" role="alert">{error}<button className="btn slim ghost" disabled={busy} onClick={() => void load()}>重新加载</button></div>}
+      {error && <div className="notice error" role="alert">{error}<ActionButton icon={IconRefresh} className="btn slim ghost" disabled={busy} onClick={() => void load()}>重新加载</ActionButton></div>}
       {!saved ? <p>{error ? '配置读取失败，请重新加载。' : '正在读取配置…'}</p> : <>
         <fieldset className="agent-provider-list" disabled={busy}><legend className="settings-sr-only">选择后台 Agent</legend>
           {providers.map(p => <div className="agent-provider-item" key={p.id}>
@@ -65,7 +67,7 @@ export default function SettingsPanel({ onDirtyChange }: { onDirtyChange: (dirty
               {expanded === p.id && current?.id === p.id && <div className="agent-provider-fields">
                 <div className="agent-setting-row">
                   <div className="agent-setting-label"><label htmlFor="agent-binary">可执行文件</label><p>留空自动查找安装位置</p></div>
-                  <div className="agent-path-row"><input id="agent-binary" className="form-input mono" placeholder={`自动查找 ${p.id}`} value={binary} disabled={busy} onChange={e => { setBinary(e.target.value); setStatus(null); }} /><button className="btn slim" disabled={busy} onClick={() => { void call<string | null>(() => api.agentSettings.pickBinary()).then(path => { if (path) { setBinary(path); setStatus(null); } }).catch(e => setError(e.message)); }}>选择文件</button></div>
+                  <div className="agent-path-row"><input id="agent-binary" className="form-input mono" placeholder={`自动查找 ${p.id}`} value={binary} disabled={busy} onChange={e => { setBinary(e.target.value); setStatus(null); }} /><ActionButton icon={IconFolder} className="btn slim" disabled={busy} onClick={() => { void call<string | null>(() => api.agentSettings.pickBinary()).then(path => { if (path) { setBinary(path); setStatus(null); } }).catch(e => setError(e.message)); }}>选择文件</ActionButton></div>
                 </div>
                 <div className="agent-setting-row">
                   <div className="agent-setting-label"><label htmlFor="agent-model">模型</label><p>可选，使用 CLI 默认模型</p></div>
@@ -73,13 +75,13 @@ export default function SettingsPanel({ onDirtyChange }: { onDirtyChange: (dirty
                 </div>
                 <div className="agent-setting-row">
                   <div className="agent-setting-label"><span>安装与登录</span><p>在终端完成首次配置</p></div>
-                  <div className="agent-row-actions"><button className="btn slim" onClick={() => void copy(p.install)}>复制安装命令</button><button className="btn slim" onClick={() => void copy(binary ? `${"'"}${binary.replaceAll("'", "'\\''")}${"'"}${p.id === 'codex' ? ' login' : p.id === 'claude' ? ' auth login' : ''}` : p.login)}>复制登录命令</button></div>
+                  <div className="agent-row-actions"><ActionButton icon={IconCopy} className="btn slim" onClick={() => void copy(p.install)}>复制安装命令</ActionButton><ActionButton icon={IconCopy} className="btn slim" onClick={() => void copy(binary ? `${"'"}${binary.replaceAll("'", "'\\''")}${"'"}${p.id === 'codex' ? ' login' : p.id === 'claude' ? ' auth login' : ''}` : p.login)}>复制登录命令</ActionButton></div>
                 </div>
                 <div className="agent-setting-row">
                   <div className="agent-setting-label"><span>连接与接入</span><p>检查 CLI，或交给 Agent 完成</p></div>
                   <div className="agent-row-actions">
-                    <button className="btn slim" disabled={busy} onClick={() => void check()}>{busy ? '处理中…' : '检查连接'}</button>
-                    <button className="btn slim" disabled={busy} onClick={() => void copy(agentConnectionPrompt({ provider: p.id, label: p.label, binary, model }), '接入提示词已复制，请粘贴到 Agent 对话中')}>复制给ai</button>
+                    <ActionButton icon={IconCheck} className="btn slim" disabled={busy} onClick={() => void check()}>{busy ? '处理中…' : '检查连接'}</ActionButton>
+                    <ActionButton icon={IconCopy} className="btn slim" disabled={busy} onClick={() => void copy(agentConnectionPrompt({ provider: p.id, label: p.label, binary, model }), '接入提示词已复制，请粘贴到 Agent 对话中')}>复制给ai</ActionButton>
                   </div>
                 </div>
                 {status && <div className={`agent-connection-result agent-setting-row ${status.available ? 'ready' : ''}`} role="status"><strong>{status.available ? '连接检查通过' : '连接尚不可用'}</strong><div><p>{status.message}</p>{status.binary && <p className="mono">{status.binary}</p>}{status.version && <p className="mono">{status.version}</p>}</div></div>}
@@ -89,7 +91,7 @@ export default function SettingsPanel({ onDirtyChange }: { onDirtyChange: (dirty
           </div>)}
           <label className="agent-provider-none"><input type="radio" name="agent-provider" value="none" checked={!provider} onChange={() => choose(null)} /><span className="agent-provider-copy"><span className="agent-provider-name">暂不启用</span><span className="agent-provider-description">仍可在 Agent 对话中更新新闻</span></span></label>
         </fieldset>
-        <footer className="agent-settings-actions"><span className="settings-save-status" role="status">{dirty ? '有未保存的修改' : saved.provider ? '配置已保存' : '尚未启用后台 Agent'}</span><span className="spacer" />{dirty && <button className="btn ghost" disabled={busy} onClick={() => reset(saved)}>撤销修改</button>}<button className="btn primary" disabled={busy || !dirty} onClick={() => void save()}>保存配置</button></footer>
+        <footer className="agent-settings-actions"><span className="settings-save-status" role="status">{dirty ? '有未保存的修改' : saved.provider ? '配置已保存' : '尚未启用后台 Agent'}</span><span className="spacer" />{dirty && <ActionButton icon={IconUndo} className="btn ghost" disabled={busy} onClick={() => reset(saved)}>撤销修改</ActionButton>}<ActionButton icon={IconSave} className="btn primary" disabled={busy || !dirty} onClick={() => void save()}>保存配置</ActionButton></footer>
         <p className="settings-note">配置对下次任务生效。登录凭证由 CLI 管理，Dayfolio 不保存密钥。</p>
       </>}
     </section>

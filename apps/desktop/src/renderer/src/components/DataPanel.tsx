@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconArchive, IconCheck, IconChevronLeft, IconDownload, IconFolder, IconRefresh, IconWrench } from './icons';
 // 数据首页依次展示总览、对象类型与维护；对象类型详情集中展示结构、关系、动作与实例。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, call } from '../api';
@@ -92,12 +94,12 @@ export default function DataPanel() {
       <div className="data-view">
         <header className="panel-head data-head">
           {current ? <>
-            <button ref={backRef} className="btn slim ghost" onClick={backHome}>← 返回数据首页</button>
+            <ActionButton icon={IconChevronLeft} ref={backRef} className="btn slim ghost" onClick={backHome}>返回数据首页</ActionButton>
             <span className="panel-context">{current.title}</span>
             <span className="sub mono">{current.apiName}</span>
           </> : <span className="head-meta mono">{types.length} 种对象类型</span>}
           <div className="spacer" />
-          <button className="btn slim ghost" onClick={refreshAll}>刷新数据</button>
+          <ActionButton icon={IconRefresh} className="btn slim ghost" onClick={refreshAll}>刷新数据</ActionButton>
         </header>
         <div className="data-home" ref={homeRef} hidden={!!current}>
           <section className="data-home-section" aria-labelledby="data-overview-title">
@@ -175,11 +177,11 @@ function OverviewView({ overview, onOpenDir }: { overview: Overview | null; onOp
       </dl>
       <div className="data-storage-row">
         <div><strong>SQLite 主库</strong><p className="mono data-path">{overview.db.path}</p></div>
-        <div className="btn-row"><button className="btn slim ghost" onClick={() => onOpenDir('db')}>打开数据目录</button><button className="btn slim ghost" onClick={() => onOpenDir('backups')}>打开备份目录</button></div>
+        <div className="btn-row"><ActionButton icon={IconFolder} className="btn slim ghost" onClick={() => onOpenDir('db')}>打开数据目录</ActionButton><ActionButton icon={IconFolder} className="btn slim ghost" onClick={() => onOpenDir('backups')}>打开备份目录</ActionButton></div>
       </div>
       <div className="data-storage-row">
         <div><strong>工具箱文件</strong><span className="sub"> {overview.toolsDir.toolCount} 个工具 · {fmtBytes(overview.toolsDir.sizeBytes)}</span><p className="mono data-path">{overview.toolsDir.path}</p></div>
-        <button className="btn slim ghost" onClick={() => onOpenDir('tools')}>打开工具目录</button>
+        <ActionButton icon={IconFolder} className="btn slim ghost" onClick={() => onOpenDir('tools')}>打开工具目录</ActionButton>
       </div>
     </div>
   );
@@ -209,30 +211,30 @@ function CareView({ health, setHealth, onChanged }: { health: string; setHealth:
         <section className="data-card">
           <h3>备份与导出</h3>
           <div className="btn-row">
-            <button className="btn primary" disabled={busy !== ''} onClick={() => void run('backup', () => call(() => api.data.backup()))}>
+            <ActionButton icon={IconArchive} className="btn primary" disabled={busy !== ''} onClick={() => void run('backup', () => call(() => api.data.backup()))}>
               {busy === 'backup' ? '备份中…' : '备份数据库'}
-            </button>
-            <button className="btn" disabled={busy !== ''} onClick={() => void run('export', () => call(() => api.data.exportJson()))}>
+            </ActionButton>
+            <ActionButton icon={IconDownload} className="btn" disabled={busy !== ''} onClick={() => void run('export', () => call(() => api.data.exportJson()))}>
               {busy === 'export' ? '导出中…' : '导出 JSON'}
-            </button>
+            </ActionButton>
           </div>
           <p className="sub">产物在 userData/Backups/ 下，JSON 含类型元数据与全部实例数据。</p>
         </section>
         <section className="data-card">
           <h3>体检与压缩</h3>
           <div className="btn-row">
-            <button className="btn" disabled={busy !== ''} onClick={() => void run('health', async () => {
+            <ActionButton icon={IconCheck} className="btn" disabled={busy !== ''} onClick={() => void run('health', async () => {
               const res = await call<{ integrityOk: boolean; integrityMessages: string[]; foreignKeyViolations: number; relationIssues:unknown[] }>(() => api.data.healthCheck());
               return `完整性：${res.integrityMessages.join('; ')}；外键违规：${res.foreignKeyViolations}；待修复关系：${res.relationIssues.length}`;
             })}>
               运行体检
-            </button>
-            <button className="btn ghost" disabled={busy !== ''} onClick={() => void run('vacuum', async () => {
+            </ActionButton>
+            <ActionButton icon={IconWrench} className="btn ghost" disabled={busy !== ''} onClick={() => void run('vacuum', async () => {
               await call(() => api.data.vacuum());
               return 'VACUUM 完成';
             })}>
               压缩主库
-            </button>
+            </ActionButton>
           </div>
           {health && <p className="mono data-result">{health}</p>}
         </section>

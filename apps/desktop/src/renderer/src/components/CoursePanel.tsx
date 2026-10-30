@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconTrash } from './icons';
 // 课程面板（内嵌组件）：无独立侧栏入口，由「学习计划」面板承载。
 // 独立课程总览（不计入日课）→ 每日卡片（日期/第几天/主题/概要/时长/状态）
 // → 讲义阅读（消毒 HTML iframe sandbox + CSP 渲染）+ 源码导读 + 自测答题 + 样课确认。
@@ -214,9 +216,9 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
   if (overviewOpen && overview && selected) {
     return (
       <div className="panel">
-        <button className="backlink" onClick={backFromOverview}>
-          <IconChevronLeft width={14} height={14} /> 返回课程
-        </button>
+        <ActionButton icon={IconChevronLeft} className="backlink" onClick={backFromOverview}>
+           返回课程
+        </ActionButton>
         <EmbeddedFrame
           label={`${selected.title}课程总览`}
           className="course-embed"
@@ -234,9 +236,9 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
     const l = reading.lesson;
     return (
       <div className="panel">
-        <button className="backlink" onClick={backFromLesson}>
-          <IconChevronLeft width={14} height={14} /> {directDay != null ? exitLabel : '返回课程总览'}
-        </button>
+        <ActionButton icon={IconChevronLeft} className="backlink" onClick={backFromLesson}>
+           {directDay != null ? exitLabel : '返回课程总览'}
+        </ActionButton>
         {l.is_sample && !selected.sample_confirmed_at && <div className="notice course-sample-notice">这是样课：看完后回到对话，告诉助手「样课确认，继续生成完整版」即可。确认绑定当前内容版本。</div>}
 
         <LessonMaterial lesson={l} html={reading.html} />
@@ -261,15 +263,15 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
     ].sort((a, b) => a.day - b.day);
     return (
       <div className="panel">
-        <button className="backlink" onClick={onExit}>
-          <IconChevronLeft width={14} height={14} /> {exitLabel}
-        </button>
+        <ActionButton icon={IconChevronLeft} className="backlink" onClick={onExit}>
+           {exitLabel}
+        </ActionButton>
         <header className="panel-head">
           <h1>{selected.title}</h1>
           <div className="head-meta mono">
             {STATUS_LABEL[selected.status]} · 已读讲义 {readCount}/{lessons.length}
             {planOutline ? ` · 计划 ${planOutline.length} 天` : ''}
-            <button className="btn ghost slim course-delete-button" disabled={deleting} onClick={() => void deleteCourse()}>{deleting ? '删除中…' : '删除课程'}</button>
+            <ActionButton icon={IconTrash} className="btn ghost slim course-delete-button" disabled={deleting} onClick={() => void deleteCourse()}>{deleting ? '删除中…' : '删除课程'}</ActionButton>
           </div>
         </header>
         <p className="sub">{selected.goal}</p>
@@ -357,9 +359,9 @@ export default function CoursePanel({ target, exitLabel, onExit }: { target: Cou
   // ---------- 目标课程不存在 / 加载中 ----------
   return (
     <div className="panel">
-      <button className="backlink" onClick={onExit}>
-        <IconChevronLeft width={14} height={14} /> {exitLabel}
-      </button>
+      <ActionButton icon={IconChevronLeft} className="backlink" onClick={onExit}>
+         {exitLabel}
+      </ActionButton>
       {missing ? (
         <>
           <div className="notice error">课程不存在或已被删除（计划与学习进度不受影响）。</div>

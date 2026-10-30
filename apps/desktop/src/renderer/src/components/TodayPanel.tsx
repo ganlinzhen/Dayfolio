@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconRefresh } from './icons';
 // 今日页：日历置顶（周/月视图）+ 逾期待办行动列表
 // 2026-10-14 起头部日期条、统计条与手动「每日打卡」入口移除，打开即是日历
 import { useCallback, useState } from 'react';
@@ -41,7 +43,7 @@ export default function TodayPanel() {
           <EmptyState
             title="今日概览加载失败"
             hint={error}
-            action={<button className="btn" onClick={() => void refresh()}>重试</button>}
+            action={<ActionButton icon={IconRefresh} className="btn" onClick={() => void refresh()}>重试</ActionButton>}
           />
         ) : (
           <div className="skel-wrap">

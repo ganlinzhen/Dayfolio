@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconBook, IconCheck, IconEye, IconPause, IconPlay, IconPlus, IconTrash, IconX } from './icons';
 import Modal from './Modal';
 import { ObjectParameter } from './DataObjects';
 import ActionValuesInput from './ActionValuesInput';
@@ -120,10 +122,10 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
         <div className="spacer" />
         {detailType ? (
           <>
-            {!detailType.isVirtual && detailType.writeMode!=='read_only' && <button className="btn primary slim" onClick={() => { setAddingTo(detailType.apiName); setAddProp(emptyProp()); }}>添加属性</button>}
-            {!detailType.isSystem && <button className="btn slim danger" onClick={() => { setDeleting(detailType); setConfirmName(''); }}>删除对象类型</button>}
+            {!detailType.isVirtual && detailType.writeMode!=='read_only' && <ActionButton icon={IconPlus} className="btn primary slim" onClick={() => { setAddingTo(detailType.apiName); setAddProp(emptyProp()); }}>添加属性</ActionButton>}
+            {!detailType.isSystem && <ActionButton icon={IconTrash} className="btn slim danger" onClick={() => { setDeleting(detailType); setConfirmName(''); }}>删除对象类型</ActionButton>}
           </>
-        ) : <button className="btn primary slim" onClick={openCreate}>新建对象类型</button>}
+        ) : <ActionButton icon={IconPlus} className="btn primary slim" onClick={openCreate}>新建对象类型</ActionButton>}
       </div>
       <div className="data-table-wrap">
         <table className="data-table">
@@ -143,7 +145,7 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
                 <td>{p.enumValues?.join(' / ') ?? '—'}</td>
                 <td>{p.indexed ? '有' : '—'}</td>
                 <td><span className="tag">{p.origin === 'builtin' ? '内置' : '自定义'}</span></td>
-                <td>{p.origin === 'user' && <button className="btn slim danger" onClick={() => void doDropProperty(detailType.apiName, p.apiName)}>删除属性</button>}</td>
+                <td>{p.origin === 'user' && <ActionButton icon={IconTrash} className="btn slim danger" onClick={() => void doDropProperty(detailType.apiName, p.apiName)}>删除属性</ActionButton>}</td>
               </tr>
             ))}
           </tbody> : groups.map(group => <Fragment key={group.id}>
@@ -158,12 +160,12 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
             <tbody id={`${groupId}-${group.id}`} className="data-type-group-rows" data-group={group.id} hidden={collapsedGroups.has(group.id)}>
             {group.types.filter(t => t.apiName !== 'checkin' || !types.some(type => type.apiName === 'todo')).map((t) => (
               <tr key={t.apiName} data-object-type={t.apiName} onClick={() => onOpenType?.(t.apiName)}>
-                <td className="title-col"><button className="data-type-link" onClick={(e) => { e.stopPropagation(); onOpenType?.(t.apiName); }}>{t.title}</button>{t.apiName === 'todo' && types.some(type => type.apiName === 'checkin') && <button className="btn slim ghost" data-object-type-link="checkin" onClick={(e) => { e.stopPropagation(); onOpenType?.('checkin'); }}>完成记录 →</button>}{t.isVirtual && <span className="tag">虚拟</span>}</td>
+                <td className="title-col"><button className="data-type-link" onClick={(e) => { e.stopPropagation(); onOpenType?.(t.apiName); }}>{t.title}</button>{t.apiName === 'todo' && types.some(type => type.apiName === 'checkin') && <ActionButton icon={IconBook} className="btn slim ghost" data-object-type-link="checkin" onClick={(e) => { e.stopPropagation(); onOpenType?.('checkin'); }}>完成记录</ActionButton>}{t.isVirtual && <span className="tag">虚拟</span>}</td>
                 <td className="mono">{t.apiName}</td>
                 <td>{t.properties.length}</td>
                 <td>{t.isVirtual ? '虚拟对象' : counts[t.apiName] ?? '…'}</td>
                 <td><span className="tag">{t.isSystem ? '系统' : '自定义'}</span></td>
-                <td><button className="btn slim ghost" onClick={(e) => { e.stopPropagation(); onOpenType?.(t.apiName); }}>查看详情 →</button></td>
+                <td><ActionButton icon={IconEye} className="btn slim ghost" onClick={(e) => { e.stopPropagation(); onOpenType?.(t.apiName); }}>查看详情</ActionButton></td>
               </tr>
             ))}
             </tbody>
@@ -173,12 +175,12 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
 
       {addingTo && (
         <Modal title={`为 ${types.find((t) => t.apiName === addingTo)?.title ?? addingTo} 添加属性`} onClose={() => setAddingTo('')} footer={<>
-            <button className="btn ghost" onClick={() => setAddingTo('')}>
+            <ActionButton icon={IconX} className="btn ghost" onClick={() => setAddingTo('')}>
               取消
-            </button>
-            <button className="btn primary" disabled={!addProp.apiName.trim()} onClick={() => void doAddProperty()}>
+            </ActionButton>
+            <ActionButton icon={IconPlus} className="btn primary" disabled={!addProp.apiName.trim()} onClick={() => void doAddProperty()}>
               添加
-            </button>
+            </ActionButton>
            </>}>
           <PropertyForm draft={addProp} setDraft={setAddProp} />
 
@@ -187,12 +189,12 @@ export function ObjectTypeManager({ types, links, onChanged, onOpenType, detailT
 
       {deleting && (
         <Modal title={`删除对象类型「${deleting.title}」`} onClose={() => setDeleting(null)} footer={<>
-            <button className="btn ghost" onClick={() => setDeleting(null)}>
+            <ActionButton icon={IconX} className="btn ghost" onClick={() => setDeleting(null)}>
               取消
-            </button>
-            <button className="btn danger" disabled={confirmName !== deleting.apiName} onClick={() => void doDelete()}>
+            </ActionButton>
+            <ActionButton icon={IconTrash} className="btn danger" disabled={confirmName !== deleting.apiName} onClick={() => void doDelete()}>
               永久删除
-            </button>
+            </ActionButton>
            </>}>
           <p className="notice">
             将删除类型定义、物理表 <span className="mono">{deleting.tableName}</span> 与全部数据，且不可恢复。输入 apiName{' '}
@@ -283,12 +285,12 @@ function CreateObjectTypeModal({ types, links, onClose, onDone }: { types: Objec
 
   return (
     <Modal title="新建对象类型" onClose={onClose} busy={busy} wide footer={<>
-        <button className="btn ghost" disabled={busy} onClick={onClose}>
+        <ActionButton icon={IconX} className="btn ghost" disabled={busy} onClick={onClose}>
           取消
-        </button>
-        <button className="btn primary" disabled={busy || !apiName.trim() || !title.trim()} onClick={() => void save()}>
+        </ActionButton>
+        <ActionButton icon={IconPlus} className="btn primary" disabled={busy || !apiName.trim() || !title.trim()} onClick={() => void save()}>
           创建
-        </button>
+        </ActionButton>
        </>}>
       <div className="form-row">
         <label className="form-label">显示名 *</label>
@@ -302,14 +304,12 @@ function CreateObjectTypeModal({ types, links, onClose, onDone }: { types: Objec
       {props.map((p, i) => (
         <div className="data-prop-row" key={i}>
           <PropertyForm draft={p} setDraft={(d) => setProps(props.map((x, j) => (j === i ? d : x)))} />
-          <button className="icon-btn danger" title="移除属性行" onClick={() => setProps(props.filter((_, j) => j !== i))}>
-            ×
-          </button>
+          <ActionButton icon={IconTrash} aria-label="移除属性行" className="icon-btn danger" title="移除属性行" onClick={() => setProps(props.filter((_, j) => j !== i))}>移除</ActionButton>
         </div>
       ))}
-      <button className="btn slim ghost" onClick={() => setProps([...props, emptyProp()])}>
-        + 添加属性行
-      </button>
+      <ActionButton icon={IconPlus} className="btn slim ghost" onClick={() => setProps([...props, emptyProp()])}>
+        添加属性行
+      </ActionButton>
       <div className="form-row">
         <label className="form-label">标题属性</label>
         <select className="form-select" value={titleProperty} onChange={(e) => setTitleProperty(e.target.value)}>
@@ -352,9 +352,9 @@ export function LinkTypeManager({ types, links, onChanged, focusedType }: { type
       <div className="toolbar">
         <span className="sub">链接类型描述对象之间的关系：一对多用外键属性落地，多对多用中间表对象承载。</span>
         <div className="spacer" />
-        <button className="btn primary slim" onClick={() => setCreating(true)}>
+        <ActionButton icon={IconPlus} className="btn primary slim" onClick={() => setCreating(true)}>
           新建链接类型
-        </button>
+        </ActionButton>
       </div>
       <div className="data-table-wrap">
         <table className="data-table">
@@ -393,9 +393,9 @@ export function LinkTypeManager({ types, links, onChanged, focusedType }: { type
                 </td>
                 <td>
                   {!l.isSystem && (
-                    <button className="btn slim danger" onClick={() => void doDelete(l)}>
+                    <ActionButton icon={IconTrash} className="btn slim danger" onClick={() => void doDelete(l)}>
                       删除
-                    </button>
+                    </ActionButton>
                   )}
                 </td>
               </tr>
@@ -459,16 +459,16 @@ function CreateLinkTypeModal({ types, onClose, onDone, focusedType }: { types: O
 
   return (
     <Modal title="新建链接类型" onClose={onClose} busy={busy} wide footer={<>
-        <button className="btn ghost" disabled={busy} onClick={onClose}>
+        <ActionButton icon={IconX} className="btn ghost" disabled={busy} onClick={onClose}>
           取消
-        </button>
-        <button
+        </ActionButton>
+        <ActionButton icon={IconPlus}
           className="btn primary"
           disabled={busy || !apiName.trim() || (cardinality === 'many_to_many' ? !(linkTable && backingLeftProperty && backingRightProperty) : !fkColumn)}
           onClick={() => void save()}
         >
           创建
-        </button>
+        </ActionButton>
        </>}>
       <div className="form-row">
         <label className="form-label">显示名</label>
@@ -601,9 +601,9 @@ export function ActionTypeManager({
       <div className="toolbar">
         <span className="sub">自定义动作按顺序执行对象、关系操作和允许组合的业务命令，数据库步骤在同一事务完成。内置动作保留各自业务流程。</span>
         <div className="spacer" />
-        <button className="btn primary slim" onClick={() => setCreating(true)}>
+        <ActionButton icon={IconPlus} className="btn primary slim" onClick={() => setCreating(true)}>
           新建动作类型
-        </button>
+        </ActionButton>
       </div>
       <div className="data-table-wrap">
         <table className="data-table data-actions-table">
@@ -644,19 +644,19 @@ export function ActionTypeManager({
                   <span className="tag">{a.template ? '类型模板' : a.isBuiltin ? '内置' : '自定义'}</span>
                 </td>
                 <td>
-                  <button className="btn slim ghost" onClick={() => void toggleStatus(a)}>
+                  <ActionButton icon={a.status === 'active' ? IconCheck : IconPause} className="btn slim ghost" onClick={() => void toggleStatus(a)}>
                     {a.status === 'active' ? '启用中' : '已停用'}
-                  </button>
+                  </ActionButton>
                 </td>
                 <td>
-                  <button className="btn slim ghost" aria-expanded={expandedAction === a.apiName} onClick={() => setExpandedAction(expandedAction === a.apiName ? '' : a.apiName)}>查看定义</button>
-                  <button className="btn slim ghost" disabled={a.status !== 'active' || a.needsReview || a.allowedChannels?.includes('app-human')} title={a.needsReview ? '旧动作需要检查写入规则' : a.allowedChannels?.includes('app-human') ? '请到对应业务面板完成人工操作' : '执行会真实修改数据'} onClick={() => setTesting(a)}>
+                  <ActionButton icon={IconEye} className="btn slim ghost" aria-expanded={expandedAction === a.apiName} onClick={() => setExpandedAction(expandedAction === a.apiName ? '' : a.apiName)}>查看定义</ActionButton>
+                  <ActionButton icon={IconPlay} className="btn slim ghost" disabled={a.status !== 'active' || a.needsReview || a.allowedChannels?.includes('app-human')} title={a.needsReview ? '旧动作需要检查写入规则' : a.allowedChannels?.includes('app-human') ? '请到对应业务面板完成人工操作' : '执行会真实修改数据'} onClick={() => setTesting(a)}>
                     执行动作
-                  </button>
+                  </ActionButton>
                   {!a.isBuiltin && !a.template && (
-                    <button className="btn slim danger" onClick={() => void doDelete(a)}>
+                    <ActionButton icon={IconTrash} className="btn slim danger" onClick={() => void doDelete(a)}>
                       删除
-                    </button>
+                    </ActionButton>
                   )}
                 </td>
               </tr>
@@ -813,9 +813,7 @@ function OperationEditor({
           </select>
         )}
         <div className="spacer" />
-        <button className="icon-btn danger" title="移除规则" onClick={() => setOps(ops.filter((_, i) => i !== index))}>
-          ×
-        </button>
+        <ActionButton icon={IconTrash} aria-label="移除规则" className="icon-btn danger" title="移除规则" onClick={() => setOps(ops.filter((_, i) => i !== index))}>移除</ActionButton>
       </div>
 
       {op.kind === 'invoke_command' && <div className="data-op-sec"><select className="form-select" aria-label={`步骤 ${index + 1} 命令`} value={op.command ?? ''} onChange={e => patch({ command: e.target.value, params: {} })}><option value="">选择可组合业务命令</option>{commands.map(command => <option key={command.apiName} value={command.apiName}>{command.title}（{command.apiName}）</option>)}</select>
@@ -954,12 +952,12 @@ function CreateActionTypeModal({
 
   return (
     <Modal title="新建动作类型" onClose={onClose} busy={busy} wide footer={<>
-        <button className="btn ghost" disabled={busy} onClick={onClose}>
+        <ActionButton icon={IconX} className="btn ghost" disabled={busy} onClick={onClose}>
           取消
-        </button>
-        <button className="btn primary" disabled={busy || !apiName.trim() || !title.trim()} onClick={() => void save()}>
+        </ActionButton>
+        <ActionButton icon={IconPlus} className="btn primary" disabled={busy || !apiName.trim() || !title.trim()} onClick={() => void save()}>
           创建
-        </button>
+        </ActionButton>
        </>}>
       <div className="form-row">
         <label className="form-label">显示名 *</label>
@@ -997,21 +995,19 @@ function CreateActionTypeModal({
             />
             必填
           </label>
-          <button className="icon-btn danger" onClick={() => setParams(params.filter((_, j) => j !== i))}>
-            ×
-          </button>
+          <ActionButton icon={IconTrash} aria-label="移除参数" className="icon-btn danger" onClick={() => setParams(params.filter((_, j) => j !== i))}>移除</ActionButton>
         </div>
       ))}
-      <button className="btn slim ghost" onClick={() => setParams([...params, { name: '', dataType: 'string', required: false }])}>
-        + 添加参数
-      </button>
+      <ActionButton icon={IconPlus} className="btn slim ghost" onClick={() => setParams([...params, { name: '', dataType: 'string', required: false }])}>
+        添加参数
+      </ActionButton>
       <h4>执行规则（按顺序，单事务）</h4>
       {ops.map((op, i) => (
         <OperationEditor commands={commands} key={i} op={op} ops={ops} setOps={setOps} index={i} types={types} links={links} params={cleanParams} />
       ))}
-      <button className="btn slim ghost" onClick={() => setOps([...ops, emptyOperation()])}>
-        + 添加规则
-      </button>
+      <ActionButton icon={IconPlus} className="btn slim ghost" onClick={() => setOps([...ops, emptyOperation()])}>
+        添加规则
+      </ActionButton>
 
     </Modal>
   );
@@ -1060,12 +1056,12 @@ function RunActionModal({ action, onClose, onDone }: { action: ActionTypeDef; on
 
   return (
     <Modal title={`执行动作「${action.title}」`} onClose={onClose} busy={busy} footer={<>
-        <button className="btn ghost" disabled={busy} onClick={onClose}>
+        <ActionButton icon={IconX} className="btn ghost" disabled={busy} onClick={onClose}>
           关闭
-        </button>
-        <button className="btn primary" disabled={busy || (needsPreview && !preview)} onClick={() => void run()}>
+        </ActionButton>
+        <ActionButton icon={IconPlay} className="btn primary" disabled={busy || (needsPreview && !preview)} onClick={() => void run()}>
           执行
-        </button>
+        </ActionButton>
        </>}>
       <p className="sub">执行会真实修改数据，请核对参数。</p>
       {action.parameters.length === 0 && <p className="sub">该动作无参数，直接执行。</p>}

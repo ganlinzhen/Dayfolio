@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconChevronLeft } from './icons';
 // 打卡面板：连续天数、近 28 天热力点与打卡记录（Codex 风格）
 // 2026-10-14 起手动「每日打卡」入口移除：记录由完成待办/学习条目打卡自动产生
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -60,7 +62,7 @@ export default function CheckinPanel({ onBack }: { onBack: () => void }) {
   return (
     <div className="panel work-panel" role="region" aria-label="打卡记录">
       <header className="panel-head">
-        <button className="btn" onClick={onBack}>返回待办</button>
+        <ActionButton icon={IconChevronLeft} className="btn" onClick={onBack}>返回待办</ActionButton>
         <span className="panel-context">打卡记录</span>
         <span className="spacer" />
         <div className="head-meta mono">累计 {stats?.total_checkins ?? 0} 次</div>

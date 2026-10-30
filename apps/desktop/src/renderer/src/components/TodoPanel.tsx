@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconCheck, IconChevronDown, IconChevronUp, IconClock, IconLink, IconRefresh, IconSave, IconTrash, IconUndo } from './icons';
 // 待办工作区：按需展开新增、日期筛选、分组排序与完整行内编辑。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, call } from '../api';
@@ -149,14 +151,14 @@ export default function TodoPanel() {
   };
   const toggle = (t: Todo) => void mutate(async () => {
     await call(() => t.status === 'open' ? api.todos.complete({ id: t.id }) : api.todos.reopen({ id: t.id }));
-    toast(t.status === 'open' ? '已完成待办' : '已重新打开待办', { label: '撤销', run: () => void mutate(async () => {
+    toast(t.status === 'open' ? '已完成待办' : '已重新打开待办', { label: '撤销', icon: IconUndo, run: () => void mutate(async () => {
       await call(() => t.status === 'open' ? api.todos.reopen({ id: t.id }) : api.todos.complete({ id: t.id }));
     }) });
   });
   const remove = (t: Todo) => void mutate(async () => {
     await call(() => api.todos.delete({ id: t.id })); setDeleteId(null);
     let restored = false;
-    toast(`已删除「${t.title.slice(0, 24)}」`, { label: '撤销', run: () => {
+    toast(`已删除「${t.title.slice(0, 24)}」`, { label: '撤销', icon: IconUndo, run: () => {
       if (restored) return;
       void mutate(async () => {
         const created = await call<Todo>(() => api.todos.add({
@@ -208,9 +210,9 @@ export default function TodoPanel() {
       </div>
       <div className="searchbox">
         <IconSearch /><input ref={searchRef} placeholder="搜索标题或备注" aria-label="搜索待办" value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { setSearch(''); e.currentTarget.blur(); } }} />
-        {search ? <button className="icon-btn" aria-label="清除搜索" onClick={() => setSearch('')}><IconX width={13} height={13} /></button> : <kbd aria-hidden="true">/</kbd>}
+        {search ? <ActionButton icon={IconX} className="icon-btn" aria-label="清除搜索" onClick={() => setSearch('')}>清除</ActionButton> : <kbd aria-hidden="true">/</kbd>}
       </div>
-      <button className="btn" onClick={() => setShowRecords(true)}>记录</button>
+      <ActionButton icon={IconClock} className="btn" onClick={() => setShowRecords(true)}>记录</ActionButton>
     </header>
 
     <form className={`composer todo-composer-v2 ${expanded ? 'expanded' : ''}`} onSubmit={e => { e.preventDefault(); add(); }} onKeyDown={e => {
@@ -220,7 +222,7 @@ export default function TodoPanel() {
       <div className="todo-composer-line">
         <IconPlus className="composer-icon" />
         <input ref={titleRef} className="composer-input" aria-label="待办标题" placeholder="接下来要做什么？" value={title} disabled={busy} onFocus={() => setExpanded(true)} onChange={e => setTitle(e.target.value)} aria-invalid={!!formError} aria-describedby={formError ? 'todo-add-error' : undefined} />
-        <button type="submit" className="btn primary" disabled={busy || !title.trim()}>{busy ? '处理中…' : '添加待办'}</button>
+        <ActionButton icon={IconPlus} type="submit" className="btn primary" disabled={busy || !title.trim()}>{busy ? '处理中…' : '添加待办'}</ActionButton>
       </div>
       {expanded && <div className="todo-composer-details">
         <div className="todo-quick-dates" aria-label="快速安排日期">
@@ -230,8 +232,8 @@ export default function TodoPanel() {
         <fieldset disabled={busy} className="todo-schedule-fieldset"><legend className="sr-only">新增待办排期</legend><TodoSchedule showLabels value={schedule} onChange={value => { setSchedule(value); setFormError(''); }} /></fieldset>
         <div className="todo-composer-options">
           <label className="todo-field-inline">优先级 <select className="chip-select" aria-label="优先级" value={newPriority} disabled={busy} onChange={e => setNewPriority(e.target.value as Todo['priority'])}>{Object.entries(PRIORITIES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-          <button className="btn ghost slim" type="button" aria-expanded={moreFields} aria-controls="todo-add-more" onClick={() => setMoreFields(!moreFields)}>备注与标签{notes || tags ? ' · 已填写' : ''}</button>
-          <span className="spacer" /><button type="button" className="btn ghost slim" disabled={busy} onClick={resetComposer}>取消新增</button>
+          <ActionButton icon={moreFields ? IconChevronUp : IconChevronDown} className="btn ghost slim" type="button" aria-expanded={moreFields} aria-controls="todo-add-more" onClick={() => setMoreFields(!moreFields)}>备注与标签{notes || tags ? ' · 已填写' : ''}</ActionButton>
+          <span className="spacer" /><ActionButton icon={IconX} type="button" className="btn ghost slim" disabled={busy} onClick={resetComposer}>取消新增</ActionButton>
         </div>
         {moreFields && <div className="todo-extra-fields" id="todo-add-more">
           <label>备注<textarea value={notes} disabled={busy} placeholder="补充背景、链接或执行步骤" onChange={e => setNotes(e.target.value)} /></label>
@@ -252,26 +254,26 @@ export default function TodoPanel() {
         <label className="todo-sort">组内排序<select className="filter-select" aria-label="待办排序" value={sort} onChange={e => setSort(e.target.value as TodoSort)}><option value="date">时间先后</option><option value="priority">优先级</option><option value="newest">最近添加</option></select></label>
       </div>
     </div>
-    <div className="todo-results" role="status" aria-live="polite"><span>{loading ? '正在更新…' : `${filtered.length} 项${status === 'open' ? '未完成' : status === 'done' ? '已完成' : '待办'}`}{hasFilters && !loading ? ' · 已筛选' : ''}</span>{hasFilters && <button className="btn ghost slim" onClick={clearFilters}>清除筛选</button>}<span className="spacer" /><span className="todo-key-hint">N 新增 · / 搜索</span></div>
-    {error && <div className="notice error" role="alert">{error}<button className="btn slim" onClick={() => void refresh()}>重试</button></div>}
+    <div className="todo-results" role="status" aria-live="polite"><span>{loading ? '正在更新…' : `${filtered.length} 项${status === 'open' ? '未完成' : status === 'done' ? '已完成' : '待办'}`}{hasFilters && !loading ? ' · 已筛选' : ''}</span>{hasFilters && <ActionButton icon={IconX} className="btn ghost slim" onClick={clearFilters}>清除筛选</ActionButton>}<span className="spacer" /><span className="todo-key-hint">N 新增 · / 搜索</span></div>
+    {error && <div className="notice error" role="alert">{error}<ActionButton icon={IconRefresh} className="btn slim" onClick={() => void refresh()}>重试</ActionButton></div>}
     {todos.length >= 500 && <p className="notice">当前最多显示 500 条匹配记录；日期筛选、计数和排序作用于这些记录，可通过关键词、分类或优先级缩小范围。</p>}
     <div className="todo-groups" aria-busy={loading}>
-      {!loaded && loading ? <div className="todo-loading" aria-label="正在加载待办">{[0, 1, 2].map(n => <div key={n} />)}</div> : filtered.length === 0 && !loading && !error ? <EmptyState icon={search.trim() ? <IconSearch width={18} height={18} /> : <IconCalendar width={18} height={18} />} title={hasFilters ? '当前条件下没有待办' : status === 'done' ? '完成的待办会留在这里' : status === 'open' ? '待办已清空，给自己留点空闲' : '从一件小事开始'} hint={hasFilters ? '调整日期、分类或关键词，也可以一键清除筛选。' : status === 'done' ? '勾选待办左侧圆钮，即可留下完成记录。' : '写下接下来要做的事，给它安排一个合适的时间。'} action={<button className="btn slim" onClick={hasFilters ? clearFilters : () => titleRef.current?.focus()}>{hasFilters ? '清除筛选' : '添加第一条待办'}</button>} /> : groups.map(([group, items]) => <section key={group} className="group todo-group">
+      {!loaded && loading ? <div className="todo-loading" aria-label="正在加载待办">{[0, 1, 2].map(n => <div key={n} />)}</div> : filtered.length === 0 && !loading && !error ? <EmptyState icon={search.trim() ? <IconSearch width={18} height={18} /> : <IconCalendar width={18} height={18} />} title={hasFilters ? '当前条件下没有待办' : status === 'done' ? '完成的待办会留在这里' : status === 'open' ? '待办已清空，给自己留点空闲' : '从一件小事开始'} hint={hasFilters ? '调整日期、分类或关键词，也可以一键清除筛选。' : status === 'done' ? '勾选待办左侧圆钮，即可留下完成记录。' : '写下接下来要做的事，给它安排一个合适的时间。'} action={<ActionButton icon={hasFilters ? IconX : IconPlus} className="btn slim" onClick={hasFilters ? clearFilters : () => titleRef.current?.focus()}>{hasFilters ? '清除筛选' : '添加第一条待办'}</ActionButton>} /> : groups.map(([group, items]) => <section key={group} className="group todo-group">
         <button className={`group-label todo-group-toggle ${group === '已逾期' ? 'danger' : ''}`} aria-expanded={!collapsed.has(group)} onClick={() => setCollapsed(prev => { const next = new Set(prev); if (next.has(group)) next.delete(group); else next.add(group); return next; })}><span className="todo-chevron" aria-hidden="true">{collapsed.has(group) ? '›' : '⌄'}</span>{group}<span className="group-count">{items.length}</span></button>
         {!collapsed.has(group) && items.map(t => <article key={t.id} data-todo-id={t.id} className={`todo-card ${t.status === 'done' ? 'done' : ''} ${editing?.original.id === t.id ? 'is-editing' : ''}`}>
           <div className="todo-card-main">
             <button className={`check ${t.status === 'done' ? 'checked' : ''} ${t.priority}`} disabled={busy} onClick={() => toggle(t)} aria-label={`${t.status === 'open' ? '完成待办' : '重新打开待办'}：${t.title}`} aria-pressed={t.status === 'done'}>{t.status === 'done' && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="M4 12l5 5L20 6" /></svg>}</button>
             {editing?.original.id === t.id ? <textarea rows={2} className="inline-input todo-edit-title" aria-label="编辑待办标题" value={editing.title} disabled={busy} onChange={e => setEditing({ ...editing, title: e.target.value })} onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === 'Enter') { e.preventDefault(); saveEdit(); } if (e.key === 'Escape' && !busy) closeEdit(); }} autoFocus /> : <>
               <button className="todo-title" title="编辑待办" disabled={busy} onClick={e => startEdit(t, e.currentTarget)}>{t.title}</button>
-              <button className="icon-btn todo-delete" aria-label={`删除待办「${t.title.slice(0, 20)}」`} disabled={busy} onClick={() => setDeleteId(deleteId === t.id ? null : t.id)} title="删除待办"><IconX width={14} height={14} /></button>
+              <ActionButton icon={IconTrash} className="icon-btn todo-delete" aria-label={`删除待办「${t.title.slice(0, 20)}」`} disabled={busy} onClick={() => setDeleteId(deleteId === t.id ? null : t.id)} title="删除待办">删除</ActionButton>
             </>}
           </div>
           {editing?.original.id === t.id ? <div className="todo-inline-editor" onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === 'Escape' && !busy) closeEdit(); if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveEdit(); } }}>
             <fieldset disabled={busy} className="todo-schedule-fieldset"><legend className="sr-only">编辑待办排期</legend><TodoSchedule showLabels editing value={editing} onChange={value => setEditing({ ...editing, ...value })} /></fieldset>
             <div className="todo-extra-fields"><label>备注<textarea aria-label="编辑待办备注" value={editing.notes} disabled={busy} onChange={e => setEditing({ ...editing, notes: e.target.value })} placeholder="补充背景、链接或执行步骤" /></label><label>标签<input aria-label="编辑待办标签" value={editing.tags} disabled={busy} onChange={e => setEditing({ ...editing, tags: e.target.value })} placeholder="用逗号分隔" /></label></div>
             {t.source_time_kind && <p className="todo-form-hint">修改标题或排期后将按个人安排保存，后续来源更新不会覆盖。</p>}
-            {editError && <div className="notice error" role="alert">{editError}{editError.includes('REVISION_CONFLICT') && <button className="btn slim" disabled={busy} onClick={() => { const latest = todos.find(item => item.id === t.id); if (latest) startEdit(latest, editTrigger.current!); }}>载入最新内容（放弃草稿）</button>}</div>}
-            <div className="todo-editor-actions"><label className="todo-field-inline">优先级<select className="chip-select" aria-label="编辑优先级" value={editing.priority} disabled={busy} onChange={e => setEditing({ ...editing, priority: e.target.value as Todo['priority'] })}>{Object.entries(PRIORITIES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><span className="spacer" /><button className="btn slim" disabled={busy} onClick={closeEdit}>取消</button><button className="btn primary slim" disabled={busy} onClick={saveEdit}>{busy ? '保存中…' : '保存待办'}</button></div>
+            {editError && <div className="notice error" role="alert">{editError}{editError.includes('REVISION_CONFLICT') && <ActionButton icon={IconRefresh} className="btn slim" disabled={busy} onClick={() => { const latest = todos.find(item => item.id === t.id); if (latest) startEdit(latest, editTrigger.current!); }}>载入最新内容（放弃草稿）</ActionButton>}</div>}
+            <div className="todo-editor-actions"><label className="todo-field-inline">优先级<select className="chip-select" aria-label="编辑优先级" value={editing.priority} disabled={busy} onChange={e => setEditing({ ...editing, priority: e.target.value as Todo['priority'] })}>{Object.entries(PRIORITIES).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><span className="spacer" /><ActionButton icon={IconX} className="btn slim" disabled={busy} onClick={closeEdit}>取消</ActionButton><ActionButton icon={IconSave} className="btn primary slim" disabled={busy} onClick={saveEdit}>{busy ? '保存中…' : '保存待办'}</ActionButton></div>
           </div> : <>
             {t.notes && <p className="todo-notes-preview">{t.notes}</p>}
             <div className="todo-card-meta">
@@ -281,10 +283,10 @@ export default function TodoPanel() {
               {visibleTags(t.tags).filter(tag => tag !== collections.find(c => c.id === t.collection_id)?.title).map(tag => <span key={tag} className="tag">{tag}</span>)}
               {t.source === 'mcp' && <span className="origin">AI 创建</span>}{t.source === 'plan' && !t.tags.includes('学习计划') && <span className="origin">学习计划</span>}
               {t.source_status === 'cancelled' && <span className="tag">来源已取消</span>}{t.source_time_kind === 'tbd' && <span className="tag">来源时间待定</span>}
-              {t.source.startsWith('tool:') && <button className="btn ghost slim todo-source" onClick={() => window.dispatchEvent(new CustomEvent('dayfolio:openTodo', { detail: { id: t.id } }))}>来源详情</button>}
+              {t.source.startsWith('tool:') && <ActionButton icon={IconLink} className="btn ghost slim todo-source" onClick={() => window.dispatchEvent(new CustomEvent('dayfolio:openTodo', { detail: { id: t.id } }))}>来源详情</ActionButton>}
             </div>
           </>}
-          {deleteId === t.id && <div className="todo-delete-confirm" role="group" aria-label="确认删除待办"><span>删除这条待办？{t.source !== 'app' ? '来源关联不会随撤销恢复。' : '删除后可短暂撤销。'}</span><button className="btn slim" disabled={busy} onClick={() => setDeleteId(null)}>保留</button><button className="btn slim danger" disabled={busy} onClick={() => remove(t)}>确认删除</button></div>}
+          {deleteId === t.id && <div className="todo-delete-confirm" role="group" aria-label="确认删除待办"><span>删除这条待办？{t.source !== 'app' ? '来源关联不会随撤销恢复。' : '删除后可短暂撤销。'}</span><ActionButton icon={IconCheck} className="btn slim" disabled={busy} onClick={() => setDeleteId(null)}>保留</ActionButton><ActionButton icon={IconTrash} className="btn slim danger" disabled={busy} onClick={() => remove(t)}>确认删除</ActionButton></div>}
         </article>)}
       </section>)}
     </div>

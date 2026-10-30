@@ -1,3 +1,5 @@
+import ActionButton from './ActionButton';
+import { IconPencil, IconRefresh, IconSave, IconX } from './icons';
 // 周、月、全天和范围明细共用统一日历投影及同一分类偏好。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CalendarPopover from './CalendarPopover';
@@ -132,12 +134,12 @@ export default function CalendarSection({ today }: { today:string }) {
       <span className="cal-title serif">{mode==='week'?`${days[0]} — ${days[6]}`:`${anchor.slice(0,4)}年${Number(anchor.slice(5,7))}月`}</span><span className="spacer"/>
       <span className="cal-zone mono">{zone}</span>
       <div className="cal-mode-switch" role="tablist" aria-label="视图切换">{(['week','month'] as const).map(m=><button key={m} role="tab" aria-selected={mode===m} className={mode===m?'on':''} onClick={()=>{closePopover();setMode(m);localStorage.setItem('dayfolio.calView',m);}}>{m==='week'?'周':'月'}</button>)}</div>
-      <div className="cal-create-actions"><button className="btn primary slim" onClick={e=>openCreate(e.currentTarget)}><IconPlus width={13} height={13}/>新建日程</button>
+      <div className="cal-create-actions"><ActionButton icon={IconPlus} className="btn primary slim" onClick={e=>openCreate(e.currentTarget)}>新建日程</ActionButton>
         <CalendarCollections collections={result?.collections??[]} timezone={zone} onChanged={refresh} disabled={!result}/></div>
     </div>
     <div className="cal-form-row"><RuntimeCalendarActions /></div>
 
-    {error&&<div className="notice error">{error}<button className="btn slim" onClick={()=>void refresh()}>重试</button></div>}
+    {error&&<div className="notice error">{error}<ActionButton icon={IconRefresh} className="btn slim" onClick={()=>void refresh()}>重试</ActionButton></div>}
     {mode==='week'?<div className="cal-weekview">
       <div className="cal-week-head"><span className="cal-axis-head mono">时间</span>{days.map(day=><button key={day} className={`cal-wd-col ${day===today?'today-col':''} ${day===selected?'sel-col':''}`} onClick={()=>select(day)} aria-label={day}><span className="cal-wd-text">周{WEEK[dayOfWeek(day)]}</span><span className={`cal-num ${day===today?'today-num':''}`}>{Number(day.slice(8))}</span><span className="cal-day-meta mono">{result?.countsByDay[day]??0} 项</span></button>)}</div>
       <div className="cal-allday"><span className="cal-axis-head mono">全天</span><div className="cal-allday-lane" style={{height:Math.max(1,allDay.length)*26}}>{allDay.map((row,ri)=>row.map(({item,start,span})=><button key={item.id} data-calendar-kind={item.kind} data-item-id={item.id} className={`cal-allday-chip ${colorOf(item)}`} style={{left:`calc(${start/7*100}% + 2px)`,width:`calc(${span/7*100}% - 4px)`,top:ri*26+2,height:22}} onClick={e=>{select(days[start]);openItem(item,e.currentTarget);}} title={item.title}><i className={`cal-dot ${colorOf(item)}`}/><span className="cal-ev-text">{item.title}</span></button>))}</div></div>
@@ -154,14 +156,14 @@ export default function CalendarSection({ today }: { today:string }) {
       {form&&<div className="cal-form" aria-label={form.id===null?'新建日程':'编辑日程'}><div className="cal-form-row"><input className="inline-input cal-title-input" aria-label="日程标题" placeholder="添加主题" data-autofocus value={form.title} onChange={e=>setForm({...form,title:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'&&!e.nativeEvent.isComposing)void save();}} autoFocus/></div>
         <div className="cal-form-row"><label className="cal-field">日期<input className="chip-date" type="date" aria-label="开始日期" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label><label className="cal-field">结束<input className="chip-date" type="date" aria-label="结束日期" value={form.endDate} onChange={e=>setForm({...form,endDate:e.target.value})}/></label><label className="cal-check"><input type="checkbox" checked={form.allDay} onChange={e=>setForm({...form,allDay:e.target.checked})}/>全天</label><label className="cal-field">开始<input className="cal-time" type="time" aria-label="开始时间" disabled={form.allDay} value={form.start} onChange={e=>setForm({...form,start:e.target.value})}/></label><label className="cal-field">结束<input className="cal-time" type="time" aria-label="结束时间" disabled={form.allDay} value={form.end} onChange={e=>setForm({...form,end:e.target.value})}/></label></div>
         <div className="cal-form-row"><span className="cal-colors" role="radiogroup" aria-label="颜色">{COLORS.map(c=><button key={c} className={`cal-color-btn ${form.color===c?'on':''}`} role="radio" aria-label={c} aria-checked={form.color===c} onClick={()=>setForm({...form,color:c})}><i className={`cal-dot ${c}`}/></button>)}</span><input className="inline-input cal-note-input" aria-label="日程备注" placeholder="备注（可选）" value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></div>
-        {formError&&<div className="notice error">{formError}</div>}<div className="cal-form-row"><button className="btn primary slim" disabled={saving} onClick={()=>void save()}>{saving?'保存中…':form.id===null?'创建日程':'保存修改'}</button><button className="btn slim" disabled={saving} onClick={closePopover}>取消</button>{form.id!==null&&<button className="btn slim danger-btn" disabled={saving} onClick={()=>void remove()}><IconTrash width={13} height={13}/>删除</button>}</div>
+        {formError&&<div className="notice error">{formError}</div>}<div className="cal-form-row"><ActionButton icon={form.id === null ? IconPlus : IconSave} className="btn primary slim" disabled={saving} onClick={()=>void save()}>{saving?'保存中…':form.id===null?'创建日程':'保存修改'}</ActionButton><ActionButton icon={IconX} className="btn slim" disabled={saving} onClick={closePopover}>取消</ActionButton>{form.id!==null&&<ActionButton icon={IconTrash} className="btn slim danger-btn" disabled={saving} onClick={()=>void remove()}>删除</ActionButton>}</div>
       </div>}
       {detail&&(detail.target.objectType==='calendar_event'?<div className="cal-event-preview">
         <h4><i className={`cal-dot ${colorOf(detail)}`}/>{detail.title}</h4>
         <p className="mono">{detailTime||slices.filter(s=>s.item.id===detail.id).map(s=>`${s.day} ${s.label}`).join(' · ')}</p>
         <CalendarEventNote key={detail.id} item={detail}/>
         {formError&&<div className="notice error">{formError}</div>}
-        <div className="cal-form-row"><span className="cal-badge">日程</span><span className="spacer"/><button className="btn primary slim" disabled={saving} onClick={()=>void editEvent()}>编辑日程</button></div>
+        <div className="cal-form-row"><span className="cal-badge">日程</span><span className="spacer"/><ActionButton icon={IconPencil} className="btn primary slim" disabled={saving} onClick={()=>void editEvent()}>编辑日程</ActionButton></div>
       </div>:<CalendarItemDetails key={detail.id} item={detail} preview previewTime={detailTime||slices.filter(s=>s.item.id===detail.id).map(s=>`${s.day} ${s.label}`).join(' · ')+` (${zone})`} onBusyChange={setDetailBusy} onClose={dismissPopover} onChanged={refresh}/>)}
     </CalendarPopover>}
     <div className="cal-legend mono">所有视图使用相同分类和统计；跨午夜按天展示，结束待定只使用视觉高度。{loading?'正在刷新…':''}</div>
